@@ -1,5 +1,5 @@
+use distro_db_core::db::{DbReq, DbResp, DistroDb, DistroDbServer};
 use std::thread;
-use distro_db_core::db::{DistroDb, DistroDbServer, DbReq, DbResp};
 
 #[test]
 fn connect() {

@@ -1,34 +1,40 @@
 //! A window over some rows
 
-use std::iter::FromFn;
 use crate::data::{OwnedRow, Row};
 use crate::key::KeyData;
+use std::iter::FromFn;
 use std::ops::Bound;
 
 #[derive(Debug, Clone)]
 pub struct KeyIndex {
+    key: String,
     kind: KeyIndexKind,
     limit: Option<usize>,
     offset: Option<usize>,
 }
 
 impl KeyIndex {
-
-    pub fn all() -> Self {
-        Self::new(KeyIndexKind::All, None, None)
+    pub fn all(key: impl AsRef<str>) -> Self {
+        Self::new(key, KeyIndexKind::All, None, None)
     }
 
     /// Creates a new key index
     pub fn new(
+        key: impl AsRef<str>,
         kind: KeyIndexKind,
         limit: impl Into<Option<usize>>,
         offset: impl Into<Option<usize>>,
     ) -> Self {
         Self {
+            key: key.as_ref().to_string(),
             kind,
             limit: limit.into(),
             offset: offset.into(),
         }
+    }
+
+    pub fn key_name(&self) -> &str {
+        &self.key
     }
 
     /// Gets the key index kind
@@ -45,6 +51,7 @@ impl KeyIndex {
     pub fn offset(&self) -> Option<usize> {
         self.offset
     }
+
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -58,26 +65,24 @@ pub enum KeyIndexKind {
 }
 
 /// A rows result
-pub trait Rows {
-    fn next(&mut self) -> Option<OwnedRow>;
+pub trait Rows<'a> {
+    fn next(&mut self) -> Option<Row<'a>>;
 }
 
-impl Rows for Box<dyn Rows> {
-    fn next(&mut self) -> Option<OwnedRow> {
+impl<'a> Rows<'a> for Box<dyn Rows<'a> + 'a> {
+    fn next(&mut self) -> Option<Row<'a>> {
         (**self).next()
     }
 }
 
-impl<R : Rows + 'static> RowsExt for R{
-    type IntoIter = Box<dyn Iterator<Item=OwnedRow>>;
+impl<'a, R: Rows<'a> + 'static> RowsExt<'a> for R {
+    type IntoIter = Box<dyn Iterator<Item = Row<'a>>>;
 
     fn into_iter(mut self) -> Self::IntoIter {
-        Box::new(std::iter::from_fn(move || {
-            self.next()
-        }))
+        Box::new(std::iter::from_fn(move || self.next()))
     }
 }
-pub trait RowsExt : Rows {
-    type IntoIter: Iterator<Item=OwnedRow>;
+pub trait RowsExt<'a>: Rows<'a> {
+    type IntoIter: Iterator<Item =Row<'a>>;
     fn into_iter(self) -> Self::IntoIter;
 }

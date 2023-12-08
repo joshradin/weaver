@@ -2,17 +2,18 @@
 //!
 //! It stores tables data to a file by the same name, serializing and deserializing to json
 
+use crate::data::Row;
+use crate::dynamic_table::{Col, DynamicTable, StorageError};
+use crate::in_memory_table::InMemory;
+use crate::rows::{KeyIndex, Rows, RowsExt};
+use crate::table_schema::TableSchema;
 use std::fs::File;
 use std::io::Read;
-use crate::data::Row;
-use crate::in_memory::InMemory;
-use crate::rows::{KeyIndex, Rows, RowsExt};
-use crate::storage_engine::{DynamicTable, StorageError};
-use crate::table_schema::TableSchema;
+use crate::error::Error;
 
 pub struct DeadSimple {
     in_memory: InMemory,
-    file: File
+    file: File,
 }
 
 impl DynamicTable for DeadSimple {
@@ -20,26 +21,34 @@ impl DynamicTable for DeadSimple {
         self.in_memory.schema()
     }
 
-    fn insert(&self, row: &Row) -> Result<(), StorageError> {
+    fn auto_increment(&self, col: Col) -> i64 {
+        todo!()
+    }
+
+
+    fn insert(&self, row: Row) -> Result<(), Error> {
         self.in_memory.insert(row)?;
 
         self.file.set_len(0)?;
-        let all = self.in_memory.read(&KeyIndex::all())?.into_iter()
+        let all = self
+            .in_memory
+            .read(&KeyIndex::all(self.schema().primary_key()?.name()))?
+            .into_iter()
             .collect::<Vec<_>>();
         serde_json::to_writer(&self.file, &all).map_err(|e| StorageError::custom(e))?;
 
         Ok(())
     }
 
-    fn read(&self, key: &KeyIndex) -> Result<Box<dyn Rows>, StorageError> {
+    fn read(&self, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
         self.in_memory.read(key)
     }
 
-    fn update(&self, row: &Row) -> Result<(), StorageError> {
+    fn update(&self, row: Row) -> Result<(), crate::error::Error> {
         todo!()
     }
 
-    fn delete(&self, key: &KeyIndex) -> Result<Box<dyn Rows>, StorageError> {
+    fn delete(&self, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
         todo!()
     }
 }

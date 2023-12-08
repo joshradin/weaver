@@ -1,5 +1,7 @@
 //! The data that is actually stored
 
+use serde::de::{SeqAccess, Visitor};
+use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
 use std::cmp::Ordering;
@@ -7,25 +9,40 @@ use std::fmt::Formatter;
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut, Index, IndexMut, RangeBounds};
 use std::slice::SliceIndex;
-use serde::de::{SeqAccess, Visitor};
-use serde::ser::SerializeSeq;
 
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Copy, Clone)]
 pub enum Type {
     String,
     Blob,
-    Number,
+    Integer,
     Boolean,
     Float,
 }
 
+impl Type {
+
+    /// Checks whether the given value is valid for this type
+    pub fn validate(&self, val: &Value) -> bool {
+        use Type::*;
+        match (self, val) {
+            (String, Value::String(..)) => true,
+            (Blob, Value::Blob(..)) => true,
+            (Integer, Value::Integer(..)) => true,
+            (Boolean, Value::Boolean(..)) =>true,
+            (Float, Value::Float(..)) => true,
+            (_, Value::Null) => true,
+            _ => false
+        }
+    }
+}
+
 /// A single value within a row
-#[derive(Debug, Clone, Deserialize, Serialize,)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Value {
     String(String),
     Blob(Vec<u8>),
-    Number(i64),
+    Integer(i64),
     Boolean(bool),
     Float(f64),
     Null,
@@ -36,7 +53,7 @@ impl PartialEq for Value {
         match (self, other) {
             (String(l), String(r)) => l == r,
             (Blob(l), Blob(r)) => l == r,
-            (Number(l), Number(r)) => l == r,
+            (Integer(l), Integer(r)) => l == r,
             (Boolean(l), Boolean(r)) => l == r,
             (Float(l), Float(r)) => l.total_cmp(r).is_eq(),
             (Null, Null) => true,
@@ -53,7 +70,7 @@ impl PartialOrd for Value {
         Some(match (self, other) {
             (String(l), String(r)) => l.cmp(r),
             (Blob(l), Blob(r)) => l.cmp(r),
-            (Number(l), Number(r)) => l.cmp(r),
+            (Integer(l), Integer(r)) => l.cmp(r),
             (Boolean(l), Boolean(r)) => l.cmp(r),
             (Float(l), Float(r)) => l.total_cmp(r),
             (Null, Null) => Ordering::Equal,
@@ -69,7 +86,7 @@ impl Hash for Value {
         match self {
             Value::String(s) => s.hash(state),
             Value::Blob(s) => s.hash(state),
-            Value::Number(s) => s.hash(state),
+            Value::Integer(s) => s.hash(state),
             Value::Boolean(s) => s.hash(state),
             Value::Float(f) => u64::from_be_bytes(f.to_be_bytes()).hash(state),
             Value::Null => ().hash(state),
@@ -110,24 +127,26 @@ impl<'a> Row<'a> {
         self.0.iter_mut()
     }
 
-
-
-
     /// Gets the length of the row
     pub fn len(&self) -> usize {
         self.0.len()
     }
 }
 
-
 impl<'a> Deserialize<'a> for Row<'a> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'a>,
+    {
         deserializer.deserialize_any(RowVisitor)
     }
 }
 
 impl<'a> Serialize for Row<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
         let mut seq = serializer.serialize_seq(None)?;
         for val in self.iter() {
             seq.serialize_element(&*val)?;
@@ -143,7 +162,10 @@ impl<'de> Visitor<'de> for RowVisitor {
         write!(f, "a valid row")
     }
 
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
         let mut vec = vec![];
         while let Some(ele) = seq.next_element::<Value>()? {
             vec.push(ele)
@@ -151,7 +173,6 @@ impl<'de> Visitor<'de> for RowVisitor {
         Ok(Row::from(vec))
     }
 }
-
 
 impl<'a> From<OwnedRow> for Row<'a> {
     fn from(value: OwnedRow) -> Self {
@@ -325,6 +346,15 @@ mod tests {
     fn deserialize_row() {
         let json = r#"[1, 2, 3, 4, null]"#;
         let as_row: Row = serde_json::from_str(json).expect("could not deserialize");
-        assert_eq!(as_row, Row::from([Value::Number(1), Value::Number(2), Value::Number(3),Value::Number(4), Value::Null]))
+        assert_eq!(
+            as_row,
+            Row::from([
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3),
+                Value::Integer(4),
+                Value::Null
+            ])
+        )
     }
 }
