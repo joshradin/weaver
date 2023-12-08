@@ -47,6 +47,18 @@ pub enum Value {
     Float(f64),
     Null,
 }
+
+impl Value {
+    /// If this is an int value, returns as an int
+    pub fn int_value(&self) -> Option<i64> {
+        if let Self::Integer(i) = self {
+            Some(*i)
+        } else {
+            None
+        }
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         use Value::*;
@@ -104,6 +116,10 @@ impl<'a> Row<'a> {
     /// All entries are initialized to Null
     pub fn new(len: usize) -> Self {
         Self::from(vec![Value::Null; len])
+    }
+
+    pub fn get(&self, index: usize) -> Option<&Cow<'a, Value>> {
+        self.0.get(index)
     }
 
     /// Gets a slice of the data

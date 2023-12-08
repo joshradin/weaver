@@ -2,13 +2,16 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::ops::{Deref, Index};
+use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 
 use crate::data::{Row, Type, Value};
-use crate::dynamic_table::{Col, DynamicTable, EngineKey, IN_MEMORY_KEY, Table};
+use crate::dynamic_table::{Col, DynamicTable, EngineKey, IN_MEMORY_KEY, ROW_ID_COLUMN, Table};
 use crate::error::Error;
 use crate::key::KeyData;
 use crate::rows::KeyIndex;
+use crate::tx::{Tx, TX_ID_COLUMN};
 
 /// Table schema
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -49,6 +52,21 @@ impl TableSchema {
         &self.columns
     }
 
+    /// Gets system defined columns
+    pub fn sys_columns(&self) -> &[ColumnDefinition] {
+        &self.sys_columns
+    }
+
+    /// Gets a mutable reference to system defined columns
+    pub fn sys_columns_mut(&mut self) -> &mut [ColumnDefinition] {
+        &mut self.sys_columns
+    }
+
+    /// Add a system column
+    pub fn add_sys_column(&mut self, column_definition: ColumnDefinition) -> Result<(), Error> {
+        Ok(self.sys_columns.push(column_definition))
+    }
+
     /// Gets *all* columns, including system columns
     pub fn all_columns(&self) -> Vec<&ColumnDefinition> {
         self.columns
@@ -62,7 +80,7 @@ impl TableSchema {
     }
 
     pub fn col_idx(&self, name: &str) -> Option<usize> {
-        self.columns
+        self.all_columns()
             .iter()
             .enumerate()
             .find(|(idx, col)| col.name == name)
@@ -82,17 +100,37 @@ impl TableSchema {
             .ok_or(Error::NoPrimaryKey)
     }
 
-    pub fn validate<'a, T: DynamicTable>(&self, mut row: Row<'a>, table: &T) -> Result<Row<'a>, Error> {
-        if row.len() != self.columns.len() {
+    pub fn validate<'a, T: DynamicTable>(&self, mut row: Row<'a>, tx: &Tx, table: &T) -> Result<Row<'a>, Error> {
+        println!("validating: {:?}", row);
+        if row.len() != self.columns().len() {
             return Err(Error::BadColumnCount {
-                expected: self.columns.len(),
+                expected: self.columns().len(),
                 actual: row.len(),
             });
         }
 
+        let mut row = {
+            let mut sys_modified_row = Row::new(self.all_columns().len());
+            for (idx, val) in row.iter().enumerate() {
+                sys_modified_row[idx] = dbg!(val.clone());
+            }
+            dbg!(sys_modified_row)
+        };
+
         row.iter_mut()
             .zip(self.all_columns())
             .map(|(val, col)| {
+                match col.name() {
+                    name if name == TX_ID_COLUMN => {
+                        *val.to_mut() = Value::Integer(tx.id().into());
+                    }
+                    name if name == ROW_ID_COLUMN => {
+                        *val.to_mut() = Value::Integer(table.next_row_id());
+                    }
+                    _ => {}
+                }
+
+
                 if &**val == &Value::Null && col.default_value.is_some() {
                     *val.to_mut() = col.default_value.as_ref().cloned().unwrap();
                 } else if &**val == &Value::Null && col.auto_increment.is_some() {
@@ -110,10 +148,17 @@ impl TableSchema {
             key_data: self.keys()
                      .iter()
                      .map(|key| {
+                         println!("getting columns {:?} from row", key.columns());
                          let cols_idxs = key.columns().iter().flat_map(|col| self.col_idx(col));
                          let row = cols_idxs
+                             .inspect(|col| {
+                                 println!("getting {}", col);
+                             })
                              .map(|col_idx| row[col_idx].clone())
                              .collect::<Row>();
+                         if row.len() == 0 {
+                             panic!("key should never return in empty row");
+                         }
                          (key, KeyData::from(row))
                      })
                      .collect::<HashMap<_, _>>()
@@ -310,25 +355,44 @@ impl TableSchemaBuilder {
         let mut sys_columns = vec![];
         let mut keys = self.keys;
 
+        sys_columns.push(ColumnDefinition::new(
+            ROW_ID_COLUMN,
+            Type::Integer,
+            true,
+            Value::Integer(0),
+            0
+        )?);
+
+
         if keys
             .iter()
             .find(|key| key.primary_eligible())
             .is_none()
         {
-            sys_columns.push(ColumnDefinition::new(
-                "@@ROW_ID",
-                Type::Integer,
-                true,
-                Value::Integer(0),
-                0
-            )?);
             keys.push(Key::new(
                 "PRIMARY",
-                vec!["PRIMARY".to_string()],
+                vec![ ROW_ID_COLUMN.to_string()],
                 true,
                 true,
                 true
             )?);
+        } else if keys.iter().find(|key| key.primary()).is_none() {
+            // there may exist some primary key eligible. Find the shortest and first available
+            let mut ele_keys = keys.iter_mut().filter(|k| k.primary_eligible()).collect::<Vec<_>>();
+            ele_keys.sort_by_key(|l| l.columns.len());
+
+            if let Some(first) = ele_keys.pop() {
+                first.is_primary = true;
+            } else {
+                keys.push(Key::new(
+                    "PRIMARY",
+                    vec![ ROW_ID_COLUMN.to_string()],
+                    true,
+                    true,
+                    true
+                )?);
+            }
+
         }
 
         Ok(TableSchema {
@@ -361,3 +425,51 @@ impl<'a> AllKeyData<'a> {
             .expect("primary must always be present")
     }
 }
+
+#[derive(Debug)]
+pub struct ColumnizedRow<'a> {
+    col_to_idx: Rc<HashMap<String, usize>>,
+    row: &'a Row<'a>
+}
+
+impl<'a> Index<Col<'a>> for ColumnizedRow<'a> {
+    type Output = Cow<'a, Value>;
+
+    fn index(&self, index: Col) -> &Self::Output {
+        self.get_by_name(index).unwrap()
+    }
+}
+
+impl<'a> ColumnizedRow<'a> {
+    pub fn get_by_name(&self, col: Col) -> Option<&Cow<'a, Value>> {
+        self.col_to_idx.get(col)
+            .and_then(|&idx| self.row.get(idx))
+    }
+}
+
+impl<'a> Deref for ColumnizedRow<'a> {
+    type Target = Row<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        self.row
+    }
+}
+
+impl<'a> ColumnizedRow<'a> {
+    pub fn generator(schema: &'a TableSchema) -> impl Fn(&'a Row) -> ColumnizedRow<'a> {
+        let col_to_idx = Rc::new(schema.all_columns()
+            .iter()
+            .map(|col| {
+                (col.name.to_owned(), schema.col_idx(col.name()).unwrap())
+            })
+            .collect::<HashMap<_, _>>());
+
+        move |row| {
+            ColumnizedRow {
+                col_to_idx: col_to_idx.clone(),
+                row,
+            }
+        }
+    }
+}
+

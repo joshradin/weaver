@@ -7,12 +7,15 @@ use serde::{Deserialize, Serialize};
 use std::io;
 use thiserror::Error;
 use crate::error::Error;
+use crate::tx::Tx;
 
 /// A column within a table
 pub type Col<'a> = &'a str;
 
 /// An owned column reference
 pub type OwnedCol = String;
+
+pub static ROW_ID_COLUMN: Col<'static> = "@@ROW_ID";
 
 /// The main storage engine trait. Storage engines are provided
 /// per table.
@@ -25,32 +28,30 @@ pub trait DynamicTable: Send + Sync {
     /// Auto incremented values be always be unique.
     fn auto_increment(&self, col: Col) -> i64;
 
-    /// Begin a transaction.
-    ///
-    /// Only works on supporting tables.
-    fn begin_transaction(&self) {}
+    /// Gets the next row id
+    fn next_row_id(&self) -> i64;
 
-    /// Commit the current transaction
+    /// Commit any data modified during a transaction
     ///
     /// Only works on supporting tables.
-    fn commit(&self) {}
+    fn commit(&self, tx: &Tx) {}
 
     /// Rollback the current transaction.
     ///
     /// Only works on supporting tables.
-    fn rollback(&self) {}
+    fn rollback(&self, tx: &Tx) {}
 
     /// Create a row. Fails if row's primary key is already present
-    fn insert(&self, row: Row) -> Result<(), Error>;
+    fn insert(&self, tx: &Tx, row: Row) -> Result<(), Error>;
 
     /// Get by a key
-    fn read(&self, key: &KeyIndex) -> Result<Box<dyn Rows>, Error>;
+    fn read<'tx, 'table : 'tx>(&'table self, tx: &'tx Tx, key: &KeyIndex) -> Result<Box<dyn Rows + 'tx>, Error>;
 
     /// Update an existing row. Fails if no row with primary key is already present
-    fn update(&self, row: Row) -> Result<(), Error>;
+    fn update(&self, tx: &Tx, row: Row) -> Result<(), Error>;
 
     /// Delete by key
-    fn delete(&self, key: &KeyIndex) -> Result<Box<dyn Rows>, Error>;
+    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error>;
 }
 
 #[derive(Debug, Error)]
@@ -71,19 +72,19 @@ impl StorageError {
 pub type Table = Box<dyn DynamicTable>;
 
 pub trait StorageEngineFactory: Send + Sync {
-    fn open(&self, schema: &TableSchema) -> Result<Table, OpenTableError>;
+    fn open(&self, schema: &TableSchema) -> Result<Table, Error>;
 }
 
-impl<F: Fn(&TableSchema) -> Result<Table, OpenTableError> + Send + Sync> StorageEngineFactory
+impl<F: Fn(&TableSchema) -> Result<Table, Error> + Send + Sync> StorageEngineFactory
     for F
 {
-    fn open(&self, schema: &TableSchema) -> Result<Table, OpenTableError> {
+    fn open(&self, schema: &TableSchema) -> Result<Table, Error> {
         (self)(schema)
     }
 }
 
 pub fn storage_engine_factory<
-    F: Fn(&TableSchema) -> Result<Table, OpenTableError> + 'static + Send + Sync,
+    F: Fn(&TableSchema) -> Result<Table, Error> + 'static + Send + Sync,
 >(
     func: F,
 ) -> Box<dyn StorageEngineFactory> {

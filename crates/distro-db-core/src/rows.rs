@@ -65,24 +65,24 @@ pub enum KeyIndexKind {
 }
 
 /// A rows result
-pub trait Rows<'a> {
-    fn next(&mut self) -> Option<Row<'a>>;
+pub trait Rows {
+    fn next(&mut self) -> Option<OwnedRow>;
 }
 
-impl<'a> Rows<'a> for Box<dyn Rows<'a> + 'a> {
-    fn next(&mut self) -> Option<Row<'a>> {
+impl Rows for Box<dyn Rows> {
+    fn next(&mut self) -> Option<OwnedRow> {
         (**self).next()
     }
 }
 
-impl<'a, R: Rows<'a> + 'static> RowsExt<'a> for R {
-    type IntoIter = Box<dyn Iterator<Item = Row<'a>>>;
-
-    fn into_iter(mut self) -> Self::IntoIter {
-        Box::new(std::iter::from_fn(move || self.next()))
-    }
-}
-pub trait RowsExt<'a>: Rows<'a> {
-    type IntoIter: Iterator<Item =Row<'a>>;
-    fn into_iter(self) -> Self::IntoIter;
-}
+// impl<'a, R: Rows<'a> + 'static> RowsExt<'a> for R {
+//     type IntoIter = Box<dyn Iterator<Item = OwnedRow>>;
+//
+//     fn into_iter(mut self) -> Self::IntoIter {
+//         Box::new(std::iter::from_fn(move || self.next()))
+//     }
+// }
+// pub trait RowsExt<'a>: Rows<'a> {
+//     type IntoIter: Iterator<Item = OwnedRow>;
+//     fn into_iter(self) -> Self::IntoIter;
+// }

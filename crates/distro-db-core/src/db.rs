@@ -1,7 +1,7 @@
 //! The db is responsible for building tables
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::thread;
 use std::thread::JoinHandle;
 
@@ -14,8 +14,9 @@ use thiserror::Error;
 use crate::dynamic_table::{
     storage_engine_factory, EngineKey, StorageEngineFactory, StorageError, Table, IN_MEMORY_KEY,
 };
-use crate::in_memory_table::InMemory;
+use crate::in_memory_table::InMemoryTable;
 use crate::table_schema::TableSchema;
+use crate::tx::{Tx, TxCoordinator};
 
 mod start_db;
 mod start_server;
@@ -24,6 +25,7 @@ mod start_server;
 pub struct DistroDb {
     engines: HashMap<EngineKey, Box<dyn StorageEngineFactory>>,
     open_tables: RwLock<HashMap<(String, String), Arc<Table>>>,
+    tx_coordinator: Option<TxCoordinator>
 }
 
 impl DistroDb {
@@ -33,7 +35,7 @@ impl DistroDb {
                 IN_MEMORY_KEY => Some((
                     key,
                     storage_engine_factory(|schema: &TableSchema| {
-                        Ok(Box::new(InMemory::new(schema.clone())))
+                        Ok(Box::new(InMemoryTable::new(schema.clone())?))
                     }),
                 )),
                 _ => None,
@@ -43,9 +45,21 @@ impl DistroDb {
         let mut shard = Self {
             engines,
             open_tables: Default::default(),
+            tx_coordinator: None,
         };
         start_db(&mut shard)?;
         Ok(shard)
+    }
+
+    pub fn start_transaction(&self) -> Tx {
+        match self.tx_coordinator {
+            None => {
+                Tx::default()
+            }
+            Some(ref tx_coordinator) => {
+                tx_coordinator.next()
+            }
+        }
     }
 
     pub fn open_table(&self, schema: &TableSchema) -> Result<(), Error> {
@@ -73,14 +87,24 @@ impl DistroDb {
     }
 }
 
+#[derive(Clone)]
 pub struct DistroDbServer {
-    lock: Arc<RwLock<DistroDb>>,
+    db: Arc<RwLock<DistroDb>>,
 }
 
 impl DistroDbServer {
     pub fn new(shard: DistroDb) -> Result<Self, Error> {
+        let inner = Arc::new_cyclic(move |weak| {
+            let mut shard = shard;
+            shard.tx_coordinator = Some(TxCoordinator::new(
+                WeakDistroDbServer(weak.clone()),
+                0
+            ));
+            RwLock::new(shard)
+        });
+
         let daemon = DistroDbServer {
-            lock: Arc::new(RwLock::new(shard)),
+            db: inner,
         };
         Ok(daemon)
     }
@@ -89,7 +113,7 @@ impl DistroDbServer {
     pub fn connect(&self) -> DbSocket {
         let (req_send, req_recv) = unbounded::<DbReq>();
         let (resp_send, resp_recv) = unbounded::<DbResp>();
-        let shard = self.lock.clone();
+        let shard = self.db.clone();
 
         let handle = thread::spawn(move || {
             let shard = shard;
@@ -129,7 +153,7 @@ impl DistroDbServer {
     /// Creates a connection
     pub fn connect_system(&self) -> SystemDbSocket {
         let (req_send, req_recv) = unbounded::<DbReq>();
-        let shard = self.lock.clone();
+        let shard = self.db.clone();
 
         let handle = thread::spawn(move || {
             let shard = shard;
@@ -156,6 +180,21 @@ impl DistroDbServer {
             sender: req_send,
             handle: Arc::new(handle),
         }
+    }
+
+    /// Creates a weak reference to a distro db server
+    pub fn weak(&self) -> WeakDistroDbServer {
+        WeakDistroDbServer(Arc::downgrade(&self.db))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WeakDistroDbServer(Weak<RwLock<DistroDb>>);
+
+
+impl WeakDistroDbServer {
+    pub fn upgrade(self) -> Option<DistroDbServer> {
+        self.0.upgrade().map(|db| DistroDbServer { db })
     }
 }
 
