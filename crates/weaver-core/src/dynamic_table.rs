@@ -1,6 +1,6 @@
 //! Defines storage engines
 
-use crate::data::Row;
+use crate::data::row::Row;
 use crate::rows::{KeyIndex, Rows};
 use crate::table_schema::TableSchema;
 use serde::{Deserialize, Serialize};
@@ -59,12 +59,12 @@ pub enum StorageError {
     #[error(transparent)]
     IoError(#[from] io::Error),
     #[error(transparent)]
-    Custom(Box<dyn std::error::Error>),
+    Custom(Box<dyn std::error::Error + Send>),
 }
 
 impl StorageError {
     /// Create a custom storage error
-    pub fn custom<E: std::error::Error + 'static>(custom: E) -> Self {
+    pub fn custom<E: std::error::Error + Send + 'static>(custom: E) -> Self {
         Self::Custom(Box::new(custom))
     }
 }

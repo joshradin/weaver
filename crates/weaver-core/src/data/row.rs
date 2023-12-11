@@ -1,110 +1,13 @@
-//! The data that is actually stored
+//! A row of data
 
-use serde::de::{SeqAccess, Visitor};
-use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::borrow::{Borrow, Cow};
-use std::cmp::Ordering;
+use serde::de::{SeqAccess, Visitor};
 use std::fmt::Formatter;
-use std::hash::{Hash, Hasher};
-use std::ops::{Deref, DerefMut, Index, IndexMut, RangeBounds};
+use std::borrow::{Borrow, Cow};
 use std::slice::SliceIndex;
-
-#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Copy, Clone)]
-pub enum Type {
-    String,
-    Blob,
-    Integer,
-    Boolean,
-    Float,
-}
-
-impl Type {
-
-    /// Checks whether the given value is valid for this type
-    pub fn validate(&self, val: &Value) -> bool {
-        use Type::*;
-        match (self, val) {
-            (String, Value::String(..)) => true,
-            (Blob, Value::Blob(..)) => true,
-            (Integer, Value::Integer(..)) => true,
-            (Boolean, Value::Boolean(..)) =>true,
-            (Float, Value::Float(..)) => true,
-            (_, Value::Null) => true,
-            _ => false
-        }
-    }
-}
-
-/// A single value within a row
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum Value {
-    String(String),
-    Blob(Vec<u8>),
-    Integer(i64),
-    Boolean(bool),
-    Float(f64),
-    Null,
-}
-
-impl Value {
-    /// If this is an int value, returns as an int
-    pub fn int_value(&self) -> Option<i64> {
-        if let Self::Integer(i) = self {
-            Some(*i)
-        } else {
-            None
-        }
-    }
-}
-
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        use Value::*;
-        match (self, other) {
-            (String(l), String(r)) => l == r,
-            (Blob(l), Blob(r)) => l == r,
-            (Integer(l), Integer(r)) => l == r,
-            (Boolean(l), Boolean(r)) => l == r,
-            (Float(l), Float(r)) => l.total_cmp(r).is_eq(),
-            (Null, Null) => true,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for Value {}
-
-impl PartialOrd for Value {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use Value::*;
-        Some(match (self, other) {
-            (String(l), String(r)) => l.cmp(r),
-            (Blob(l), Blob(r)) => l.cmp(r),
-            (Integer(l), Integer(r)) => l.cmp(r),
-            (Boolean(l), Boolean(r)) => l.cmp(r),
-            (Float(l), Float(r)) => l.total_cmp(r),
-            (Null, Null) => Ordering::Equal,
-            (_, Null) => Ordering::Greater,
-            (Null, _) => Ordering::Less,
-            _ => return None,
-        })
-    }
-}
-
-impl Hash for Value {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            Value::String(s) => s.hash(state),
-            Value::Blob(s) => s.hash(state),
-            Value::Integer(s) => s.hash(state),
-            Value::Boolean(s) => s.hash(state),
-            Value::Float(f) => u64::from_be_bytes(f.to_be_bytes()).hash(state),
-            Value::Null => ().hash(state),
-        }
-    }
-}
+use std::ops::{Deref, DerefMut, Index, IndexMut};
+use serde::ser::SerializeSeq;
+use crate::data::values::Value;
 
 /// A row of data
 #[derive(Debug, PartialEq, Eq, PartialOrd, Hash)]
@@ -170,7 +73,9 @@ impl<'a> Serialize for Row<'a> {
         seq.end()
     }
 }
+
 struct RowVisitor;
+
 impl<'de> Visitor<'de> for RowVisitor {
     type Value = Row<'de>;
 
@@ -192,7 +97,7 @@ impl<'de> Visitor<'de> for RowVisitor {
 
 impl<'a> From<OwnedRow> for Row<'a> {
     fn from(value: OwnedRow) -> Self {
-        Row(value.0 .0)
+        Row(value.0.0)
     }
 }
 
@@ -349,7 +254,8 @@ impl DerefMut for OwnedRow {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::{Row, Value};
+    use crate::data::row::Row;
+    use crate::data::values::Value;
 
     #[test]
     fn slice_row() {

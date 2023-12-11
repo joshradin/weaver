@@ -5,9 +5,12 @@ use std::collections::HashMap;
 use std::ops::{Deref, Index};
 use std::rc::Rc;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
-use crate::data::{Row, Type, Value};
-use crate::dynamic_table::{Col, DynamicTable, EngineKey, IN_MEMORY_KEY, ROW_ID_COLUMN, Table};
+use crate::data::row::Row;
+use crate::data::types::Type;
+use crate::data::values::Value;
+use crate::dynamic_table::{Col, DynamicTable, EngineKey, IN_MEMORY_KEY, ROW_ID_COLUMN};
 use crate::error::Error;
 use crate::key::KeyData;
 use crate::rows::KeyIndex;
@@ -101,7 +104,7 @@ impl TableSchema {
     }
 
     pub fn validate<'a, T: DynamicTable>(&self, mut row: Row<'a>, tx: &Tx, table: &T) -> Result<Row<'a>, Error> {
-        println!("validating: {:?}", row);
+        info!("validating: {:?}", row);
         if row.len() != self.columns().len() {
             return Err(Error::BadColumnCount {
                 expected: self.columns().len(),
@@ -112,9 +115,9 @@ impl TableSchema {
         let mut row = {
             let mut sys_modified_row = Row::new(self.all_columns().len());
             for (idx, val) in row.iter().enumerate() {
-                sys_modified_row[idx] = dbg!(val.clone());
+                sys_modified_row[idx] = val.clone();
             }
-            dbg!(sys_modified_row)
+            sys_modified_row
         };
 
         row.iter_mut()
@@ -148,11 +151,11 @@ impl TableSchema {
             key_data: self.keys()
                      .iter()
                      .map(|key| {
-                         println!("getting columns {:?} from row", key.columns());
+                         info!("getting columns {:?} from row", key.columns());
                          let cols_idxs = key.columns().iter().flat_map(|col| self.col_idx(col));
                          let row = cols_idxs
                              .inspect(|col| {
-                                 println!("getting {}", col);
+                                 info!("getting {}", col);
                              })
                              .map(|col_idx| row[col_idx].clone())
                              .collect::<Row>();

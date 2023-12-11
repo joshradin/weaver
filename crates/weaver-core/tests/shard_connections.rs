@@ -1,9 +1,10 @@
-use distro_db_core::db::{DbReq, DbResp, DistroDb, DistroDbServer};
+use weaver_core::db::core::WeaverDbCore;
 use std::thread;
+use weaver_core::db::concurrency::{DbReq, DbResp, WeaverDb};
 
 #[test]
 fn connect() {
-    let mut shard = DistroDbServer::new(DistroDb::new().unwrap()).expect("couldn't create daemon");
+    let mut shard = WeaverDb::default();
 
     let handle1 = {
         let socket = shard.connect();

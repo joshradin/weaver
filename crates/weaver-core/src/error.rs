@@ -1,7 +1,9 @@
 use std::io;
+use serde::ser::StdError;
 use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError};
 use thiserror::Error;
-use crate::data::{Type, Value};
+use crate::data::values::Value;
+use crate::data::types::Type;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -38,4 +40,14 @@ pub enum Error {
     IoError(#[from] io::Error),
     #[error("No key named {0:?}")]
     BadKeyName(String),
+    #[error(transparent)]
+    SerializationError(Box<dyn StdError + Send>),
+    #[error(transparent)]
+    DeserializationError(Box<dyn StdError + Send>),
+    #[error("failed to connect because handshake failed")]
+    HandshakeFailed,
+    #[error("A timeout occurred")]
+    Timeout,
+    #[error("WeaverDb instance already bound to tcp socket")]
+    TcpAlreadyBound
 }

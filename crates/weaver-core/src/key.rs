@@ -1,6 +1,6 @@
-use crate::data::{OwnedRow, Row};
 use std::cmp::Ordering;
 use std::ops::Deref;
+use crate::data::row::{OwnedRow, Row};
 
 /// Keys are always order-able
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Hash)]
@@ -32,9 +32,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::data::{OwnedRow, Row, Value};
     use crate::key::KeyData;
     use std::collections::{BTreeSet, HashSet};
+    use crate::data::values::Value;
 
     #[test]
     fn order_keys() {

@@ -2,7 +2,7 @@
 //!
 //! It stores tables data to a file by the same name, serializing and deserializing to json
 
-use crate::data::Row;
+use crate::data::row::Row;
 use crate::dynamic_table::{Col, DynamicTable, StorageError};
 use crate::in_memory_table::InMemoryTable;
 use crate::rows::{KeyIndex, Rows};

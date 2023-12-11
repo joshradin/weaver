@@ -3,16 +3,19 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::collections::btree_map::Entry;
+use std::ops::Bound::{Excluded, Unbounded};
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use parking_lot::RwLock;
+use tracing::info;
 
-use crate::data::{OwnedRow, Row, Type};
+use crate::data::row::{OwnedRow, Row};
+use crate::data::types::Type;
 use crate::dynamic_table::{Col, DynamicTable, OwnedCol};
 use crate::error::Error;
 use crate::key::KeyData;
 use crate::rows::{KeyIndex, KeyIndexKind, Rows};
-use crate::table_schema::{ColumnDefinition, ColumnizedRow, TableSchema};
+use crate::table_schema::{ColumnDefinition, TableSchema};
 use crate::tx::{Tx, TX_ID_COLUMN, TxId};
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
@@ -82,10 +85,10 @@ impl DynamicTable for InMemoryTable {
 
     fn insert(&self, tx: &Tx, row: Row) -> Result<(), crate::error::Error> {
         let row = self.schema.validate(row, tx, self)?;
-        println!("validated row: {:?}", row);
+        info!("validated row: {:?}", row);
         let key_data = self.schema.key_data(&row);
         let primary = key_data.primary().clone();
-        println!("validated row primary key: {:?}", primary);
+        info!("validated row primary key: {:?}", primary);
         match self.main_buffer.write()
                   .entry(primary) {
             Entry::Vacant(v) => {
@@ -145,8 +148,8 @@ enum AllRowsState {
     Finished
 }
 
-impl<'a> Rows for AllRows<'a> {
-    fn next(&mut self) -> Option<OwnedRow> {
+impl<'a> Rows<'a> for AllRows<'a> {
+    fn next(&mut self) -> Option<Row<'a>> {
         let mut state = self.state.borrow_mut();
         match &mut *state {
             state @ AllRowsState::Start => {
@@ -161,13 +164,27 @@ impl<'a> Rows for AllRows<'a> {
                     .map(|(k, row)| (k.clone(), row.clone()))
                     .next()?
                     ;
-                let emit = Some(row);
+                let emit = Some(Row::from(row));
                 let key = key.clone();
                 *state = AllRowsState::InProgress { last: key };
                 emit
             }
-            AllRowsState::InProgress { .. } => {
-                todo!()
+            AllRowsState::InProgress { last } => {
+                let read = self.table.main_buffer.read();
+                let (key, row) = read.range((Excluded(last.clone()), Unbounded))
+                                     .filter(|(_, row)| row[self.table.schema.col_idx(TX_ID_COLUMN).unwrap()]
+                                         .int_value()
+                                         .map(|i|
+                                             TxId::from(i).is_visible_within(&self.tx, &self.look_behind)
+                                         ).unwrap_or(false)
+                                     )
+                                     .map(|(k, row)| (k.clone(), row.clone()))
+                                     .next()?
+                    ;
+                let emit = Some(Row::from(row));
+                let key = key.clone();
+                *last = key;
+                emit
             }
             AllRowsState::Finished => {
                 None

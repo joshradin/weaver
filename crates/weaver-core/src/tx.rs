@@ -1,80 +1,20 @@
 //! Transactions
 
-use std::sync::atomic::AtomicU64;
-use std::thread;
-use std::thread::JoinHandle;
-use crossbeam::channel::{RecvError, Sender, unbounded};
-use log::info;
+use std::fmt::{Display, Formatter};
+use crossbeam::channel::Sender;
 use serde::{Deserialize, Serialize};
-use crate::db::{DistroDbServer, WeakDistroDbServer};
+use tracing::info;
+use behavior::{TxCompletion, TxDropBehavior};
+use coordinator::TxCompletionToken;
+use crate::common::opaque::Opaque;
+
+use crate::db::concurrency::WeaverDb;
 use crate::dynamic_table::Col;
 
-/// Behavior when a transaction drops
-#[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
-pub struct TxDropBehavior(pub TxCompletion);
-
-#[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
-pub enum TxCompletion {
-    #[default]
-    Rollback,
-    Commit
-}
+pub mod behavior;
+pub mod coordinator;
 
 pub static TX_ID_COLUMN: Col<'static> = "@@TX_ID";
-
-/// The transaction coordinator creates transactions and is responsible
-/// to responding to the completion of transactions.
-///
-/// Coordinators are only useful
-/// in concurrent setups, and are initialized when a [`DistroDbServer`](crate::db::DistroDbServer) is
-/// started
-#[derive(Debug)]
-pub struct TxCoordinator {
-    primary_msg_sender: Sender<TxCompletionToken>,
-    server: WeakDistroDbServer,
-    handle: JoinHandle<()>,
-    next_tx_id: AtomicU64,
-    committed_to: AtomicU64
-}
-
-impl TxCoordinator {
-    /// Creates a new transaction coordinator for a weak distro db server
-    pub fn new(server: WeakDistroDbServer, committed: u64) -> Self {
-        let (sc, rc) = unbounded::<TxCompletionToken>();
-
-        let handle = thread::spawn(move || {
-            loop {
-                let TxCompletionToken{ tx_id, completion } = match rc.recv() {
-                    Ok(msg) => {msg}
-                    Err(..) => {
-                        break
-                    }
-                };
-
-                info!("transaction {:?} completed with {:?}", tx_id, completion);
-            }
-        });
-
-        Self {
-            primary_msg_sender: sc,
-            server,
-            handle,
-            next_tx_id: AtomicU64::new(committed + 1),
-            committed_to: AtomicU64::new(committed),
-        }
-    }
-
-    /// Starts the next transaction
-    pub fn next(&self) -> Tx {
-        todo!()
-    }
-}
-
-#[derive(Debug)]
-struct TxCompletionToken {
-    tx_id: TxId,
-    completion: TxCompletion
-}
 
 /// The id of the a transaction
 #[derive(Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Serialize, Deserialize)]
@@ -83,12 +23,12 @@ pub struct TxId(u64);
 impl TxId {
     /// Checks if this id would be visible within a transaction
     pub fn is_visible_in(&self, tx: &Tx) -> bool {
-        self <= &tx.id && self >= &tx.look_behind
+        self.is_visible_within(&tx.id, &tx.look_behind)
     }
 
     /// Checks if this id would be visible within a transaction
     pub fn is_visible_within(&self, tx: &TxId, look_behind: &TxId) -> bool {
-        self <= tx && self >= look_behind
+        self <= look_behind || tx == self
     }
 }
 
@@ -116,10 +56,7 @@ pub struct Tx {
     completed: bool,
     drop_behavior: TxDropBehavior,
     msg_sender: Option<Sender<TxCompletionToken>>,
-}
-
-impl Tx {
-
+    _server_ref: Option<Opaque<WeaverDb>>
 }
 
 impl Tx {
@@ -150,7 +87,7 @@ impl Tx {
         if let Some(ref msg_sender) = self.msg_sender {
             let _ = msg_sender.send(TxCompletionToken {
                 tx_id: self.id,
-                completion: TxCompletion::Rollback
+                completion: TxCompletion::Commit
             });
         }
     }
@@ -164,8 +101,15 @@ impl Tx {
     }
 }
 
+impl Display for Tx {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Tx").field(&self.id).finish()
+    }
+}
+
 impl Drop for Tx {
     fn drop(&mut self) {
+        info!("dropping transaction {:?}", self);
         if !self.completed {
             match self.drop_behavior.0 {
                 TxCompletion::Rollback => {

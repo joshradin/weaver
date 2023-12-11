@@ -1,9 +1,8 @@
 //! A window over some rows
 
-use crate::data::{OwnedRow, Row};
 use crate::key::KeyData;
-use std::iter::FromFn;
 use std::ops::Bound;
+use crate::data::row::Row;
 
 #[derive(Debug, Clone)]
 pub struct KeyIndex {
@@ -65,12 +64,12 @@ pub enum KeyIndexKind {
 }
 
 /// A rows result
-pub trait Rows {
-    fn next(&mut self) -> Option<OwnedRow>;
+pub trait Rows<'t> {
+    fn next(&mut self) -> Option<Row<'t>>;
 }
 
-impl Rows for Box<dyn Rows> {
-    fn next(&mut self) -> Option<OwnedRow> {
+impl<'t> Rows<'t> for Box<dyn Rows<'t> + 't> {
+    fn next(&mut self) -> Option<Row<'t>> {
         (**self).next()
     }
 }

@@ -1,0 +1,9 @@
+[package]
+name = "weaver-daemon"
+version = "0.0.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+weaver-core = { version = "0.0.0", path = "../weaver-core" }
