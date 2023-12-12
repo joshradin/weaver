@@ -1,14 +1,14 @@
-use tracing::info;
+use tracing::{debug, info, info_span};
 use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::RwLock;
-use crate::cnxn::tcp::WeaverTcpListener;
 use crate::db::start_db::start_db;
 use crate::dynamic_table::{EngineKey, IN_MEMORY_KEY, storage_engine_factory, StorageEngineFactory, Table};
 use crate::error::Error;
-use crate::in_memory_table::InMemoryTable;
-use crate::table_schema::TableSchema;
-use crate::tx::Tx;
+use crate::tables::InMemoryTable;
+use crate::tables::system_tables::SystemTableFactory;
+use crate::tables::table_schema::TableSchema;
+use crate::tx::{Tx, TxId};
 use crate::tx::coordinator::TxCoordinator;
 
 /// A db core. Represents some part of a distributed db
@@ -46,6 +46,10 @@ impl WeaverDbCore {
         Ok(shard)
     }
 
+    /// Insert an engine
+    pub fn insert_engine<T: StorageEngineFactory + 'static>(&mut self, engine_key: EngineKey, engine: T) {
+        self.engines.insert(engine_key, Box::new(engine));
+    }
 
     pub fn start_transaction(&self) -> Tx {
         match self.tx_coordinator {
@@ -59,6 +63,10 @@ impl WeaverDbCore {
     }
 
     pub fn open_table(&self, schema: &TableSchema) -> Result<(), Error> {
+        if self.open_tables.read().contains_key(&(schema.schema().to_string(), schema.name().to_string())) {
+            return Ok(())
+        }
+        debug!("opening table {}.{} ...", schema.schema(), schema.name());
         let mut open_tables = self.open_tables.write();
         let engine = self
             .engines

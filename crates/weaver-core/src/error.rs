@@ -1,9 +1,11 @@
 use std::io;
+use crossbeam::channel::{RecvError, Sender, SendError};
 use serde::ser::StdError;
 use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError};
 use thiserror::Error;
 use crate::data::values::Value;
 use crate::data::types::Type;
+use crate::db::concurrency::{DbReq, DbResp};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -41,13 +43,23 @@ pub enum Error {
     #[error("No key named {0:?}")]
     BadKeyName(String),
     #[error(transparent)]
-    SerializationError(Box<dyn StdError + Send>),
+    SerializationError(Box<dyn StdError + Send + Sync>),
     #[error(transparent)]
-    DeserializationError(Box<dyn StdError + Send>),
+    DeserializationError(Box<dyn StdError + Send + Sync>),
     #[error("failed to connect because handshake failed")]
     HandshakeFailed,
     #[error("A timeout occurred")]
     Timeout,
     #[error("WeaverDb instance already bound to tcp socket")]
-    TcpAlreadyBound
+    TcpAlreadyBound,
+    #[error(transparent)]
+    SendError(#[from] SendError<(DbReq, Sender<DbResp>)>),
+    #[error(transparent)]
+    RecvError(#[from] RecvError),
+    #[error("No core available")]
+    NoCoreAvailable,
+    #[error("No table named {0:?} found in schema {1:?}")]
+    NoTableFound(String, String),
+    #[error("no transaction")]
+    NoTransaction,
 }

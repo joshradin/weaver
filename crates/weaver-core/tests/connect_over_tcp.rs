@@ -2,7 +2,7 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;
 use tracing::level_filters::LevelFilter;
-use weaver_core::cnxn::tcp::{WeaverTcpListener, WeaverDbTcpStream};
+use weaver_core::cnxn::tcp::{WeaverTcpListener, WeaverTcpStream};
 use weaver_core::db::concurrency::WeaverDb;
 
 #[test]
@@ -26,7 +26,7 @@ fn can_handshake() {
     };
 
     barrier.wait();
-    let _ = WeaverDbTcpStream::connect_timeout(port, Duration::from_secs(10)).expect("failed to connect tcp stream");
+    let _ = WeaverTcpStream::connect_timeout(port, Duration::from_secs(10)).expect("failed to connect tcp stream");
 
     connect_thread.join().expect("listener thread panicked");
 }

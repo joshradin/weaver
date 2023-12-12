@@ -34,9 +34,6 @@ impl TableSchema {
             .find(|key| key.name() == key_name)
             .ok_or(Error::BadKeyName(key_name.to_string()))
     }
-}
-
-impl TableSchema {
     pub fn builder(schema: impl AsRef<str>, name: impl AsRef<str>) -> TableSchemaBuilder {
         TableSchemaBuilder::new(schema, name)
     }
@@ -101,6 +98,12 @@ impl TableSchema {
                 )
             })
             .ok_or(Error::NoPrimaryKey)
+    }
+
+    pub fn full_index(&self) -> Result<KeyIndex, Error> {
+        self.primary_key().map(|key| {
+            KeyIndex::all(key.name())
+        })
     }
 
     pub fn validate<'a, T: DynamicTable>(&self, mut row: Row<'a>, tx: &Tx, table: &T) -> Result<Row<'a>, Error> {

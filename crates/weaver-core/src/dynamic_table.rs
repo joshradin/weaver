@@ -1,8 +1,9 @@
 //! Defines storage engines
 
+use std::fmt::{Debug, Formatter};
 use crate::data::row::Row;
 use crate::rows::{KeyIndex, Rows};
-use crate::table_schema::TableSchema;
+use crate::tables::table_schema::TableSchema;
 use serde::{Deserialize, Serialize};
 use std::io;
 use thiserror::Error;
@@ -11,6 +12,9 @@ use crate::tx::Tx;
 
 /// A column within a table
 pub type Col<'a> = &'a str;
+
+/// A column within a table
+pub type TableCol = (String, String, String);
 
 /// An owned column reference
 pub type OwnedCol = String;
@@ -59,17 +63,25 @@ pub enum StorageError {
     #[error(transparent)]
     IoError(#[from] io::Error),
     #[error(transparent)]
-    Custom(Box<dyn std::error::Error + Send>),
+    Custom(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl StorageError {
     /// Create a custom storage error
-    pub fn custom<E: std::error::Error + Send + 'static>(custom: E) -> Self {
+    pub fn custom<E: std::error::Error + Send + Sync + 'static>(custom: E) -> Self {
         Self::Custom(Box::new(custom))
     }
 }
 
 pub type Table = Box<dyn DynamicTable>;
+
+impl Debug for Table {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Table")
+            .field("schema", self.schema())
+            .finish()
+    }
+}
 
 pub trait StorageEngineFactory: Send + Sync {
     fn open(&self, schema: &TableSchema) -> Result<Table, Error>;
@@ -101,10 +113,14 @@ impl EngineKey {
 }
 
 pub const IN_MEMORY_KEY: &'static str = "IN_MEMORY";
+pub const SYSTEM_TABLE_KEY: &'static str = "SYSTEM_TABLE";
 
 impl EngineKey {
     pub fn all() -> impl Iterator<Item = EngineKey> {
-        [EngineKey::new(IN_MEMORY_KEY)].into_iter()
+        [
+            EngineKey::new(IN_MEMORY_KEY),
+            EngineKey::new(SYSTEM_TABLE_KEY),
+        ].into_iter()
     }
 }
 

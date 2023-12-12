@@ -13,12 +13,12 @@ use crate::error::Error;
 
 /// A tcp stream that connects to a
 #[derive(Debug)]
-pub struct WeaverDbTcpStream {
+pub struct WeaverTcpStream {
     socket_addr: Option<SocketAddr>,
     socket: TcpStream
 }
 
-impl WeaverDbTcpStream {
+impl WeaverTcpStream {
 
     /// Connect to a tcp stream
     pub fn connect<A : ToSocketAddrs>(socket_addr: A) -> Result<Self, Error> {
@@ -55,7 +55,7 @@ impl WeaverDbTcpStream {
         Ok(socket)
     }
 }
-impl MessageStream for WeaverDbTcpStream {
+impl MessageStream for WeaverTcpStream {
     fn read(&mut self) -> Result<Message, Error> {
         let mut len = [0_u8; size_of::<u32>()];
         self.socket.read_exact(&mut len)?;
@@ -104,9 +104,9 @@ impl WeaverTcpListener {
     }
 
     /// Accepts an incoming connection
-    pub fn accept(&self) -> Result<WeaverDbTcpStream, Error> {
+    pub fn accept(&self) -> Result<WeaverTcpStream, Error> {
         let (mut stream, socket_addr) = self.tcp_listener.accept()?;
-        let mut socket = WeaverDbTcpStream {
+        let mut socket = WeaverTcpStream {
             socket_addr: Some(socket_addr),
             socket: stream,
         };

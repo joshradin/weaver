@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tracing::level_filters::LevelFilter;
 use weaver_core::cnxn::{Message, MessageStream};
-use weaver_core::cnxn::tcp::WeaverDbTcpStream;
+use weaver_core::cnxn::tcp::WeaverTcpStream;
 use weaver_core::db::concurrency::{DbReq, DbResp, WeaverDb};
 use weaver_core::error::Error;
 
@@ -16,12 +16,12 @@ fn bind_to_tcp() -> Result<(), Error>{
     server.bind_tcp(("localhost", 0))?;
     let socket = server.local_addr().unwrap();
 
-    let mut stream = WeaverDbTcpStream::connect_timeout(socket, Duration::from_secs(1))?;
+    let mut stream = WeaverTcpStream::connect_timeout(socket, Duration::from_secs(1))?;
     stream.write(&Message::Req(DbReq::Ping))?;
     let Message::Resp(DbResp::Pong) = stream.read()? else {
         panic!("must return pong")
     };
-    let mut stream = WeaverDbTcpStream::connect_timeout(socket, Duration::from_secs(1))?;
+    let mut stream = WeaverTcpStream::connect_timeout(socket, Duration::from_secs(1))?;
     stream.write(&Message::Req(DbReq::Ping))?;
     let Message::Resp(DbResp::Pong) = stream.read()? else {
         panic!("must return pong")

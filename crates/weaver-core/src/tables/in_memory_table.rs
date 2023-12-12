@@ -11,11 +11,11 @@ use tracing::info;
 
 use crate::data::row::{OwnedRow, Row};
 use crate::data::types::Type;
-use crate::dynamic_table::{Col, DynamicTable, OwnedCol};
+use crate::dynamic_table::{Col, DynamicTable, OwnedCol, Table};
 use crate::error::Error;
 use crate::key::KeyData;
 use crate::rows::{KeyIndex, KeyIndexKind, Rows};
-use crate::table_schema::{ColumnDefinition, TableSchema};
+use crate::tables::table_schema::{ColumnDefinition, TableSchema};
 use crate::tx::{Tx, TX_ID_COLUMN, TxId};
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
@@ -60,6 +60,18 @@ impl InMemoryTable {
             row_id: Default::default(),
         }
         )
+    }
+
+
+    /// Creates an in-memory table from a set of rows and a given schema
+
+    pub fn from_rows<'t>(schema: TableSchema, mut rows: impl Rows<'t>) -> Result<Self, Error> {
+        let mut table = Self::new(schema)?;
+        let ref tx = Tx::default();
+        while let Some(row) = rows.next() {
+            table.insert(tx, row)?;
+        }
+        Ok(table)
     }
 
     /// Gets the table schema
