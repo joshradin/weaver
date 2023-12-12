@@ -1,10 +1,10 @@
 //! A schema describes a table
 
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::{Deref, Index};
 use std::rc::Rc;
-use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::data::row::Row;
@@ -69,10 +69,7 @@ impl TableSchema {
 
     /// Gets *all* columns, including system columns
     pub fn all_columns(&self) -> Vec<&ColumnDefinition> {
-        self.columns
-            .iter()
-            .chain(self.sys_columns.iter())
-            .collect()
+        self.columns.iter().chain(self.sys_columns.iter()).collect()
     }
 
     pub fn keys(&self) -> &[Key] {
@@ -89,24 +86,23 @@ impl TableSchema {
 
     /// Gets the primary key of this table
     pub fn primary_key(&self) -> Result<&Key, Error> {
-        self.keys.iter().find(|key| {
-            key.primary()
-        })
-            .or_else(|| {
-                self.keys.iter().find(
-                    |key| key.unique && key.non_null
-                )
-            })
+        self.keys
+            .iter()
+            .find(|key| key.primary())
+            .or_else(|| self.keys.iter().find(|key| key.unique && key.non_null))
             .ok_or(Error::NoPrimaryKey)
     }
 
     pub fn full_index(&self) -> Result<KeyIndex, Error> {
-        self.primary_key().map(|key| {
-            KeyIndex::all(key.name())
-        })
+        self.primary_key().map(|key| KeyIndex::all(key.name()))
     }
 
-    pub fn validate<'a, T: DynamicTable>(&self, mut row: Row<'a>, tx: &Tx, table: &T) -> Result<Row<'a>, Error> {
+    pub fn validate<'a, T: DynamicTable>(
+        &self,
+        mut row: Row<'a>,
+        tx: &Tx,
+        table: &T,
+    ) -> Result<Row<'a>, Error> {
         info!("validating: {:?}", row);
         if row.len() != self.columns().len() {
             return Err(Error::BadColumnCount {
@@ -136,7 +132,6 @@ impl TableSchema {
                     _ => {}
                 }
 
-
                 if &**val == &Value::Null && col.default_value.is_some() {
                     *val.to_mut() = col.default_value.as_ref().cloned().unwrap();
                 } else if &**val == &Value::Null && col.auto_increment.is_some() {
@@ -151,23 +146,24 @@ impl TableSchema {
 
     pub fn key_data(&self, row: &Row) -> AllKeyData {
         AllKeyData {
-            key_data: self.keys()
-                     .iter()
-                     .map(|key| {
-                         info!("getting columns {:?} from row", key.columns());
-                         let cols_idxs = key.columns().iter().flat_map(|col| self.col_idx(col));
-                         let row = cols_idxs
-                             .inspect(|col| {
-                                 info!("getting {}", col);
-                             })
-                             .map(|col_idx| row[col_idx].clone())
-                             .collect::<Row>();
-                         if row.len() == 0 {
-                             panic!("key should never return in empty row");
-                         }
-                         (key, KeyData::from(row))
-                     })
-                     .collect::<HashMap<_, _>>()
+            key_data: self
+                .keys()
+                .iter()
+                .map(|key| {
+                    info!("getting columns {:?} from row", key.columns());
+                    let cols_idxs = key.columns().iter().flat_map(|col| self.col_idx(col));
+                    let row = cols_idxs
+                        .inspect(|col| {
+                            info!("getting {}", col);
+                        })
+                        .map(|col_idx| row[col_idx].clone())
+                        .collect::<Row>();
+                    if row.len() == 0 {
+                        panic!("key should never return in empty row");
+                    }
+                    (key, KeyData::from(row))
+                })
+                .collect::<HashMap<_, _>>(),
         }
     }
 }
@@ -187,7 +183,7 @@ impl ColumnDefinition {
         data_type: Type,
         non_null: bool,
         default_value: impl Into<Option<Value>>,
-        auto_increment: impl Into<Option<i64>>
+        auto_increment: impl Into<Option<i64>>,
     ) -> Result<Self, Error> {
         let name = name.as_ref().to_string();
         (|| -> Result<Self, Error> {
@@ -196,7 +192,7 @@ impl ColumnDefinition {
                 if data_type != Type::Integer {
                     return Err(Error::IllegalAutoIncrement {
                         reason: "only number types can be auto incremented".to_string(),
-                    })
+                    });
                 }
             }
 
@@ -206,7 +202,7 @@ impl ColumnDefinition {
                     return Err(Error::TypeError {
                         expected: data_type,
                         actual: default.clone(),
-                    })
+                    });
                 }
             }
 
@@ -218,15 +214,11 @@ impl ColumnDefinition {
                 auto_increment,
             })
         })()
-            .map_err(|e| {
-                Error::IllegalColumnDefinition {
-                    col: name,
-                    reason: Box::new(e),
-                }
-            })
+        .map_err(|e| Error::IllegalColumnDefinition {
+            col: name,
+            reason: Box::new(e),
+        })
     }
-
-
 
     /// Gets the name of the column
     pub fn name(&self) -> Col {
@@ -252,14 +244,11 @@ impl ColumnDefinition {
             return Err(Error::TypeError {
                 expected: self.data_type.clone(),
                 actual: (&**value).clone(),
-            })
+            });
         }
 
-
-        
         Ok(())
     }
-
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
@@ -268,14 +257,20 @@ pub struct Key {
     columns: Vec<String>,
     non_null: bool,
     unique: bool,
-    is_primary: bool
+    is_primary: bool,
 }
 
 impl Key {
     /// Create a new key definition
-    pub fn new(name: impl AsRef<str>, columns: Vec<String>, non_null: bool, unique: bool, is_primary: bool) -> Result<Self, Error> {
+    pub fn new(
+        name: impl AsRef<str>,
+        columns: Vec<String>,
+        non_null: bool,
+        unique: bool,
+        is_primary: bool,
+    ) -> Result<Self, Error> {
         if is_primary && !(unique && non_null) {
-            return Err(Error::PrimaryKeyMustBeUniqueAndNonNull)
+            return Err(Error::PrimaryKeyMustBeUniqueAndNonNull);
         }
 
         Ok(Self {
@@ -291,7 +286,6 @@ impl Key {
     pub fn all(&self) -> KeyIndex {
         KeyIndex::all(&self.name)
     }
-
 
     pub fn name(&self) -> &str {
         &self.name
@@ -315,7 +309,7 @@ impl Key {
     /// Can be used as a primary key (always true when `primary`)
     #[inline]
     pub fn primary_eligible(&self) -> bool {
-        self.primary() ||( self.unique() && self.non_null())
+        self.primary() || (self.unique() && self.non_null())
     }
 }
 
@@ -344,14 +338,14 @@ impl TableSchemaBuilder {
         data_type: Type,
         non_null: bool,
         default_value: impl Into<Option<Value>>,
-        auto_increment: impl Into<Option<i64>>
+        auto_increment: impl Into<Option<i64>>,
     ) -> Result<Self, Error> {
         self.columns.push(ColumnDefinition::new(
             name,
             data_type,
             non_null,
             default_value,
-            auto_increment
+            auto_increment,
         )?);
         Ok(self)
     }
@@ -366,25 +360,23 @@ impl TableSchemaBuilder {
             Type::Integer,
             true,
             Value::Integer(0),
-            0
+            0,
         )?);
 
-
-        if keys
-            .iter()
-            .find(|key| key.primary_eligible())
-            .is_none()
-        {
+        if keys.iter().find(|key| key.primary_eligible()).is_none() {
             keys.push(Key::new(
                 "PRIMARY",
-                vec![ ROW_ID_COLUMN.to_string()],
+                vec![ROW_ID_COLUMN.to_string()],
                 true,
                 true,
-                true
+                true,
             )?);
         } else if keys.iter().find(|key| key.primary()).is_none() {
             // there may exist some primary key eligible. Find the shortest and first available
-            let mut ele_keys = keys.iter_mut().filter(|k| k.primary_eligible()).collect::<Vec<_>>();
+            let mut ele_keys = keys
+                .iter_mut()
+                .filter(|k| k.primary_eligible())
+                .collect::<Vec<_>>();
             ele_keys.sort_by_key(|l| l.columns.len());
 
             if let Some(first) = ele_keys.pop() {
@@ -392,13 +384,12 @@ impl TableSchemaBuilder {
             } else {
                 keys.push(Key::new(
                     "PRIMARY",
-                    vec![ ROW_ID_COLUMN.to_string()],
+                    vec![ROW_ID_COLUMN.to_string()],
                     true,
                     true,
-                    true
+                    true,
                 )?);
             }
-
         }
 
         Ok(TableSchema {
@@ -408,26 +399,20 @@ impl TableSchemaBuilder {
             sys_columns,
             keys,
             engine: self.engine.unwrap_or(EngineKey::new(IN_MEMORY_KEY)),
-        }
-        )
+        })
     }
 }
 
 #[derive(Debug)]
 pub struct AllKeyData<'a> {
-    key_data: HashMap<&'a Key, KeyData>
+    key_data: HashMap<&'a Key, KeyData>,
 }
 
 impl<'a> AllKeyData<'a> {
     pub fn primary(&self) -> &KeyData {
-        self.key_data.iter()
-            .find_map(|(key, data)| {
-                if key.primary() {
-                    Some(data)
-                } else {
-                    None
-                }
-            })
+        self.key_data
+            .iter()
+            .find_map(|(key, data)| if key.primary() { Some(data) } else { None })
             .expect("primary must always be present")
     }
 }
@@ -435,7 +420,7 @@ impl<'a> AllKeyData<'a> {
 #[derive(Debug)]
 pub struct ColumnizedRow<'a> {
     col_to_idx: Rc<HashMap<String, usize>>,
-    row: &'a Row<'a>
+    row: &'a Row<'a>,
 }
 
 impl<'a> Index<Col<'a>> for ColumnizedRow<'a> {
@@ -448,8 +433,7 @@ impl<'a> Index<Col<'a>> for ColumnizedRow<'a> {
 
 impl<'a> ColumnizedRow<'a> {
     pub fn get_by_name(&self, col: Col) -> Option<&Cow<'a, Value>> {
-        self.col_to_idx.get(col)
-            .and_then(|&idx| self.row.get(idx))
+        self.col_to_idx.get(col).and_then(|&idx| self.row.get(idx))
     }
 }
 
@@ -463,19 +447,17 @@ impl<'a> Deref for ColumnizedRow<'a> {
 
 impl<'a> ColumnizedRow<'a> {
     pub fn generator(schema: &'a TableSchema) -> impl Fn(&'a Row) -> ColumnizedRow<'a> {
-        let col_to_idx = Rc::new(schema.all_columns()
-            .iter()
-            .map(|col| {
-                (col.name.to_owned(), schema.col_idx(col.name()).unwrap())
-            })
-            .collect::<HashMap<_, _>>());
+        let col_to_idx = Rc::new(
+            schema
+                .all_columns()
+                .iter()
+                .map(|col| (col.name.to_owned(), schema.col_idx(col.name()).unwrap()))
+                .collect::<HashMap<_, _>>(),
+        );
 
-        move |row| {
-            ColumnizedRow {
-                col_to_idx: col_to_idx.clone(),
-                row,
-            }
+        move |row| ColumnizedRow {
+            col_to_idx: col_to_idx.clone(),
+            row,
         }
     }
 }
-

@@ -1,35 +1,36 @@
 use std::fmt::{Debug, Formatter};
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::sync::{Arc, Weak};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Weak};
 use std::thread;
 use std::thread::JoinHandle;
 
-use crossbeam::channel::{Receiver, RecvError, Sender, SendError, unbounded};
+use crate::cnxn::cnxn_loop::cnxn_main;
+use crate::cnxn::tcp::WeaverTcpListener;
+use crate::cnxn::MessageStream;
+use crate::db::concurrency::init_system_tables::init_system_tables;
+use crate::db::concurrency::processes::{ProcessManager, WeaverProcessInfo};
+use crossbeam::channel::{unbounded, Receiver, RecvError, SendError, Sender};
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use threadpool_crossbeam_channel::ThreadPool;
 use tracing::{info, info_span, warn};
-use crate::cnxn::cnxn_loop::cnxn_main;
-use crate::cnxn::MessageStream;
-use crate::cnxn::tcp::WeaverTcpListener;
-use crate::db::concurrency::init_system_tables::init_system_tables;
-use crate::db::concurrency::processes::{ProcessManager, WeaverProcessInfo};
 
 use crate::db::core::WeaverDbCore;
-use crate::dynamic_table::{EngineKey, SYSTEM_TABLE_KEY, Table};
+use crate::dynamic_table::{EngineKey, Table, SYSTEM_TABLE_KEY};
 use crate::error::Error;
 use crate::queries::ast::Query;
 use crate::queries::executor::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
+use crate::rows::{OwnedRows, Rows, RowsExt};
 use crate::tables::system_tables::SystemTableFactory;
 use crate::tables::TableRef;
 use crate::tx::coordinator::TxCoordinator;
 use crate::tx::{Tx, TxId};
 
-pub mod processes;
 mod init_system_tables;
+pub mod processes;
 
 /// A server that allows for multiple connections.
 #[derive(Clone)]
@@ -56,10 +57,7 @@ impl WeaverDb {
     pub fn new(workers: usize, shard: WeaverDbCore) -> Result<Self, Error> {
         let inner = Arc::new_cyclic(move |weak| {
             let mut shard = shard;
-            shard.tx_coordinator = Some(TxCoordinator::new(
-                WeakWeaverDb(weak.clone()),
-                0
-            ));
+            shard.tx_coordinator = Some(TxCoordinator::new(WeakWeaverDb(weak.clone()), 0));
 
             let worker_pool = ThreadPool::new(workers);
             let (sc, rc) = unbounded::<(DbReq, Sender<DbResp>)>();
@@ -67,56 +65,59 @@ impl WeaverDb {
             let main_handle = {
                 let worker_pool = worker_pool.clone();
                 let weak_db = weak.clone();
-                thread::Builder::new().name("db-core".to_string()).spawn(move || {
-                    let weak_db = weak_db.clone();
-                    loop {
-                        let Ok((req, response_channel)) = rc.recv() else {
-                            info!("Db request channel closed");
-                            break;
-                        };
+                thread::Builder::new()
+                    .name("db-core".to_string())
+                    .spawn(move || {
                         let weak_db = weak_db.clone();
-                        worker_pool.execute(move || {
-                            let Some(db) = weak_db.upgrade() else {
-                                warn!("db request processing after db dropped");
-                                return;
+                        loop {
+                            let Ok((req, response_channel)) = rc.recv() else {
+                                info!("Db request channel closed");
+                                break;
                             };
-                            let db = WeaverDb { shared: db };
+                            let weak_db = weak_db.clone();
+                            worker_pool.execute(move || {
+                                let Some(db) = weak_db.upgrade() else {
+                                    warn!("db request processing after db dropped");
+                                    return;
+                                };
+                                let db = WeaverDb { shared: db };
 
-                            let resp = (|| -> Result<DbResp, Error> {
-                                match req {
-                                    DbReq::Full(cb) => {
-                                        let mut writable = db.shared.db.write();
-                                        (cb)(&mut *writable)
+                                let resp = (|| -> Result<DbResp, Error> {
+                                    match req {
+                                        DbReq::Full(cb) => {
+                                            let mut writable = db.shared.db.write();
+                                            (cb)(&mut *writable)
+                                        }
+                                        DbReq::Ping => Ok(DbResp::Pong),
+                                        DbReq::TxQuery(tx, ref query) => {
+                                            let ref plan = db.to_plan(query)?;
+                                            let executor = db.query_executor();
+                                            let table = executor.execute(&tx, plan)?;
+                                            Ok(DbResp::Rows(tx, table))
+                                        }
+                                        DbReq::StartTransaction => {
+                                            let tx = db.shared.db.read().start_transaction();
+                                            Ok(DbResp::Tx(tx))
+                                        }
+                                        DbReq::Commit(tx) => {
+                                            tx.commit();
+                                            Ok(DbResp::Ok)
+                                        }
+                                        DbReq::Rollback(tx) => {
+                                            tx.rollback();
+                                            Ok(DbResp::Ok)
+                                        }
                                     }
-                                    DbReq::Ping => {
-                                        Ok(DbResp::Pong)
-                                    }
-                                    DbReq::ConnectionInfo => {
-                                        Ok(DbResp::Err(format!("Can not get connection info at this point")))
-                                    }
-                                    DbReq::Sleep(_) => (Ok(DbResp::Err("sleeping here would be a problem".to_string()))),
-                                    DbReq::Query(query) => {
-                                        (Ok(DbResp::Err("remote querying here would be an issue".to_string())))
-                                    }
-                                    DbReq::TxQuery(tx, ref query) => {
-                                        let ref plan = db.to_plan(query)?;
-                                        let executor = db.query_executor();
-                                        let table = executor.execute(&tx, plan)?;
-                                        Ok(DbResp::TxTable(tx, Arc::new(table)))
-                                    }
+                                })();
+
+                                if let Ok(resp) = resp {
+                                    let _ = response_channel.send(resp);
                                 }
-                            })();
-
-                            if let Ok(resp) = resp {
-                                let _ = response_channel.send(resp);
-                            }
-                        })
-
-                    }
-                }).expect("could not start main shard thread")
+                            })
+                        }
+                    })
+                    .expect("could not start main shard thread")
             };
-
-
 
             let shard = Arc::new(RwLock::new(shard));
             WeaverDbShared {
@@ -136,7 +137,6 @@ impl WeaverDb {
         Ok(db)
     }
 
-
     pub fn to_plan(&self, query: &Query) -> Result<QueryPlan, Error> {
         info!("debug query to plan");
         let factory = QueryPlanFactory::new(self.weak());
@@ -147,11 +147,19 @@ impl WeaverDb {
 
     /// Bind to a tcp port. Can only be done once
     pub fn bind_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> Result<(), Error> {
-        if self.shared.tcp_bound.compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed) == Ok(false) {
+        if self
+            .shared
+            .tcp_bound
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
+            == Ok(false)
+        {
             let weak = self.weak();
             let mut listener = WeaverTcpListener::bind(addr, weak)?;
-            let _ = self.shared.tcp_local_address.write().insert(listener.local_addr()?);
-
+            let _ = self
+                .shared
+                .tcp_local_address
+                .write()
+                .insert(listener.local_addr()?);
 
             let self_clone = self.weak();
             let worker = thread::Builder::new()
@@ -165,7 +173,6 @@ impl WeaverDb {
                             break;
                         };
 
-
                         let Some(weaver) = distro_db.clone().upgrade() else {
                             warn!("distro db closed");
                             break;
@@ -173,11 +180,10 @@ impl WeaverDb {
                         let mut process_manager = weaver.shared.process_manager.write();
 
                         let _ = process_manager.start(move |child| {
-                            let span = info_span!("external-connection", pid=child.pid());
+                            let span = info_span!("external-connection", pid = child.pid());
                             let _enter = span.enter();
                             cnxn_main(stream, child)
                         });
-
                     }
                     info!("Tcp listener shut down");
                     Ok(())
@@ -187,7 +193,6 @@ impl WeaverDb {
         } else {
             Err(Error::TcpAlreadyBound)
         }
-
     }
 
     pub fn query_executor(&self) -> QueryExecutor {
@@ -196,7 +201,11 @@ impl WeaverDb {
 
     /// Gets the local address of this server, if open on a tcp connection
     pub fn local_addr(&self) -> Option<SocketAddr> {
-        self.shared.tcp_local_address.read().as_ref().map(|s| s.clone())
+        self.shared
+            .tcp_local_address
+            .read()
+            .as_ref()
+            .map(|s| s.clone())
     }
 
     /// Creates a connection
@@ -210,7 +219,6 @@ impl WeaverDb {
             receiver: resp_recv,
         }
     }
-
 
     /// Creates a weak reference to a distro db server
     pub fn weak(&self) -> WeakWeaverDb {
@@ -236,24 +244,20 @@ impl Drop for WeaverDbShared {
 #[derive(Debug, Clone)]
 pub struct WeakWeaverDb(Weak<WeaverDbShared>);
 
-
 impl WeakWeaverDb {
     pub fn upgrade(&self) -> Option<WeaverDb> {
         self.0.upgrade().map(|db| WeaverDb { shared: db })
     }
 }
 
-
 pub enum DbReq {
     Full(Box<dyn FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync>),
     /// Send a query to the request
     TxQuery(Tx, Query),
-    /// A remote query
-    Query(Query),
-    ConnectionInfo,
-    /// Tell the remote connection to sleep for some number of seconds
-    Sleep(u64),
     Ping,
+    StartTransaction,
+    Commit(Tx),
+    Rollback(Tx),
 }
 
 impl Debug for DbReq {
@@ -264,7 +268,9 @@ impl Debug for DbReq {
 
 impl DbReq {
     /// Gets full access of db
-    pub fn full<F: FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync + 'static>(func: F) -> Self {
+    pub fn full<F: FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync + 'static>(
+        func: F,
+    ) -> Self {
         Self::Full(Box::new(func))
     }
 }
@@ -273,14 +279,11 @@ impl DbReq {
 pub enum DbResp {
     Pong,
     Ok,
+    Tx(Tx),
     TxTable(Tx, Arc<Table>),
-    Table(Table),
-    ConnectionInfo(WeaverProcessInfo),
+    Rows(Tx, Box<dyn OwnedRows + Send + Sync>),
     Err(String),
-
 }
-
-
 
 #[derive(Debug)]
 pub struct DbSocket {
@@ -290,7 +293,6 @@ pub struct DbSocket {
 }
 
 impl DbSocket {
-
     /// Communicate with the db
     pub fn send(&self, req: DbReq) -> Result<DbResp, Error> {
         self.main_queue.send((req, self.resp_sender.clone()))?;
@@ -305,11 +307,14 @@ impl DbSocket {
             let schema = schema.clone();
             let table = table.clone();
             move |core| {
-                let table = core.get_table(&schema, &table).ok_or(Error::NoTableFound(schema.to_string(), table.to_string()))?;
+                let table = core
+                    .get_table(&schema, &table)
+                    .ok_or(Error::NoTableFound(schema.to_string(), table.to_string()))?;
                 Ok(DbResp::TxTable(tx, table))
             }
-        }))? else {
-            return Err(Error::NoTableFound(schema.to_string(), table.to_string()))
+        }))?
+        else {
+            return Err(Error::NoTableFound(schema.to_string(), table.to_string()));
         };
 
         Ok(table)
@@ -323,6 +328,4 @@ pub struct SystemDbSocket {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum ShardSocketError {
-
-}
+pub enum ShardSocketError {}

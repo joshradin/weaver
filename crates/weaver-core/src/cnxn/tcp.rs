@@ -1,27 +1,26 @@
 //! TCP based connections
 
+use crate::cnxn::handshake::{handshake_client, handshake_listener};
+use crate::cnxn::{read_msg, write_msg, Message, MessageStream, RemoteDbReq, RemoteDbResp};
+use crate::db::concurrency::WeakWeaverDb;
+use crate::error::Error;
 use std::io;
 use std::io::{ErrorKind, Read, Write};
 use std::mem::size_of;
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::time::Duration;
 use tracing::debug;
-use crate::cnxn::{Message, MessageStream, read_msg, write_msg};
-use crate::cnxn::handshake::{handshake_client, handshake_listener};
-use crate::db::concurrency::WeakWeaverDb;
-use crate::error::Error;
 
 /// A tcp stream that connects to a
 #[derive(Debug)]
 pub struct WeaverTcpStream {
     socket_addr: Option<SocketAddr>,
-    socket: TcpStream
+    socket: TcpStream,
 }
 
 impl WeaverTcpStream {
-
     /// Connect to a tcp stream
-    pub fn connect<A : ToSocketAddrs>(socket_addr: A) -> Result<Self, Error> {
+    pub fn connect<A: ToSocketAddrs>(socket_addr: A) -> Result<Self, Error> {
         let connected = TcpStream::connect(socket_addr)?;
         let socket_addr = connected.peer_addr().ok();
         let mut socket = Self {
@@ -33,7 +32,10 @@ impl WeaverTcpStream {
     }
 
     /// Connect to a tcp stream with a timeout
-    pub fn connect_timeout<A : ToSocketAddrs>(socket_addr: A, timeout: Duration) -> Result<Self, Error> {
+    pub fn connect_timeout<A: ToSocketAddrs>(
+        socket_addr: A,
+        timeout: Duration,
+    ) -> Result<Self, Error> {
         let connected = {
             let mut iter = socket_addr.to_socket_addrs()?;
             let mut found_stream = None;
@@ -43,11 +45,14 @@ impl WeaverTcpStream {
                     break;
                 }
             }
-            found_stream.ok_or(Error::IoError(io::Error::new(ErrorKind::NotConnected, "could not connect to socket addr")))?
+            found_stream.ok_or(Error::IoError(io::Error::new(
+                ErrorKind::NotConnected,
+                "could not connect to socket addr",
+            )))?
         };
 
         let socket_addr = connected.peer_addr().ok();
-        let mut  socket = Self {
+        let mut socket = Self {
             socket_addr,
             socket: connected,
         };
@@ -86,13 +91,12 @@ impl MessageStream for WeaverTcpStream {
 #[derive(Debug)]
 pub struct WeaverTcpListener {
     tcp_listener: TcpListener,
-    weak: WeakWeaverDb
+    weak: WeakWeaverDb,
 }
 
 impl WeaverTcpListener {
-
     /// Bind a listener to a [`WeakWeaverDb`](WeakWeaverDb)
-    pub fn bind<A : ToSocketAddrs>(addr: A, weak: WeakWeaverDb) -> Result<Self, Error> {
+    pub fn bind<A: ToSocketAddrs>(addr: A, weak: WeakWeaverDb) -> Result<Self, Error> {
         let tcp_listener = TcpListener::bind(addr)?;
         debug!("bound tcp listener to {:?}", tcp_listener.local_addr());
         Ok(Self { tcp_listener, weak })
@@ -116,21 +120,18 @@ impl WeaverTcpListener {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::db::concurrency::WeaverDb;
     use std::sync::{Arc, Barrier};
     use std::thread;
-    use crate::db::concurrency::WeaverDb;
-    use super::*;
 
     #[test]
     fn open_listener() {
         let server = WeaverDb::default();
 
-        let listener = WeaverTcpListener::bind("localhost:0", server.weak()).expect("couldnt create listener");
+        let listener =
+            WeaverTcpListener::bind("localhost:0", server.weak()).expect("couldnt create listener");
     }
-
 }
-

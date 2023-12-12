@@ -7,7 +7,6 @@ use std::fmt::{Debug, Formatter};
 pub struct Opaque<T>(T);
 
 impl<T> Opaque<T> {
-
     /// Creates a new opaque value
     pub fn new(value: T) -> Self {
         Self(value)

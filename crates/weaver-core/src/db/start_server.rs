@@ -1,4 +1,4 @@
-use crate::db::concurrency::{DbReq, DbResp, WeaverDb, ShardSocketError};
+use crate::db::concurrency::{DbReq, DbResp, ShardSocketError, WeaverDb};
 use crate::error::Error;
 
 /// Spins up the db

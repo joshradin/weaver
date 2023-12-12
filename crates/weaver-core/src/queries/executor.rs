@@ -1,12 +1,13 @@
 //! The mechanism responsible for executing queries
 
-use std::sync::Weak;
 use parking_lot::RwLock;
+use std::sync::Weak;
 
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::Table;
 use crate::error::Error;
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind};
+use crate::rows::{OwnedRows, Rows, RowsExt};
 use crate::tables::InMemoryTable;
 use crate::tx::Tx;
 
@@ -30,7 +31,11 @@ impl QueryExecutor {
 
 impl QueryExecutor {
     /// Executes a query
-    pub fn execute(&self, tx: &Tx, plan: &QueryPlan) -> Result<Table, Error> {
+    pub fn execute(
+        &self,
+        tx: &Tx,
+        plan: &QueryPlan,
+    ) -> Result<Box<dyn OwnedRows + Send + Sync>, Error> {
         let root = plan.root();
         let core = self.core.upgrade().ok_or(Error::NoCoreAvailable)?;
         let mut stack = vec![root];
@@ -40,18 +45,28 @@ impl QueryExecutor {
             let node = stack.pop().unwrap();
 
             match &node.kind {
-                QueryPlanKind::SelectByKey { table: (schema, name), key_index } => {
+                QueryPlanKind::SelectByKey {
+                    table: (schema, name),
+                    key_index,
+                } => {
                     let core = core.read();
-                    let table = core.get_table(schema, name).ok_or(Error::NoTableFound(schema.to_string(), name.to_string()))?;
+                    let table = core
+                        .get_table(schema, name)
+                        .ok_or(Error::NoTableFound(schema.to_string(), name.to_string()))?;
 
                     let read = table.read(tx, &key_index[0])?;
-                    output = Some(Box::new(InMemoryTable::from_rows(table.schema().clone(), read)?));
+                    output = Some(Box::new(InMemoryTable::from_rows(
+                        table.schema().clone(),
+                        read,
+                    )?));
                 }
                 QueryPlanKind::Project { .. } => {}
             }
         }
 
-
-        Ok(output.expect("no table"))
+        output
+            .expect("no table")
+            .all(tx)
+            .map(|rows| rows.to_owned())
     }
 }

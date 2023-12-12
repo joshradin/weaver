@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
-use serde::{Deserialize, Serialize};
 
 /// A single value within a row
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -27,8 +27,8 @@ impl Value {
 
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
-        use Value::*;
         use crate::data::Value::Null;
+        use Value::*;
         match (self, other) {
             (String(l), String(r)) => l == r,
             (Blob(l), Blob(r)) => l == r,
@@ -45,8 +45,8 @@ impl Eq for Value {}
 
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use Value::*;
         use crate::data::Value::Null;
+        use Value::*;
         Some(match (self, other) {
             (String(l), String(r)) => l.cmp(r),
             (Blob(l), Blob(r)) => l.cmp(r),

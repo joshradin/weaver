@@ -2,16 +2,9 @@
 //! The object containing the sentinel is dropped itself
 
 #[derive(Debug)]
-pub struct Sentinel {
-
-
-
-
-
-}
+pub struct Sentinel {}
 
 impl Sentinel {
-
     pub fn new_ref(&self) -> SentinelRef {
         todo!()
     }

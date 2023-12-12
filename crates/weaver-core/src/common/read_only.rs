@@ -11,7 +11,6 @@ use std::ops::Deref;
 pub struct ReadOnly<T>(T);
 
 impl<T> ReadOnly<T> {
-
     /// Creates a new, read-only value
     pub fn new(value: T) -> Self {
         Self(value)

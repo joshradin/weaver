@@ -1,12 +1,12 @@
 //! Transactions
 
-use std::fmt::{Display, Formatter};
-use crossbeam::channel::Sender;
-use serde::{Deserialize, Serialize};
-use tracing::info;
+use crate::common::opaque::Opaque;
 use behavior::{TxCompletion, TxDropBehavior};
 use coordinator::TxCompletionToken;
-use crate::common::opaque::Opaque;
+use crossbeam::channel::Sender;
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
+use tracing::info;
 
 use crate::db::concurrency::WeaverDb;
 use crate::dynamic_table::Col;
@@ -17,7 +17,9 @@ pub mod coordinator;
 pub static TX_ID_COLUMN: Col<'static> = "@@TX_ID";
 
 /// The id of the a transaction
-#[derive(Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Serialize, Deserialize)]
+#[derive(
+    Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Serialize, Deserialize,
+)]
 pub struct TxId(u64);
 
 impl TxId {
@@ -44,7 +46,6 @@ impl From<i64> for TxId {
     }
 }
 
-
 /// A transaction within the database. All transactions contain an identifier which are generated sequentially.
 ///
 /// A transaction is able to see any the results of any other transaction that's been completed before
@@ -56,18 +57,17 @@ pub struct Tx {
     completed: bool,
     drop_behavior: TxDropBehavior,
     msg_sender: Option<Sender<TxCompletionToken>>,
-    _server_ref: Option<Opaque<WeaverDb>>
+    _server_ref: Option<Opaque<WeaverDb>>,
 }
 
 impl Tx {
-
     /// Gets the identifier of this transaction
     pub fn id(&self) -> TxId {
         self.id
     }
 
     pub fn look_behind(&self) -> TxId {
-       self.look_behind
+        self.look_behind
     }
 
     /// Checks if this transaction can see any data involved with a given id
@@ -79,7 +79,7 @@ impl Tx {
         if let Some(ref msg_sender) = self.msg_sender {
             let _ = msg_sender.send(TxCompletionToken {
                 tx_id: self.id,
-                completion: TxCompletion::Rollback
+                completion: TxCompletion::Rollback,
             });
         }
     }
@@ -87,7 +87,7 @@ impl Tx {
         if let Some(ref msg_sender) = self.msg_sender {
             let _ = msg_sender.send(TxCompletionToken {
                 tx_id: self.id,
-                completion: TxCompletion::Commit
+                completion: TxCompletion::Commit,
             });
         }
     }
@@ -112,14 +112,9 @@ impl Drop for Tx {
         info!("dropping transaction {:?}", self);
         if !self.completed {
             match self.drop_behavior.0 {
-                TxCompletion::Rollback => {
-                    self._rollback()
-                }
-                TxCompletion::Commit => {
-                    self._commit()
-                }
+                TxCompletion::Rollback => self._rollback(),
+                TxCompletion::Commit => self._commit(),
             }
         }
     }
 }
-

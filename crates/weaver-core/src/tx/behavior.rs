@@ -6,5 +6,5 @@ pub struct TxDropBehavior(pub TxCompletion);
 pub enum TxCompletion {
     #[default]
     Rollback,
-    Commit
+    Commit,
 }

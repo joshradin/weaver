@@ -32,7 +32,11 @@ impl DynamicTable for SystemTable {
         unimplemented!("can not insert into a system table")
     }
 
-    fn read<'tx, 'table: 'tx>(&'table self, tx: &'tx Tx, key: &KeyIndex) -> Result<Box<dyn Rows + 'tx>, Error> {
+    fn read<'tx, 'table: 'tx>(
+        &'table self,
+        tx: &'tx Tx,
+        key: &KeyIndex,
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
         todo!()
     }
 
@@ -47,11 +51,10 @@ impl DynamicTable for SystemTable {
 
 #[derive(Debug)]
 pub(crate) struct SystemTableFactory {
-    connection: DbSocket
+    connection: DbSocket,
 }
 
 impl SystemTableFactory {
-
     /// Creates system tables using an actual, live connection
     pub fn new(connection: DbSocket) -> Self {
         Self { connection }

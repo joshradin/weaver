@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::data::values::Value;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Copy, Clone)]
 pub enum Type {
@@ -11,7 +11,6 @@ pub enum Type {
 }
 
 impl Type {
-
     /// Checks whether the given value is valid for this type
     pub fn validate(&self, val: &Value) -> bool {
         use Type::*;
@@ -19,10 +18,10 @@ impl Type {
             (String, Value::String(..)) => true,
             (Blob, Value::Blob(..)) => true,
             (Integer, Value::Integer(..)) => true,
-            (Boolean, Value::Boolean(..)) =>true,
+            (Boolean, Value::Boolean(..)) => true,
             (Float, Value::Float(..)) => true,
             (_, Value::Null) => true,
-            _ => false
+            _ => false,
         }
     }
 }

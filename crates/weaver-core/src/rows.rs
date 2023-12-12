@@ -1,8 +1,12 @@
 //! A window over some rows
 
+use crate::data::row::{OwnedRow, Row};
 use crate::key::KeyData;
+use crate::tables::table_schema::TableSchema;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use std::fmt::{Debug, Formatter};
 use std::ops::Bound;
-use crate::data::row::Row;
 
 #[derive(Debug, Clone)]
 pub struct KeyIndex {
@@ -50,7 +54,6 @@ impl KeyIndex {
     pub fn offset(&self) -> Option<usize> {
         self.offset
     }
-
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,15 +68,70 @@ pub enum KeyIndexKind {
 
 /// A rows result
 pub trait Rows<'t> {
+    fn schema(&self) -> &TableSchema;
     fn next(&mut self) -> Option<Row<'t>>;
 }
 
-impl<'t> Rows<'t> for Box<dyn Rows<'t> + 't> {
+pub trait RowsExt<'t>: Rows<'t> {
+    fn to_owned(mut self) -> Box<dyn OwnedRows + Send + Sync>
+    where
+        Self: Sized,
+    {
+        let mut rows = VecDeque::new();
+        while let Some(row) = self.next() {
+            rows.push_back(row.to_owned());
+        }
+
+        Box::new(DefaultOwnedRows {
+            schema: self.schema().clone(),
+            rows,
+        })
+    }
+}
+
+impl<'t, R: Rows<'t>> RowsExt<'t> for R {}
+
+impl Debug for Box<dyn for<'a> Rows<'a> + Send> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedRow").finish_non_exhaustive()
+    }
+}
+
+impl<'t> Rows<'t> for Box<dyn Rows<'t> + Send + 't> {
+    fn schema(&self) -> &TableSchema {
+        (**self).schema()
+    }
+
     fn next(&mut self) -> Option<Row<'t>> {
         (**self).next()
     }
 }
 
+pub trait OwnedRows {
+    fn schema(&self) -> &TableSchema;
+    fn next(&mut self) -> Option<OwnedRow>;
+}
+
+#[derive(Debug)]
+struct DefaultOwnedRows {
+    schema: TableSchema,
+    rows: VecDeque<OwnedRow>,
+}
+
+impl OwnedRows for DefaultOwnedRows {
+    fn schema(&self) -> &TableSchema {
+        &self.schema
+    }
+
+    fn next(&mut self) -> Option<OwnedRow> {
+        self.rows.pop_front()
+    }
+}
+impl Debug for Box<dyn OwnedRows + Send + Sync> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OwnedRows").finish_non_exhaustive()
+    }
+}
 // impl<'a, R: Rows<'a> + 'static> RowsExt<'a> for R {
 //     type IntoIter = Box<dyn Iterator<Item = OwnedRow>>;
 //

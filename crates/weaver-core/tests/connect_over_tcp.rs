@@ -13,7 +13,8 @@ fn can_handshake() {
         .init();
     let server = WeaverDb::default();
 
-    let listener = WeaverTcpListener::bind("localhost:0", server.weak()).expect("couldnt create listener");
+    let listener =
+        WeaverTcpListener::bind("localhost:0", server.weak()).expect("couldnt create listener");
     let port = listener.local_addr().unwrap();
 
     let barrier = Arc::new(Barrier::new(2));
@@ -26,7 +27,8 @@ fn can_handshake() {
     };
 
     barrier.wait();
-    let _ = WeaverTcpStream::connect_timeout(port, Duration::from_secs(10)).expect("failed to connect tcp stream");
+    let _ = WeaverTcpStream::connect_timeout(port, Duration::from_secs(10))
+        .expect("failed to connect tcp stream");
 
     connect_thread.join().expect("listener thread panicked");
 }

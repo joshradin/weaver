@@ -1,12 +1,12 @@
 use std::time::Duration;
 use tracing::level_filters::LevelFilter;
-use weaver_core::cnxn::{Message, MessageStream};
 use weaver_core::cnxn::tcp::WeaverTcpStream;
+use weaver_core::cnxn::{Message, MessageStream};
 use weaver_core::db::concurrency::{DbReq, DbResp, WeaverDb};
 use weaver_core::error::Error;
 
 #[test]
-fn bind_to_tcp() -> Result<(), Error>{
+fn bind_to_tcp() -> Result<(), Error> {
     tracing_subscriber::fmt()
         .with_max_level(LevelFilter::TRACE)
         .with_thread_ids(true)

@@ -1,6 +1,6 @@
-use weaver_core::db::core::WeaverDbCore;
 use std::thread;
 use weaver_core::db::concurrency::{DbReq, DbResp, WeaverDb};
+use weaver_core::db::core::WeaverDbCore;
 
 #[test]
 fn connect() {

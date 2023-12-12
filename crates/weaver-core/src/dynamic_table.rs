@@ -1,14 +1,14 @@
 //! Defines storage engines
 
-use std::fmt::{Debug, Formatter};
 use crate::data::row::Row;
+use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
 use crate::tables::table_schema::TableSchema;
+use crate::tx::Tx;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Debug, Formatter};
 use std::io;
 use thiserror::Error;
-use crate::error::Error;
-use crate::tx::Tx;
 
 /// A column within a table
 pub type Col<'a> = &'a str;
@@ -49,7 +49,19 @@ pub trait DynamicTable: Send + Sync {
     fn insert(&self, tx: &Tx, row: Row) -> Result<(), Error>;
 
     /// Get by a key
-    fn read<'tx, 'table : 'tx>(&'table self, tx: &'tx Tx, key: &KeyIndex) -> Result<Box<dyn Rows + 'tx>, Error>;
+    fn read<'tx, 'table: 'tx>(
+        &'table self,
+        tx: &'tx Tx,
+        key: &KeyIndex,
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error>;
+
+    /// Shortcut for all rows
+    fn all<'tx, 'table: 'tx>(
+        &'table self,
+        tx: &'tx Tx,
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
+        self.read(tx, &self.schema().full_index()?)
+    }
 
     /// Update an existing row. Fails if no row with primary key is already present
     fn update(&self, tx: &Tx, row: Row) -> Result<(), Error>;
@@ -87,9 +99,7 @@ pub trait StorageEngineFactory: Send + Sync {
     fn open(&self, schema: &TableSchema) -> Result<Table, Error>;
 }
 
-impl<F: Fn(&TableSchema) -> Result<Table, Error> + Send + Sync> StorageEngineFactory
-    for F
-{
+impl<F: Fn(&TableSchema) -> Result<Table, Error> + Send + Sync> StorageEngineFactory for F {
     fn open(&self, schema: &TableSchema) -> Result<Table, Error> {
         (self)(schema)
     }
@@ -120,7 +130,8 @@ impl EngineKey {
         [
             EngineKey::new(IN_MEMORY_KEY),
             EngineKey::new(SYSTEM_TABLE_KEY),
-        ].into_iter()
+        ]
+        .into_iter()
     }
 }
 

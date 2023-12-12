@@ -7,7 +7,6 @@ pub struct QueryPlan {
 }
 
 impl QueryPlan {
-
     /// Create a new query plan with a given root
     pub fn new(root: QueryPlanNode) -> Self {
         Self { root }
@@ -16,15 +15,13 @@ impl QueryPlan {
     pub fn root(&self) -> &QueryPlanNode {
         &self.root
     }
-
-
 }
 
 #[derive(Debug)]
 pub struct QueryPlanNode {
     pub cost: f64,
     pub rows: u64,
-    pub kind: QueryPlanKind
+    pub kind: QueryPlanKind,
 }
 
 #[derive(Debug)]
@@ -35,6 +32,6 @@ pub enum QueryPlanKind {
     },
     Project {
         columns: Vec<usize>,
-        node: Box<QueryPlanNode>
-    }
+        node: Box<QueryPlanNode>,
+    },
 }

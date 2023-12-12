@@ -1,17 +1,17 @@
 //! Weaver process handling
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use std::cell::OnceCell;
 use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Instant;
-use crossbeam::channel::{Receiver, Sender, unbounded};
 
+use crate::db::concurrency::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-use crate::db::concurrency::WeakWeaverDb;
 
 use crate::error::Error;
 
@@ -38,7 +38,6 @@ pub struct WeaverProcessInfo {
 }
 
 impl WeaverProcess {
-
     /// Creates the process and it's child struct
     fn new(pid: WeaverPid, weak: WeakWeaverDb) -> (Self, WeaverProcessChild) {
         let (rx, tx) = unbounded::<Kill>();
@@ -56,13 +55,14 @@ impl WeaverProcess {
                 handle: OnceLock::new(),
             },
             WeaverProcessChild {
-            pid,
+                pid,
                 started,
                 kill_channel: tx,
-            state,
-            info,
-            db: weak.clone(),
-        })
+                state,
+                info,
+                db: weak.clone(),
+            },
+        )
     }
 
     fn set_handle(&mut self, join_handle: JoinHandle<Result<(), Error>>) {
@@ -85,7 +85,6 @@ pub struct WeaverProcessChild {
 struct Kill();
 
 impl WeaverProcessChild {
-
     /// Provides access to the pid of the process
     pub fn pid(&self) -> WeaverPid {
         self.pid
@@ -121,7 +120,7 @@ impl WeaverProcessChild {
 }
 
 /// The state of a process
-#[derive(Debug, Eq, PartialEq, Default, Serialize, Deserialize,  Clone)]
+#[derive(Debug, Eq, PartialEq, Default, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum ProcessState {
     #[default]
@@ -152,11 +151,13 @@ impl ProcessManager {
 
     /// Starts a process
     pub fn start<F>(&mut self, func: F) -> Result<WeaverPid, Error>
-        where F: FnOnce(WeaverProcessChild) -> Result<(), Error>, F: Send + 'static {
+    where
+        F: FnOnce(WeaverProcessChild) -> Result<(), Error>,
+        F: Send + 'static,
+    {
         let pid = self.next_pid.fetch_add(1, Ordering::SeqCst);
 
         let (mut parent, child) = WeaverProcess::new(pid, self.weak.clone());
-
 
         let handle = {
             let processes = Arc::downgrade(&self.processes);

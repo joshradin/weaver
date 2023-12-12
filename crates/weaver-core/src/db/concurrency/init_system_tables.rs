@@ -1,11 +1,11 @@
-use std::time::Instant;
-use tracing::{debug, info, info_span};
 use crate::db::concurrency::{DbReq, DbResp, WeaverDb};
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{EngineKey, SYSTEM_TABLE_KEY};
 use crate::error::Error;
 use crate::tables::system_tables::SystemTableFactory;
 use crate::tables::table_schema::TableSchema;
+use std::time::Instant;
+use tracing::{debug, info, info_span};
 
 pub static SYSTEM_SCHEMA: &str = "system";
 
@@ -16,7 +16,10 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
 
     {
         let connection = db.connect();
-        db.shared.db.write().insert_engine(EngineKey::new(SYSTEM_TABLE_KEY), SystemTableFactory::new(connection));
+        db.shared.db.write().insert_engine(
+            EngineKey::new(SYSTEM_TABLE_KEY),
+            SystemTableFactory::new(connection),
+        );
     }
     let connection = db.connect();
     connection.send(DbReq::full(|db| {
@@ -26,7 +29,10 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
     }))?;
 
     let duration = start.elapsed();
-    debug!("finished initializing system tables in {:0.3} seconds", duration.as_secs_f32());
+    debug!(
+        "finished initializing system tables in {:0.3} seconds",
+        duration.as_secs_f32()
+    );
     Ok(())
 }
 

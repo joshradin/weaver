@@ -1,11 +1,11 @@
-use crossbeam::channel::{Sender, unbounded};
-use std::thread::JoinHandle;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::thread;
-use tracing::{error, info, Level, span, warn};
 use crate::db::concurrency::WeakWeaverDb;
 use crate::tx::behavior::{TxCompletion, TxDropBehavior};
 use crate::tx::{Tx, TxId};
+use crossbeam::channel::{unbounded, Sender};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::thread::JoinHandle;
+use tracing::{error, info, span, warn, Level};
 
 /// The transaction coordinator creates transactions and is responsible
 /// to responding to the completion of transactions.
@@ -34,13 +34,16 @@ impl TxCoordinator {
                 let _enter = span.enter();
                 loop {
                     let TxCompletionToken { tx_id, completion } = match rc.recv() {
-                        Ok(msg) => { msg }
+                        Ok(msg) => msg,
                         Err(..) => {
                             break;
                         }
                     };
                     let Some(mut server) = server.upgrade() else {
-                        warn!("Could not upgrade server weak ptr but received completion token: {:?}", (tx_id, completion));
+                        warn!(
+                            "Could not upgrade server weak ptr but received completion token: {:?}",
+                            (tx_id, completion)
+                        );
                         if completion == TxCompletion::Commit {
                             error!("Transaction with commit request {tx_id:?} will be lost.");
                         }
@@ -50,11 +53,8 @@ impl TxCoordinator {
 
                     info!("transaction {:?} completed with {:?}", tx_id, completion);
                     match completion {
-                        TxCompletion::Rollback => {
-                        }
-                        TxCompletion::Commit => {
-
-                        }
+                        TxCompletion::Rollback => {}
+                        TxCompletion::Commit => {}
                     }
                 }
                 info!("tx-coordinator has completed");
@@ -71,18 +71,16 @@ impl TxCoordinator {
         }
     }
 
-
-
     /// Starts the next transaction
     pub fn next(&self) -> Tx {
-       Tx {
-           id: TxId(self.next_tx_id.fetch_add(1, Ordering::SeqCst)),
-           look_behind: TxId(self.committed_to.load(Ordering::SeqCst)),
-           completed: false,
-           drop_behavior: self.on_drop.clone(),
-           msg_sender: Some(self.primary_msg_sender.clone()),
-           _server_ref: Some(self.server.upgrade().expect("no server").into()),
-       }
+        Tx {
+            id: TxId(self.next_tx_id.fetch_add(1, Ordering::SeqCst)),
+            look_behind: TxId(self.committed_to.load(Ordering::SeqCst)),
+            completed: false,
+            drop_behavior: self.on_drop.clone(),
+            msg_sender: Some(self.primary_msg_sender.clone()),
+            _server_ref: Some(self.server.upgrade().expect("no server").into()),
+        }
     }
     pub fn on_drop(&self) -> TxDropBehavior {
         self.on_drop
@@ -97,5 +95,5 @@ impl TxCoordinator {
 #[derive(Debug)]
 pub(super) struct TxCompletionToken {
     pub tx_id: TxId,
-    pub completion: TxCompletion
+    pub completion: TxCompletion,
 }

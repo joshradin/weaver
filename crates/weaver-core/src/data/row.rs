@@ -1,13 +1,13 @@
 //! A row of data
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::{SeqAccess, Visitor};
-use std::fmt::Formatter;
-use std::borrow::{Borrow, Cow};
-use std::slice::SliceIndex;
-use std::ops::{Deref, DerefMut, Index, IndexMut};
-use serde::ser::SerializeSeq;
 use crate::data::values::Value;
+use serde::de::{SeqAccess, Visitor};
+use serde::ser::SerializeSeq;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::borrow::{Borrow, Cow};
+use std::fmt::Formatter;
+use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::slice::SliceIndex;
 
 /// A row of data
 #[derive(Debug, PartialEq, Eq, PartialOrd, Hash)]
@@ -97,7 +97,7 @@ impl<'de> Visitor<'de> for RowVisitor {
 
 impl<'a> From<OwnedRow> for Row<'a> {
     fn from(value: OwnedRow) -> Self {
-        Row(value.0.0)
+        Row(value.0 .0)
     }
 }
 
@@ -199,6 +199,17 @@ impl<'a> ToOwned for Row<'a> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Hash, Serialize)]
 pub struct OwnedRow(Row<'static>);
+
+impl<'de> Deserialize<'de> for OwnedRow {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_any(RowVisitor)
+            .map(|v| v.to_owned())
+    }
+}
 
 impl<'a> From<Row<'a>> for OwnedRow {
     fn from(value: Row<'a>) -> Self {
