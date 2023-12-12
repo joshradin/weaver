@@ -1,3 +1,4 @@
+use crate::data::types::Type;
 use crate::db::concurrency::{DbReq, DbResp, WeaverDb};
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{EngineKey, SYSTEM_TABLE_KEY};
@@ -22,7 +23,7 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
         );
     }
     let connection = db.connect();
-    connection.send(DbReq::full(|db| {
+    connection.send(DbReq::on_core(|db| {
         add_process_list(db)?;
 
         Ok(DbResp::Ok)
@@ -37,7 +38,13 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
 }
 
 fn add_process_list(weaver: &mut WeaverDbCore) -> Result<(), Error> {
-    let schema = TableSchema::builder(SYSTEM_SCHEMA, "processes").build()?;
+    let schema = TableSchema::builder(SYSTEM_SCHEMA, "processes")
+        .column("pid", Type::Integer, true, None, None)?
+        .column("age", Type::Integer, true, None, None)?
+        .column("state", Type::String, true, None, None)?
+        .column("info", Type::String, true, None, None)?
+        .engine(EngineKey::new(SYSTEM_TABLE_KEY))
+        .build()?;
     weaver.open_table(&schema)?;
     Ok(())
 }

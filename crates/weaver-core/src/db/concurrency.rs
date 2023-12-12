@@ -7,14 +7,14 @@ use std::thread::JoinHandle;
 
 use crate::cnxn::cnxn_loop::cnxn_main;
 use crate::cnxn::tcp::WeaverTcpListener;
-use crate::cnxn::MessageStream;
+use crate::cnxn::{Message, MessageStream, RemoteDbResp};
 use crate::db::concurrency::init_system_tables::init_system_tables;
-use crate::db::concurrency::processes::{ProcessManager, WeaverProcessInfo};
+use crate::db::concurrency::processes::{ProcessManager, WeaverProcessChild, WeaverProcessInfo};
 use crossbeam::channel::{unbounded, Receiver, RecvError, SendError, Sender};
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use threadpool_crossbeam_channel::ThreadPool;
-use tracing::{info, info_span, warn};
+use tracing::{debug, info, info_span, warn};
 
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{EngineKey, Table, SYSTEM_TABLE_KEY};
@@ -23,7 +23,7 @@ use crate::queries::ast::Query;
 use crate::queries::executor::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
-use crate::rows::{OwnedRows, Rows, RowsExt};
+use crate::rows::{OwnedRows, OwnedRowsExt, Rows, RowsExt};
 use crate::tables::system_tables::SystemTableFactory;
 use crate::tables::TableRef;
 use crate::tx::coordinator::TxCoordinator;
@@ -80,20 +80,24 @@ impl WeaverDb {
                                     warn!("db request processing after db dropped");
                                     return;
                                 };
-                                let db = WeaverDb { shared: db };
+                                let mut db = WeaverDb { shared: db };
 
                                 let resp = (|| -> Result<DbResp, Error> {
                                     match req {
-                                        DbReq::Full(cb) => {
+                                        DbReq::OnCore(cb) => {
                                             let mut writable = db.shared.db.write();
                                             (cb)(&mut *writable)
                                         }
+                                        DbReq::OnServer(cb) => (cb)(&mut db),
                                         DbReq::Ping => Ok(DbResp::Pong),
                                         DbReq::TxQuery(tx, ref query) => {
                                             let ref plan = db.to_plan(query)?;
+                                            debug!("created plan: {plan:?}");
                                             let executor = db.query_executor();
-                                            let table = executor.execute(&tx, plan)?;
-                                            Ok(DbResp::Rows(tx, table))
+                                            match executor.execute(&tx, plan) {
+                                                Ok(rows) => Ok(DbResp::TxRows(tx, rows)),
+                                                Err(err) => Ok(DbResp::Err(err.to_string())),
+                                            }
                                         }
                                         DbReq::StartTransaction => {
                                             let tx = db.shared.db.read().start_transaction();
@@ -110,8 +114,13 @@ impl WeaverDb {
                                     }
                                 })();
 
-                                if let Ok(resp) = resp {
-                                    let _ = response_channel.send(resp);
+                                match resp {
+                                    Ok(ok) => {
+                                        let _ = response_channel.send(ok);
+                                    }
+                                    Err(err) => {
+                                        let _ = response_channel.send(DbResp::Err(err.to_string()));
+                                    }
                                 }
                             })
                         }
@@ -179,11 +188,17 @@ impl WeaverDb {
                         };
                         let mut process_manager = weaver.shared.process_manager.write();
 
-                        let _ = process_manager.start(move |child| {
+                        process_manager.start(move |mut child: WeaverProcessChild| {
                             let span = info_span!("external-connection", pid = child.pid());
                             let _enter = span.enter();
-                            cnxn_main(stream, child)
-                        });
+                            if let Err(e) = cnxn_main(&mut stream, child) {
+                                warn!("client connection ended with err: {}", e);
+                                stream.write(&Message::Resp(RemoteDbResp::Err(e.to_string())))?;
+                                Err(e)
+                            } else {
+                                Ok(())
+                            }
+                        })?;
                     }
                     info!("Tcp listener shut down");
                     Ok(())
@@ -193,6 +208,11 @@ impl WeaverDb {
         } else {
             Err(Error::TcpAlreadyBound)
         }
+    }
+
+    pub fn with_process_manager<F: Fn(&ProcessManager) -> R, R>(&self, cb: F) -> R {
+        let pm = &*self.shared.process_manager.read();
+        cb(pm)
     }
 
     pub fn query_executor(&self) -> QueryExecutor {
@@ -251,7 +271,8 @@ impl WeakWeaverDb {
 }
 
 pub enum DbReq {
-    Full(Box<dyn FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync>),
+    OnCore(Box<dyn FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync>),
+    OnServer(Box<dyn FnOnce(&mut WeaverDb) -> Result<DbResp, Error> + Send + Sync>),
     /// Send a query to the request
     TxQuery(Tx, Query),
     Ping,
@@ -267,11 +288,20 @@ impl Debug for DbReq {
 }
 
 impl DbReq {
-    /// Gets full access of db
-    pub fn full<F: FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync + 'static>(
+    /// Gets full access of db core
+    pub fn on_core<
+        F: FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync + 'static,
+    >(
         func: F,
     ) -> Self {
-        Self::Full(Box::new(func))
+        Self::OnCore(Box::new(func))
+    }
+
+    /// Gets full access of db server
+    pub fn on_server<F: FnOnce(&mut WeaverDb) -> Result<DbResp, Error> + Send + Sync + 'static>(
+        func: F,
+    ) -> Self {
+        Self::OnServer(Box::new(func))
     }
 }
 
@@ -281,8 +311,15 @@ pub enum DbResp {
     Ok,
     Tx(Tx),
     TxTable(Tx, Arc<Table>),
-    Rows(Tx, Box<dyn OwnedRows + Send + Sync>),
+    TxRows(Tx, Box<dyn OwnedRows + Send + Sync>),
+    Rows(Box<dyn OwnedRows + Send + Sync>),
     Err(String),
+}
+
+impl DbResp {
+    pub fn rows<T: OwnedRows + Send + Sync + 'static>(rows: T) -> Self {
+        Self::Rows(Box::new(rows))
+    }
 }
 
 #[derive(Debug)]
@@ -303,7 +340,7 @@ impl DbSocket {
         let schema = schema.clone();
         let table = table.clone();
         let tx = Tx::default();
-        let DbResp::TxTable(_, table) = self.send(DbReq::full({
+        let DbResp::TxTable(_, table) = self.send(DbReq::on_core({
             let schema = schema.clone();
             let table = table.clone();
             move |core| {

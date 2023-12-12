@@ -1,7 +1,9 @@
 //! # weaver-core
 
+pub mod access_control;
 pub mod cnxn;
 pub mod common;
+pub mod conversion;
 pub mod data;
 pub mod db;
 pub mod dynamic_table;

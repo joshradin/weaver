@@ -62,15 +62,18 @@ impl WeaverTcpStream {
 }
 impl MessageStream for WeaverTcpStream {
     fn read(&mut self) -> Result<Message, Error> {
+        debug!("waiting for message");
         let mut len = [0_u8; size_of::<u32>()];
         self.socket.read_exact(&mut len)?;
         let len = u32::from_be_bytes(len);
         let mut message_buffer = vec![0u8; len as usize];
         self.socket.read_exact(&mut message_buffer)?;
+        debug!("got message of length {}", len);
         read_msg(&message_buffer[..])
     }
 
     fn read_timeout(&mut self, duration: Duration) -> Result<Message, Error> {
+        debug!("reading message with timeout {:?}", duration.as_millis());
         self.socket.set_read_timeout(Some(duration))?;
         let output = self.read();
         self.socket.set_read_timeout(None)?;
@@ -78,6 +81,7 @@ impl MessageStream for WeaverTcpStream {
     }
 
     fn write(&mut self, message: &Message) -> Result<(), Error> {
+        debug!("sending {message:?}");
         let mut msg_buffer = vec![];
         write_msg(&mut msg_buffer, message)?;
         let len = msg_buffer.len() as u32;

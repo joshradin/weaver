@@ -84,3 +84,17 @@ pub trait MessageStream {
         Ok(resp)
     }
 }
+
+impl<M: MessageStream> MessageStream for &mut M {
+    fn read(&mut self) -> Result<Message, Error> {
+        (*self).read()
+    }
+
+    fn read_timeout(&mut self, duration: Duration) -> Result<Message, Error> {
+        (*self).read_timeout(duration)
+    }
+
+    fn write(&mut self, message: &Message) -> Result<(), Error> {
+        (*self).write(message)
+    }
+}

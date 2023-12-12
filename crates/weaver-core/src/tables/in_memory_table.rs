@@ -33,13 +33,19 @@ pub struct InMemoryTable {
 impl InMemoryTable {
     /// Creates a new, empty in memory table
     pub fn new(mut schema: TableSchema) -> Result<Self, Error> {
-        schema.add_sys_column(ColumnDefinition::new(
-            TX_ID_COLUMN,
-            Type::Integer,
-            true,
-            None,
-            None,
-        )?)?;
+        if !schema
+            .sys_columns()
+            .iter()
+            .any(|col| col.name() == TX_ID_COLUMN)
+        {
+            schema.add_sys_column(ColumnDefinition::new(
+                TX_ID_COLUMN,
+                Type::Integer,
+                true,
+                None,
+                None,
+            )?)?;
+        }
 
         let auto_incremented = schema
             .columns()

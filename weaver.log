@@ -34,3 +34,899 @@
 06:16:30 [INFO] connecting to weaver instance at ("localhost", 5234)
 06:18:04 [INFO] connecting to weaver instance at ("localhost", 5234)
 06:41:42 [INFO] connecting to weaver instance at ("localhost", 5234)
+06:43:07 [INFO] connecting to weaver instance at ("localhost", 5234)
+06:58:38 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:11:39 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:23:35 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:24:40 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:26:12 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:27:20 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:29:09 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:33:48 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:34:48 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:51:50 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:53:21 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:53:52 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:56:20 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:56:55 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:57:38 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:59:14 [INFO] connecting to weaver instance at ("localhost", 5234)
+07:59:14 [ERROR] Failed to connect to weaver instance at ("localhost", 5234) (Connection refused (os error 61))
+08:00:13 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:00:13 [INFO] client handshake;
+08:00:13 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:00:13 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [c2, 8e, b5, b8, 5a, 75, 5, 83]
+08:00:13 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [194, 142, 181, 184, 90, 117, 5, 131] }
+08:00:13 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 65
+08:00:13 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:00:13 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:00:13 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(StartTransaction)
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:00:13 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:37 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:00:37 [INFO] client handshake;
+08:00:37 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:00:37 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [98, 7b, 9e, 7c, 62, b0, ce, 1e]
+08:00:37 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [152, 123, 158, 124, 98, 176, 206, 30] }
+08:00:37 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 66
+08:00:37 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:00:37 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:00:37 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(StartTransaction)
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:00:37 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:52 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:00:52 [INFO] client handshake;
+08:00:52 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:00:52 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [8a, 53, b6, 29, c, b9, 94, ac]
+08:00:52 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [138, 83, 182, 41, 12, 185, 148, 172] }
+08:00:52 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 65
+08:00:52 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:00:52 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:00:52 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(StartTransaction)
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:00:52 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:03:04 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:03:04 [INFO] client handshake;
+08:03:04 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:03:04 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [27, aa, 70, 42, 76, e7, f8, f9]
+08:03:04 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [39, 170, 112, 66, 118, 231, 248, 249] }
+08:03:04 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 66
+08:03:04 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:03:04 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:03:04 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(StartTransaction)
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:03:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:04:12 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:04:12 [INFO] client handshake;
+08:04:12 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:04:12 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [60, 0, 7, 6, fd, 4f, a1, c6]
+08:04:12 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [96, 0, 7, 6, 253, 79, 161, 198] }
+08:04:12 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 60
+08:04:12 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:04:12 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:04:12 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(StartTransaction)
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:04:12 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 50
+08:06:52 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:06:52 [INFO] client handshake;
+08:06:52 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:06:52 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [25, 6d, ff, 30, 5c, 6b, 71, 8f]
+08:06:52 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [37, 109, 255, 48, 92, 107, 113, 143] }
+08:06:52 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 65
+08:06:52 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:06:52 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:06:52 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(StartTransaction)
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:06:52 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 50
+08:07:44 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:07:44 [INFO] client handshake;
+08:07:44 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:07:44 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [5c, 36, 3a, 23, 6e, af, 59, 10]
+08:07:44 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [92, 54, 58, 35, 110, 175, 89, 16] }
+08:07:44 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 62
+08:07:44 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:07:44 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:07:44 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(StartTransaction)
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:07:44 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 50
+08:09:04 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:09:04 [INFO] client handshake;
+08:09:04 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:09:04 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [28, 84, a2, 94, b4, 10, cc, 2c]
+08:09:04 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [40, 132, 162, 148, 180, 16, 204, 44] }
+08:09:04 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 65
+08:09:04 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:09:04 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:09:04 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(StartTransaction)
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 38
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Commit)
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:09:04 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:10:01 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:10:01 [INFO] client handshake;
+08:10:01 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:10:01 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [d5, f3, 26, 8f, 7f, 33, 8d, 51]
+08:10:01 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [213, 243, 38, 143, 127, 51, 141, 81] }
+08:10:01 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 65
+08:10:01 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:10:01 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:10:01 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(StartTransaction)
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 38
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Commit)
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:10:01 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:22:05 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:22:05 [INFO] client handshake;
+08:22:05 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:22:05 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [9, 15, 1f, f2, bd, d, 1b, ab]
+08:22:05 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [9, 21, 31, 242, 189, 13, 27, 171] }
+08:22:05 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 62
+08:22:05 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:22:05 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:22:05 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:22:05 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:26:27 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:26:27 [INFO] client handshake;
+08:26:27 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:26:27 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [b0, 96, 3a, 18, 8c, bd, 80, ee]
+08:26:27 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [176, 150, 58, 24, 140, 189, 128, 238] }
+08:26:27 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 66
+08:26:27 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:26:27 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:26:27 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:26:27 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:30:33 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:30:33 [ERROR] Failed to connect to weaver instance at ("localhost", 5234) (Connection refused (os error 61))
+08:30:39 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:30:39 [INFO] client handshake;
+08:30:39 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:30:39 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [60, df, bc, 10, 84, f2, 2f, 42]
+08:30:39 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [96, 223, 188, 16, 132, 242, 47, 66] }
+08:30:39 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 64
+08:30:39 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:30:39 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:30:39 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 38
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:30:39 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:31:58 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:31:58 [ERROR] Failed to connect to weaver instance at ("localhost", 5234) (Connection refused (os error 61))
+08:34:08 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:34:08 [ERROR] Failed to connect to weaver instance at ("localhost", 5234) (Connection refused (os error 61))
+08:34:17 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:34:17 [INFO] client handshake;
+08:34:17 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:34:17 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [fd, 6b, cd, e, 16, 54, 52, 53]
+08:34:17 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [253, 107, 205, 14, 22, 84, 82, 83] }
+08:34:17 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 63
+08:34:17 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:34:17 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:34:17 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:17 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:34:30 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:34:30 [INFO] client handshake;
+08:34:30 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:34:30 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [65, cc, bf, f6, dd, bb, b, e]
+08:34:30 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [101, 204, 191, 246, 221, 187, 11, 14] }
+08:34:30 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 66
+08:34:30 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:34:30 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:34:30 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:30 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:34:31 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:34:31 [INFO] client handshake;
+08:34:31 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:34:31 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [85, 3c, 89, 3a, 68, be, ab, 2f]
+08:34:31 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [133, 60, 137, 58, 104, 190, 171, 47] }
+08:34:31 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 65
+08:34:31 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:34:31 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:34:31 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:34:32 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:34:32 [INFO] client handshake;
+08:34:32 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:34:32 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [a2, be, e1, 3b, 5a, d7, 41, a9]
+08:34:32 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [162, 190, 225, 59, 90, 215, 65, 169] }
+08:34:32 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 65
+08:34:32 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:34:32 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:34:32 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:32 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:34:36 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:34:36 [INFO] client handshake;
+08:34:36 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:34:36 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [75, 3e, a4, 1e, fe, fa, d0, cd]
+08:34:36 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [117, 62, 164, 30, 254, 250, 208, 205] }
+08:34:36 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 66
+08:34:36 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:34:36 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:34:36 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:34:36 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:38:10 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:38:10 [INFO] client handshake;
+08:38:10 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:38:10 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [f, d6, 56, e4, 48, cd, 67, 57]
+08:38:10 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [15, 214, 86, 228, 72, 205, 103, 87] }
+08:38:10 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 64
+08:38:10 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:38:10 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:38:10 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:10 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:38:35 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:38:35 [INFO] client handshake;
+08:38:35 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:38:35 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [9e, ee, 4e, 5a, 13, 90, 81, ed]
+08:38:35 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [158, 238, 78, 90, 19, 144, 129, 237] }
+08:38:35 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 65
+08:38:35 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:38:35 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:38:35 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:38:35 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:39:02 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:39:02 [ERROR] Failed to connect to weaver instance at ("localhost", 5234) (Connection refused (os error 61))
+08:39:06 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:39:06 [INFO] client handshake;
+08:39:06 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:39:06 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [64, d7, fe, 30, 81, 62, c, 56]
+08:39:06 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [100, 215, 254, 48, 129, 98, 12, 86] }
+08:39:06 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 64
+08:39:06 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:39:06 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:39:06 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:06 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:39:37 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:39:37 [INFO] client handshake;
+08:39:37 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:39:37 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [1, 55, 60, ef, db, e2, f1, ff]
+08:39:37 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [1, 85, 96, 239, 219, 226, 241, 255] }
+08:39:37 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 64
+08:39:37 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:39:37 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:39:37 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:37 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:39:56 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:39:56 [INFO] client handshake;
+08:39:56 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:39:56 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [f9, 81, 98, 52, f5, f5, 1a, f2]
+08:39:56 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [249, 129, 152, 82, 245, 245, 26, 242] }
+08:39:56 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 66
+08:39:56 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:39:56 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:39:56 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:39:56 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:40:12 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:40:12 [INFO] client handshake;
+08:40:12 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:40:12 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [c6, 1d, a1, f2, 76, dc, 12, 4c]
+08:40:12 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [198, 29, 161, 242, 118, 220, 18, 76] }
+08:40:12 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 65
+08:40:12 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:40:12 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:40:12 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:12 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:40:29 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:40:29 [INFO] client handshake;
+08:40:29 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:40:29 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [ab, 61, a5, 4d, c4, 6d, 93, 87]
+08:40:29 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [171, 97, 165, 77, 196, 109, 147, 135] }
+08:40:29 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 66
+08:40:29 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:40:29 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:40:29 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:40:29 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:41:15 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:41:15 [INFO] client handshake;
+08:41:15 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:41:15 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [99, 8b, e8, 5f, 24, 7d, d6, db]
+08:41:15 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [153, 139, 232, 95, 36, 125, 214, 219] }
+08:41:15 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 66
+08:41:15 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:41:15 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:41:15 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:15 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:41:31 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:41:31 [INFO] client handshake;
+08:41:31 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:41:31 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [86, ee, 5f, 84, 2d, eb, ce, d1]
+08:41:31 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [134, 238, 95, 132, 45, 235, 206, 209] }
+08:41:31 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 66
+08:41:31 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:41:31 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:41:31 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:41:31 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:42:11 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:42:11 [INFO] client handshake;
+08:42:11 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:42:11 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [5f, d3, 92, 56, 69, 2d, 16, 61]
+08:42:11 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [95, 211, 146, 86, 105, 45, 22, 97] }
+08:42:11 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 63
+08:42:11 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:42:11 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:42:11 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:42:11 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:43:03 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:43:03 [ERROR] Failed to connect to weaver instance at ("localhost", 5234) (Connection refused (os error 61))
+08:43:08 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:43:08 [INFO] client handshake;
+08:43:08 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:43:08 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [87, 18, cc, 68, 5d, 2, 96, 2c]
+08:43:08 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [135, 24, 204, 104, 93, 2, 150, 44] }
+08:43:08 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 63
+08:43:08 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:43:08 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:43:08 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:08 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:13 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 35
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:18 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 35
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:23 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 35
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:43:28 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:43:33 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:43:33 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:45:28 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:45:28 [ERROR] Failed to connect to weaver instance at ("localhost", 5234) (Connection refused (os error 61))
+08:45:33 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:45:33 [INFO] client handshake;
+08:45:33 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:45:33 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [8c, f1, b6, c0, 79, 42, 7f, 10]
+08:45:33 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [140, 241, 182, 192, 121, 66, 127, 16] }
+08:45:33 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 66
+08:45:33 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:45:33 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:45:33 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:45:33 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:45:38 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:45:38 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:14 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:47:14 [ERROR] Failed to connect to weaver instance at ("localhost", 5234) (Connection refused (os error 61))
+08:47:20 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:47:20 [INFO] client handshake;
+08:47:20 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] -> client handshake;
+08:47:20 [TRACE] (1) weaver_core::cnxn::handshake: [crates/weaver-core/src/cnxn/handshake.rs:16] Created nonce: [94, 57, d7, 81, 14, 31, 0, e9]
+08:47:20 [DEBUG] (1) weaver_core::cnxn::handshake: Sending handshake init to server
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: sending Handshake { ack: false, nonce: [148, 87, 215, 129, 20, 49, 0, 233] }
+08:47:20 [DEBUG] (1) weaver_core::cnxn::handshake: Handshake sent, waiting for acknowledgement from server...
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: reading message with timeout 18446744073709551615999
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 63
+08:47:20 [DEBUG] (1) weaver_core::cnxn::handshake: Client handshake completed
+08:47:20 [TRACE] (1) tracing::span::active: [crates/weaver-core/src/cnxn/handshake.rs:11] <- client handshake;
+08:47:20 [TRACE] (1) tracing::span: [crates/weaver-core/src/cnxn/handshake.rs:11] -- client handshake;
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(ConnectionInfo)
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 95
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:20 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 13
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetSchema)
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 789
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 34
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(GetRow)
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:47:25 [DEBUG] (1) weaver_core::cnxn::tcp: got message of length 21
+08:47:30 [DEBUG] (1) weaver_core::cnxn::tcp: sending Req(Query(Select { columns: ["*"], table_ref: ("system", "processes"), condition: None, limit: None, offset: None }))
+08:47:30 [DEBUG] (1) weaver_core::cnxn::tcp: waiting for message
+08:49:30 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:49:30 [ERROR] Failed to connect to weaver instance at ("localhost", 5234) (Connection refused (os error 61))
+08:55:55 [INFO] connecting to weaver instance at ("localhost", 5234)
+08:55:55 [ERROR] Failed to connect to weaver instance at ("localhost", 5234) (Connection refused (os error 61))

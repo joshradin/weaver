@@ -57,12 +57,17 @@ pub fn cnxn_main<S: MessageStream>(
                         let tx = tx.take().expect("no active tx");
                         Either::Right(socket.send(DbReq::Commit(tx)))
                     }
-                    RemoteDbReq::GetRow => match &mut rows {
-                        None => Either::Left(Ok(RemoteDbResp::Err("no table".to_string()))),
-                        Some(table) => {
-                            Either::Left(Ok(RemoteDbResp::Row(table.next().map(|t| t.to_owned()))))
+                    RemoteDbReq::GetRow => {
+                        debug!("attempting to get next row");
+                        match &mut rows {
+                            None => Either::Left(Ok(RemoteDbResp::Err("no table".to_string()))),
+                            Some(table) => {
+                                Either::Left(Ok(RemoteDbResp::Row(table.next().map(|t| {
+                                    t.slice(..table.schema().columns().len()).to_owned()
+                                }))))
+                            }
                         }
-                    },
+                    }
                     RemoteDbReq::GetSchema => match rows {
                         None => Either::Left(Ok(RemoteDbResp::Err("no table set".to_string()))),
                         Some(ref s) => Either::Left(Ok(RemoteDbResp::Schema(s.schema().clone()))),
@@ -72,7 +77,7 @@ pub fn cnxn_main<S: MessageStream>(
                 let resp = match resp {
                     Either::Left(left) => left?,
                     Either::Right(resp) => {
-                        debug!("using response: {:#?}", resp);
+                        debug!("using response: {:?}", resp);
                         match resp? {
                             DbResp::Pong => RemoteDbResp::Pong,
                             DbResp::Ok => RemoteDbResp::Ok,
@@ -81,7 +86,7 @@ pub fn cnxn_main<S: MessageStream>(
                                 tx = Some(received_tx);
                                 RemoteDbResp::Ok
                             }
-                            DbResp::Rows(ret_tx, ret_rows) => {
+                            DbResp::TxRows(ret_tx, ret_rows) => {
                                 tx = Some(ret_tx);
                                 rows = Some(ret_rows);
                                 RemoteDbResp::Ok
@@ -89,6 +94,11 @@ pub fn cnxn_main<S: MessageStream>(
                             DbResp::TxTable(ret_tx, ret_table) => {
                                 // rows = Some(ret_table.all(&ret_tx)?);
                                 tx = Some(ret_tx);
+                                RemoteDbResp::Ok
+                            }
+                            DbResp::Rows(ret_rows) => {
+                                rows = Some(ret_rows);
+                                debug!("received rows from remote");
                                 RemoteDbResp::Ok
                             }
                         }

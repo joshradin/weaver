@@ -113,9 +113,21 @@ pub trait OwnedRows {
 }
 
 #[derive(Debug)]
-struct DefaultOwnedRows {
+pub struct DefaultOwnedRows {
     schema: TableSchema,
     rows: VecDeque<OwnedRow>,
+}
+
+impl DefaultOwnedRows {
+    pub fn new<I>(schema: TableSchema, rows: I) -> Self
+    where
+        I: IntoIterator<Item = OwnedRow>,
+    {
+        Self {
+            schema,
+            rows: rows.into_iter().collect(),
+        }
+    }
 }
 
 impl OwnedRows for DefaultOwnedRows {
@@ -132,14 +144,47 @@ impl Debug for Box<dyn OwnedRows + Send + Sync> {
         f.debug_struct("OwnedRows").finish_non_exhaustive()
     }
 }
-// impl<'a, R: Rows<'a> + 'static> RowsExt<'a> for R {
-//     type IntoIter = Box<dyn Iterator<Item = OwnedRow>>;
-//
-//     fn into_iter(mut self) -> Self::IntoIter {
-//         Box::new(std::iter::from_fn(move || self.next()))
-//     }
-// }
-// pub trait RowsExt<'a>: Rows<'a> {
-//     type IntoIter: Iterator<Item = OwnedRow>;
-//     fn into_iter(self) -> Self::IntoIter;
-// }
+
+impl OwnedRows for Box<dyn OwnedRows + Send + Sync> {
+    fn schema(&self) -> &TableSchema {
+        (**self).schema()
+    }
+
+    fn next(&mut self) -> Option<OwnedRow> {
+        (**self).next()
+    }
+}
+
+pub trait OwnedRowsExt: OwnedRows {
+    fn to_rows<'a>(mut self) -> Box<dyn Rows<'a> + Send + 'a>
+    where
+        Self: Sized,
+    {
+        let mut rows = VecDeque::new();
+        while let Some(row) = self.next() {
+            rows.push_back(Row::from(row));
+        }
+
+        Box::new(DefaultRows {
+            schema: self.schema().clone(),
+            rows,
+        })
+    }
+}
+impl<R: OwnedRows> OwnedRowsExt for R {}
+
+#[derive(Debug)]
+struct DefaultRows<'a> {
+    schema: TableSchema,
+    rows: VecDeque<Row<'a>>,
+}
+
+impl<'a> Rows<'a> for DefaultRows<'a> {
+    fn schema(&self) -> &TableSchema {
+        &self.schema
+    }
+
+    fn next(&mut self) -> Option<Row<'a>> {
+        self.rows.pop_front()
+    }
+}

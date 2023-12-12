@@ -350,6 +350,12 @@ impl TableSchemaBuilder {
         Ok(self)
     }
 
+    /// Sets the used engine
+    pub fn engine(mut self, engine_key: EngineKey) -> Self {
+        self.engine = Some(engine_key);
+        self
+    }
+
     pub fn build(self) -> Result<TableSchema, Error> {
         let mut columns = self.columns;
         let mut sys_columns = vec![];

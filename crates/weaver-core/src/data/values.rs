@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 
 /// A single value within a row
@@ -21,6 +22,35 @@ impl Value {
             Some(*i)
         } else {
             None
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::String(s) => {
+                write!(f, "{s}")
+            }
+            Value::Blob(b) => {
+                write!(
+                    f,
+                    "{}",
+                    b.iter().map(|s| format!("{:x}", s)).collect::<String>()
+                )
+            }
+            Value::Integer(i) => {
+                write!(f, "{i}")
+            }
+            Value::Boolean(b) => {
+                write!(f, "{b}")
+            }
+            Value::Float(fl) => {
+                write!(f, "{fl}")
+            }
+            Value::Null => {
+                write!(f, "null")
+            }
         }
     }
 }

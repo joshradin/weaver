@@ -9,7 +9,7 @@ name = "weaver"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-weaver-core = { version = "0.0.0", path = "../weaver-core" }
+weaver-core = { version = "0.0.0", path = "../weaver-core", features = ["log"] }
 clap = { version = "4.4.11", features=["derive"] }
 log = "0.4.20"
 eyre = "0.6.10"

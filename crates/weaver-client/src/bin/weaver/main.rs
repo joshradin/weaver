@@ -3,6 +3,11 @@ use clap::Parser;
 use log::{error, info, LevelFilter};
 use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
 use std::fs::File;
+use std::io::stdout;
+use std::thread::sleep;
+use std::time::Duration;
+use weaver_client::write_rows::write_rows;
+use weaver_client::WeaverClient;
 use weaver_core::cnxn::tcp::WeaverTcpStream;
 use weaver_core::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use weaver_core::db::concurrency::DbReq;
@@ -29,7 +34,7 @@ fn main() -> eyre::Result<()> {
 
     let addr = (app.host.as_str(), app.port);
     info!("connecting to weaver instance at {:?}", addr);
-    let mut connection = match WeaverTcpStream::connect(addr) {
+    let mut connection = match WeaverClient::connect(addr) {
         Ok(cnxn) => cnxn,
         Err(e) => {
             error!("Failed to connect to weaver instance at {:?} ({e})", addr);
@@ -37,36 +42,17 @@ fn main() -> eyre::Result<()> {
         }
     };
 
-    let resp = connection.send(&RemoteDbReq::ConnectionInfo)?;
-    println!("resp: {:#?}", resp);
-
-    let _ = connection.send(&RemoteDbReq::StartTransaction)?;
-
-    let RemoteDbResp::Ok = connection.send(&RemoteDbReq::Query(Query::Select {
+    let query = Query::Select {
         columns: vec!["*".to_string()],
         table_ref: ("system".to_string(), "processes".to_string()),
         condition: None,
         limit: None,
         offset: None,
-    }))?
-    else {
-        panic!("no ok");
     };
 
-    let RemoteDbResp::Schema(schema) = connection.send(&RemoteDbReq::GetSchema)? else {
-        panic!("should get schema");
-    };
-    println!("schema: {schema:#?}");
-
-    loop {
-        let resp = connection.send(&RemoteDbReq::GetRow)?;
-        let RemoteDbResp::Row(Some(row)) = resp else {
-            break;
-        };
-        println!("row");
-    }
-
-    connection.send(&RemoteDbReq::Commit)?;
+    let (rows, duration) = connection.query(&query)?;
+    write_rows(stdout(), rows, duration)?;
+    sleep(Duration::from_secs(5));
 
     Ok(())
 }

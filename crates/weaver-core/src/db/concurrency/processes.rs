@@ -2,6 +2,7 @@
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use std::cell::OnceCell;
 use std::collections::BTreeMap;
+use std::panic::{catch_unwind, panic_any, UnwindSafe};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::thread;
@@ -11,7 +12,7 @@ use std::time::Instant;
 use crate::db::concurrency::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{error, info};
 
 use crate::error::Error;
 
@@ -67,6 +68,39 @@ impl WeaverProcess {
 
     fn set_handle(&mut self, join_handle: JoinHandle<Result<(), Error>>) {
         let _ = self.handle.set(join_handle);
+    }
+
+    /// Gets the info struct
+    pub fn info(&self) -> WeaverProcessInfo {
+        WeaverProcessInfo {
+            pid: self.pid,
+            age: self.started.elapsed().as_secs() as u32,
+            state: self.state.read().clone(),
+            info: self.info.read().clone(),
+        }
+    }
+
+    pub fn join(mut self) -> Result<(), Error> {
+        self.handle
+            .take()
+            .ok_or(Error::ProcessFailed(self.pid))
+            .and_then(|t| match t.join() {
+                Ok(ok) => ok,
+                Err(_) => Err(Error::ProcessFailed(self.pid)),
+            })
+    }
+}
+
+impl Drop for WeaverProcess {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            match handle.join() {
+                Ok(_) => {}
+                Err(err) => {
+                    panic_any(err);
+                }
+            }
+        }
     }
 }
 
@@ -149,6 +183,14 @@ impl ProcessManager {
         }
     }
 
+    pub fn processes(&self) -> Vec<WeaverProcessInfo> {
+        self.processes
+            .read()
+            .iter()
+            .map(|(_, process)| process.info())
+            .collect()
+    }
+
     /// Starts a process
     pub fn start<F>(&mut self, func: F) -> Result<WeaverPid, Error>
     where
@@ -167,6 +209,7 @@ impl ProcessManager {
                 .spawn(move || {
                     let processes = processes;
                     let child = child;
+                    let pid = child.pid;
                     let result = func(child);
 
                     if let Some(processes) = processes.upgrade() {
@@ -181,5 +224,11 @@ impl ProcessManager {
         self.processes.write().insert(pid, parent);
 
         Ok(pid)
+    }
+}
+
+impl Drop for ProcessManager {
+    fn drop(&mut self) {
+        self.processes.write().clear()
     }
 }
