@@ -1,12 +1,12 @@
 use crate::data::types::Type;
 use crate::data::values::Value;
-use crate::db::concurrency::processes::WeaverPid;
-use crate::db::concurrency::{DbReq, DbResp};
+use crate::db::server::processes::WeaverPid;
 use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError};
-use crossbeam::channel::{RecvError, SendError, Sender};
+use crossbeam::channel::{RecvError, Sender, SendError};
 use serde::ser::StdError;
 use std::io;
 use thiserror::Error;
+use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp, IntoDbResponse};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -54,4 +54,23 @@ pub enum Error {
     NoTransaction,
     #[error("Process {0} failed")]
     ProcessFailed(WeaverPid),
+    #[error("A server error occurred ({0})")]
+    ServerError(String),
+    #[error("thread panicked")]
+    ThreadPanicked,
 }
+
+impl Error {
+
+    /// A server error occurred
+    pub fn server_error(error: impl ToString) -> Self {
+        Self::ServerError(error.to_string())
+    }
+}
+
+impl IntoDbResponse for Error {
+    fn into_db_resp(self) -> DbResp {
+        DbResp::Err(self.to_string())
+    }
+}
+

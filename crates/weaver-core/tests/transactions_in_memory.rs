@@ -3,10 +3,12 @@ use tracing::level_filters::LevelFilter;
 use weaver_core::data::row::Row;
 use weaver_core::data::types::Type;
 use weaver_core::data::values::Value;
-use weaver_core::db::concurrency::{DbReq, DbResp, WeaverDb};
 use weaver_core::db::core::WeaverDbCore;
+use weaver_core::db::server::layers::packets::{DbReqBody, DbResp};
+use weaver_core::db::server::WeaverDb;
 use weaver_core::error::Error;
-use weaver_core::table_schema::TableSchema;
+use weaver_core::tables::table_schema::TableSchema;
+
 
 #[test]
 fn transactions_in_memory() -> Result<(), Error> {
@@ -19,7 +21,7 @@ fn transactions_in_memory() -> Result<(), Error> {
 
     let socket = db.connect();
     socket
-        .send(DbReq::on_core(|db| {
+        .send(DbReqBody::on_core(|db| {
             let ref schema = TableSchema::builder("default", "in_mem")
                 .column("id", Type::Integer, true, None, 0)?
                 .column("name", Type::String, true, None, None)?

@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use weaver_core::cnxn::tcp::WeaverTcpStream;
 use weaver_core::cnxn::{MessageStream, RemoteDbReq, RemoteDbResp};
 use weaver_core::data::row::Row;
-use weaver_core::db::concurrency::processes::WeaverPid;
+use weaver_core::db::server::processes::WeaverPid;
 use weaver_core::queries::ast::Query;
 use weaver_core::rows::{DefaultOwnedRows, OwnedRows, OwnedRowsExt, Rows};
 use weaver_core::tables::table_schema::TableSchema;

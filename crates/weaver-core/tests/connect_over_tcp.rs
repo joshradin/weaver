@@ -3,7 +3,7 @@ use std::thread;
 use std::time::Duration;
 use tracing::level_filters::LevelFilter;
 use weaver_core::cnxn::tcp::{WeaverTcpListener, WeaverTcpStream};
-use weaver_core::db::concurrency::WeaverDb;
+use weaver_core::db::server::WeaverDb;
 
 #[test]
 fn can_handshake() {

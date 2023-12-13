@@ -1,4 +1,4 @@
-use crate::db::concurrency::WeakWeaverDb;
+use crate::db::server::WeakWeaverDb;
 use crate::tx::behavior::{TxCompletion, TxDropBehavior};
 use crate::tx::{Tx, TxId};
 use crossbeam::channel::{unbounded, Sender};
@@ -11,7 +11,7 @@ use tracing::{error, info, span, warn, Level};
 /// to responding to the completion of transactions.
 ///
 /// Coordinators are only useful
-/// in concurrent setups, and are initialized when a [`WeaverDbServer`](crate::db::concurrency::WeaverDb) is
+/// in concurrent setups, and are initialized when a [`WeaverDbServer`](crate::db::server::WeaverDb) is
 /// started
 #[derive(Debug)]
 pub struct TxCoordinator {

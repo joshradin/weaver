@@ -1074,6 +1074,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ab9b36309365056cd639da3134bf87fa8f3d86008abf99e612384a6eecd459f"
 
 [[package]]
+name = "weaver-auth"
+version = "0.0.0"
+dependencies = [
+ "weaver-core",
+]
+
+[[package]]
 name = "weaver-client"
 version = "0.1.0"
 dependencies = [
@@ -1112,6 +1119,7 @@ dependencies = [
  "clap",
  "tracing",
  "tracing-subscriber",
+ "weaver-auth",
  "weaver-core",
 ]
 

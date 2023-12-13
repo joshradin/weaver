@@ -10,7 +10,7 @@ use weaver_client::write_rows::write_rows;
 use weaver_client::WeaverClient;
 use weaver_core::cnxn::tcp::WeaverTcpStream;
 use weaver_core::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
-use weaver_core::db::concurrency::DbReq;
+use weaver_core::db::server::layers::packets::DbReqBody;
 use weaver_core::error::Error;
 use weaver_core::queries::ast::Query;
 
@@ -52,7 +52,6 @@ fn main() -> eyre::Result<()> {
 
     let (rows, duration) = connection.query(&query)?;
     write_rows(stdout(), rows, duration)?;
-    sleep(Duration::from_secs(5));
 
     Ok(())
 }

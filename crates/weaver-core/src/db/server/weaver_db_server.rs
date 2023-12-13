@@ -1,45 +1,38 @@
-use std::fmt::{Debug, Formatter};
-use std::net::{SocketAddr, ToSocketAddrs};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
-use std::thread;
-use std::thread::JoinHandle;
-
-use crate::cnxn::cnxn_loop::cnxn_main;
-use crate::cnxn::tcp::WeaverTcpListener;
-use crate::cnxn::{Message, MessageStream, RemoteDbResp};
-use crate::db::concurrency::init_system_tables::init_system_tables;
-use crate::db::concurrency::processes::{ProcessManager, WeaverProcessChild, WeaverProcessInfo};
-use crossbeam::channel::{unbounded, Receiver, RecvError, SendError, Sender};
 use parking_lot::{Mutex, RwLock};
-use serde::{Deserialize, Serialize};
-use threadpool_crossbeam_channel::ThreadPool;
-use tracing::{debug, info, info_span, warn};
-
+use crossbeam::channel::{Sender, unbounded};
+use std::thread::{current, JoinHandle};
+use threadpool_crossbeam_channel::{Builder, ThreadPool};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::net::{SocketAddr, ToSocketAddrs};
+use tracing::{debug, error, error_span, info, info_span, warn};
+use std::thread;
+use crate::cnxn::cnxn_loop::cnxn_main;
+use crate::cnxn::{Message, MessageStream, RemoteDbResp};
+use crate::cnxn::tcp::WeaverTcpListener;
 use crate::db::core::WeaverDbCore;
-use crate::dynamic_table::{EngineKey, Table, SYSTEM_TABLE_KEY};
+use crate::db::server::socket::DbSocket;
+use crate::db::server::init_system_tables::init_system_tables;
+use crate::db::server::layers::{Layer, Layers, Service};
+use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
+use crate::db::server::processes::{ProcessManager, WeaverProcessChild};
 use crate::error::Error;
+use crate::plugins::{Plugin, PluginError};
 use crate::queries::ast::Query;
 use crate::queries::executor::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
-use crate::rows::{OwnedRows, OwnedRowsExt, Rows, RowsExt};
-use crate::tables::system_tables::SystemTableFactory;
-use crate::tables::TableRef;
 use crate::tx::coordinator::TxCoordinator;
-use crate::tx::{Tx, TxId};
-
-mod init_system_tables;
-pub mod processes;
+use super::layers::packets::IntoDbResponse;
 
 /// A server that allows for multiple connections.
 #[derive(Clone)]
 pub struct WeaverDb {
-    shared: Arc<WeaverDbShared>,
+    pub(super) shared: Arc<WeaverDbShared>,
 }
 
-struct WeaverDbShared {
-    db: Arc<RwLock<WeaverDbCore>>,
+pub(super) struct WeaverDbShared {
+    pub(super) db: Arc<RwLock<WeaverDbCore>>,
     message_queue: Sender<(DbReq, Sender<DbResp>)>,
     main_handle: Option<JoinHandle<()>>,
     worker_handles: Mutex<Vec<JoinHandle<Result<(), Error>>>>,
@@ -51,15 +44,56 @@ struct WeaverDbShared {
 
     /// Responsible for managing processes.
     process_manager: RwLock<ProcessManager>,
+
+    /// Layered processor
+    layers: RwLock<Layers>
 }
 
 impl WeaverDb {
+
+    /// Process a request
+    fn base_service(&mut self, req: DbReq) -> Result<DbResp, Error> {
+        let (_, body) = req.to_parts();
+        match body {
+            DbReqBody::OnCore(cb) => {
+                let mut writable = self.shared.db.write();
+                (cb)(&mut *writable)
+            }
+            DbReqBody::OnServer(cb) => (cb)(self),
+            DbReqBody::Ping => Ok(DbResp::Pong),
+            DbReqBody::TxQuery(tx, ref query) => {
+                let ref plan = self.to_plan(query)?;
+                debug!("created plan: {plan:?}");
+                let executor = self.query_executor();
+                match executor.execute(&tx, plan) {
+                    Ok(rows) => Ok(DbResp::TxRows(tx, rows)),
+                    Err(err) => Ok(DbResp::Err(err.to_string())),
+                }
+            }
+            DbReqBody::StartTransaction => {
+                let tx = self.shared.db.read().start_transaction();
+                Ok(DbResp::Tx(tx))
+            }
+            DbReqBody::Commit(tx) => {
+                tx.commit();
+                Ok(DbResp::Ok)
+            }
+            DbReqBody::Rollback(tx) => {
+                tx.rollback();
+                Ok(DbResp::Ok)
+            }
+        }
+    }
+
     pub fn new(workers: usize, shard: WeaverDbCore) -> Result<Self, Error> {
         let inner = Arc::new_cyclic(move |weak| {
             let mut shard = shard;
             shard.tx_coordinator = Some(TxCoordinator::new(WeakWeaverDb(weak.clone()), 0));
 
-            let worker_pool = ThreadPool::new(workers);
+            let worker_pool = Builder::new()
+                .num_threads(workers)
+                .thread_name("worker".to_string())
+                .build();
             let (sc, rc) = unbounded::<(DbReq, Sender<DbResp>)>();
 
             let main_handle = {
@@ -80,52 +114,35 @@ impl WeaverDb {
                                     warn!("db request processing after db dropped");
                                     return;
                                 };
+
                                 let mut db = WeaverDb { shared: db };
 
-                                let resp = (|| -> Result<DbResp, Error> {
-                                    match req {
-                                        DbReq::OnCore(cb) => {
-                                            let mut writable = db.shared.db.write();
-                                            (cb)(&mut *writable)
-                                        }
-                                        DbReq::OnServer(cb) => (cb)(&mut db),
-                                        DbReq::Ping => Ok(DbResp::Pong),
-                                        DbReq::TxQuery(tx, ref query) => {
-                                            let ref plan = db.to_plan(query)?;
-                                            debug!("created plan: {plan:?}");
-                                            let executor = db.query_executor();
-                                            match executor.execute(&tx, plan) {
-                                                Ok(rows) => Ok(DbResp::TxRows(tx, rows)),
-                                                Err(err) => Ok(DbResp::Err(err.to_string())),
-                                            }
-                                        }
-                                        DbReq::StartTransaction => {
-                                            let tx = db.shared.db.read().start_transaction();
-                                            Ok(DbResp::Tx(tx))
-                                        }
-                                        DbReq::Commit(tx) => {
-                                            tx.commit();
-                                            Ok(DbResp::Ok)
-                                        }
-                                        DbReq::Rollback(tx) => {
-                                            tx.rollback();
-                                            Ok(DbResp::Ok)
-                                        }
-                                    }
-                                })();
+                                let resp = thread::spawn(move || {
+                                    db.shared.layers.read().process(req)
+                                }).join().map_err(|e| {
+                                    error!("panic occurred while processing a request");
+                                    Error::ThreadPanicked
+                                }).into_db_resp();
 
-                                match resp {
-                                    Ok(ok) => {
-                                        let _ = response_channel.send(ok);
-                                    }
-                                    Err(err) => {
-                                        let _ = response_channel.send(DbResp::Err(err.to_string()));
-                                    }
-                                }
+                                let _ = response_channel.send(resp);
                             })
                         }
                     })
                     .expect("could not start main shard thread")
+            };
+
+
+
+            let layers = {
+                let weak_db = weak.clone();
+                Layers::new(move |req| {
+                    let Some(db) = weak_db.upgrade() else {
+                        warn!("db request processing after db dropped");
+                        return Error::server_error("no db to connect to").into_db_resp();
+                    };
+                    let mut db = WeaverDb { shared: db };
+                    db.base_service(req).into_db_resp()
+                })
             };
 
             let shard = Arc::new(RwLock::new(shard));
@@ -138,12 +155,31 @@ impl WeaverDb {
                 tcp_bound: AtomicBool::new(false),
                 tcp_local_address: RwLock::default(),
                 process_manager: RwLock::new(ProcessManager::new(WeakWeaverDb(weak.clone()))),
+                layers: RwLock::new(layers),
             }
         });
 
         let mut db = WeaverDb { shared: inner };
         init_system_tables(&mut db)?;
         Ok(db)
+    }
+
+    /// Apply a plugin
+    pub fn apply<P : Plugin>(&mut self, plugin: &P) -> Result<(), PluginError> {
+        error_span!("plugin-apply", plugin=plugin.name().as_ref()).in_scope(|| {
+            match plugin.apply(self) {
+                Ok(()) => { Ok(())}
+                Err(err) => {
+                    error!("failed to apply plugin: {}", err);
+                    Err(err)
+                }
+            }
+        })
+    }
+
+    /// Wraps the db server response mechanism with a new layer
+    pub fn wrap_req<L : Layer + 'static>(&mut self, layer: L) {
+        self.shared.layers.write().wrap(layer)
     }
 
     pub fn to_plan(&self, query: &Query) -> Result<QueryPlan, Error> {
@@ -189,7 +225,7 @@ impl WeaverDb {
                         let mut process_manager = weaver.shared.process_manager.write();
 
                         process_manager.start(move |mut child: WeaverProcessChild| {
-                            let span = info_span!("external-connection", pid = child.pid());
+                            let span = info_span!("external-connection", peer_addrr=stream.peer_addr().map(|addr| addr.to_string()));
                             let _enter = span.enter();
                             if let Err(e) = cnxn_main(&mut stream, child) {
                                 warn!("client connection ended with err: {}", e);
@@ -233,11 +269,7 @@ impl WeaverDb {
         let (resp_send, resp_recv) = unbounded::<DbResp>();
         let msg_queue = self.shared.message_queue.clone();
 
-        DbSocket {
-            main_queue: msg_queue,
-            resp_sender: resp_send,
-            receiver: resp_recv,
-        }
+        DbSocket::new(msg_queue, resp_send, resp_recv)
     }
 
     /// Creates a weak reference to a distro db server
@@ -269,100 +301,3 @@ impl WeakWeaverDb {
         self.0.upgrade().map(|db| WeaverDb { shared: db })
     }
 }
-
-pub enum DbReq {
-    OnCore(Box<dyn FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync>),
-    OnServer(Box<dyn FnOnce(&mut WeaverDb) -> Result<DbResp, Error> + Send + Sync>),
-    /// Send a query to the request
-    TxQuery(Tx, Query),
-    Ping,
-    StartTransaction,
-    Commit(Tx),
-    Rollback(Tx),
-}
-
-impl Debug for DbReq {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DbReq").finish_non_exhaustive()
-    }
-}
-
-impl DbReq {
-    /// Gets full access of db core
-    pub fn on_core<
-        F: FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync + 'static,
-    >(
-        func: F,
-    ) -> Self {
-        Self::OnCore(Box::new(func))
-    }
-
-    /// Gets full access of db server
-    pub fn on_server<F: FnOnce(&mut WeaverDb) -> Result<DbResp, Error> + Send + Sync + 'static>(
-        func: F,
-    ) -> Self {
-        Self::OnServer(Box::new(func))
-    }
-}
-
-#[derive(Debug)]
-pub enum DbResp {
-    Pong,
-    Ok,
-    Tx(Tx),
-    TxTable(Tx, Arc<Table>),
-    TxRows(Tx, Box<dyn OwnedRows + Send + Sync>),
-    Rows(Box<dyn OwnedRows + Send + Sync>),
-    Err(String),
-}
-
-impl DbResp {
-    pub fn rows<T: OwnedRows + Send + Sync + 'static>(rows: T) -> Self {
-        Self::Rows(Box::new(rows))
-    }
-}
-
-#[derive(Debug)]
-pub struct DbSocket {
-    main_queue: Sender<(DbReq, Sender<DbResp>)>,
-    resp_sender: Sender<DbResp>,
-    receiver: Receiver<DbResp>,
-}
-
-impl DbSocket {
-    /// Communicate with the db
-    pub fn send(&self, req: DbReq) -> Result<DbResp, Error> {
-        self.main_queue.send((req, self.resp_sender.clone()))?;
-        Ok(self.receiver.recv()?)
-    }
-
-    pub fn get_table(&self, (schema, table): &TableRef) -> Result<Arc<Table>, Error> {
-        let schema = schema.clone();
-        let table = table.clone();
-        let tx = Tx::default();
-        let DbResp::TxTable(_, table) = self.send(DbReq::on_core({
-            let schema = schema.clone();
-            let table = table.clone();
-            move |core| {
-                let table = core
-                    .get_table(&schema, &table)
-                    .ok_or(Error::NoTableFound(schema.to_string(), table.to_string()))?;
-                Ok(DbResp::TxTable(tx, table))
-            }
-        }))?
-        else {
-            return Err(Error::NoTableFound(schema.to_string(), table.to_string()));
-        };
-
-        Ok(table)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SystemDbSocket {
-    sender: Sender<DbReq>,
-    handle: Arc<JoinHandle<()>>,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ShardSocketError {}

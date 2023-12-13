@@ -1,6 +1,5 @@
 //! # weaver-core
 
-pub mod access_control;
 pub mod cnxn;
 pub mod common;
 pub mod conversion;
@@ -14,3 +13,4 @@ pub mod rows;
 pub mod sentinel;
 pub mod tables;
 pub mod tx;
+pub mod plugins;

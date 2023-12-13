@@ -1,15 +1,17 @@
 //! TCP based connections
 
+use std::collections::HashMap;
 use crate::cnxn::handshake::{handshake_client, handshake_listener};
 use crate::cnxn::{read_msg, write_msg, Message, MessageStream, RemoteDbReq, RemoteDbResp};
-use crate::db::concurrency::WeakWeaverDb;
+use crate::db::server::WeakWeaverDb;
 use crate::error::Error;
 use std::io;
 use std::io::{ErrorKind, Read, Write};
 use std::mem::size_of;
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::time::Duration;
-use tracing::debug;
+use tracing::{debug, trace};
+
 
 /// A tcp stream that connects to a
 #[derive(Debug)]
@@ -59,21 +61,31 @@ impl WeaverTcpStream {
         handshake_client(&mut socket, timeout)?;
         Ok(socket)
     }
+
+    pub fn local_addr(&self) -> Option<SocketAddr> {
+        self.socket.local_addr().ok()
+    }
+
+    pub fn peer_addr(&self) -> Option<SocketAddr> {
+        self.socket.peer_addr().ok()
+    }
 }
+
+
 impl MessageStream for WeaverTcpStream {
     fn read(&mut self) -> Result<Message, Error> {
-        debug!("waiting for message");
+        trace!("waiting for message");
         let mut len = [0_u8; size_of::<u32>()];
         self.socket.read_exact(&mut len)?;
         let len = u32::from_be_bytes(len);
         let mut message_buffer = vec![0u8; len as usize];
         self.socket.read_exact(&mut message_buffer)?;
-        debug!("got message of length {}", len);
+        trace!("got message of length {}", len);
         read_msg(&message_buffer[..])
     }
 
     fn read_timeout(&mut self, duration: Duration) -> Result<Message, Error> {
-        debug!("reading message with timeout {:?}", duration.as_millis());
+        trace!("reading message with timeout {:?}", duration.as_millis());
         self.socket.set_read_timeout(Some(duration))?;
         let output = self.read();
         self.socket.set_read_timeout(None)?;
@@ -81,7 +93,7 @@ impl MessageStream for WeaverTcpStream {
     }
 
     fn write(&mut self, message: &Message) -> Result<(), Error> {
-        debug!("sending {message:?}");
+        trace!("sending {message:?}");
         let mut msg_buffer = vec![];
         write_msg(&mut msg_buffer, message)?;
         let len = msg_buffer.len() as u32;
@@ -127,7 +139,7 @@ impl WeaverTcpListener {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::concurrency::WeaverDb;
+    use crate::db::server::WeaverDb;
     use std::sync::{Arc, Barrier};
     use std::thread;
 

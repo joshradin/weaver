@@ -3,8 +3,8 @@
 
 use crate::data::row::Row;
 use crate::data::values::Value;
-use crate::db::concurrency::processes::WeaverProcessInfo;
-use crate::db::concurrency::{DbReq, DbResp, DbSocket};
+use crate::db::server::processes::WeaverProcessInfo;
+use crate::db::server::socket::DbSocket;
 use crate::dynamic_table::{Col, DynamicTable, StorageEngineFactory, Table};
 use crate::error::Error;
 use crate::rows::{DefaultOwnedRows, KeyIndex, OwnedRowsExt, Rows};
@@ -12,6 +12,7 @@ use crate::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 use std::fmt::Debug;
 use std::sync::Arc;
+use crate::db::server::layers::packets::{DbReqBody, DbResp};
 
 /// Provide a system table
 pub struct SystemTable {
@@ -72,65 +73,5 @@ impl DynamicTable for SystemTable {
 
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
         unimplemented!("can not delete data from a system table")
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct SystemTableFactory {
-    connection: Arc<DbSocket>,
-}
-
-impl SystemTableFactory {
-    /// Creates system tables using an actual, live connection
-    pub fn new(connection: DbSocket) -> Self {
-        Self {
-            connection: Arc::new(connection),
-        }
-    }
-}
-
-impl StorageEngineFactory for SystemTableFactory {
-    fn open(&self, schema: &TableSchema) -> Result<Table, Error> {
-        let table = match schema.name() {
-            "processes" => {
-                let schema = schema.clone();
-                Box::new(SystemTable::new(
-                    schema.clone(),
-                    self.connection.clone(),
-                    move |socket, key_index| {
-                        let schema = schema.clone();
-                        let resp = socket.send(DbReq::on_server(move |full| {
-                            let processes = full.with_process_manager(|pm| pm.processes());
-
-                            let rows = processes.into_iter().map(
-                                |WeaverProcessInfo {
-                                     pid,
-                                     age,
-                                     state,
-                                     info,
-                                 }| {
-                                    Row::from([
-                                        Value::Integer(pid.into()),
-                                        Value::Integer(age as i64),
-                                        Value::String(format!("{state:?}")),
-                                        Value::String(format!("{info}")),
-                                    ])
-                                    .to_owned()
-                                },
-                            );
-                            Ok(DbResp::rows(DefaultOwnedRows::new(schema.clone(), rows)))
-                        }))?;
-                        match resp {
-                            DbResp::Rows(rows) => Ok(rows.to_rows()),
-                            _ => unreachable!(),
-                        }
-                    },
-                ))
-            }
-            _unknown => {
-                panic!("unknown system table: {}", _unknown);
-            }
-        };
-        Ok(table)
     }
 }

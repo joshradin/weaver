@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use tracing::info;
 
-use crate::db::concurrency::WeaverDb;
+use crate::db::server::WeaverDb;
 use crate::dynamic_table::Col;
 
 pub mod behavior;

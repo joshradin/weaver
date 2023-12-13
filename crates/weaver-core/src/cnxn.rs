@@ -1,12 +1,10 @@
 //! Connections that are used for connecting to [`WeaverDb`](WeaverDb) instances
 
 use crate::data::row::OwnedRow;
-use crate::db::concurrency::processes::WeaverProcessInfo;
-use crate::db::concurrency::{DbReq, DbResp};
+use crate::db::server::processes::WeaverProcessInfo;
 use crate::error::Error;
 use crate::queries::ast::Query;
 use crate::tables::table_schema::TableSchema;
-use crate::tables::TableRef;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::time::Duration;

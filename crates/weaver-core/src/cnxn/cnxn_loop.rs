@@ -1,17 +1,15 @@
 //! The connect loop provides the "main" method for newly created connections
 
 use either::Either;
-use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
-use tracing::{debug, error, info, info_span, warn};
+use tracing::{debug, error, trace, warn};
 
 use crate::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
-use crate::db::concurrency::processes::{ProcessState, WeaverProcessChild};
-use crate::db::concurrency::{DbReq, DbResp, WeakWeaverDb, WeaverDb};
-use crate::dynamic_table::Table;
+use crate::db::server::processes::{ProcessState, WeaverProcessChild};
+use crate::db::server::layers::packets::{DbReqBody, DbResp};
 use crate::error::Error;
-use crate::rows::{OwnedRows, Rows};
+use crate::rows::OwnedRows;
 use crate::tx::Tx;
 
 /// The main method to use when connecting to a client
@@ -30,7 +28,7 @@ pub fn cnxn_main<S: MessageStream>(
 
         match message {
             Message::Req(req) => {
-                debug!("Received req {:?}", req);
+                trace!("Received req {:?}", req);
                 child.set_state(ProcessState::Active);
                 let resp: Either<Result<RemoteDbResp, Error>, Result<DbResp, Error>> = match req {
                     RemoteDbReq::ConnectionInfo => {
@@ -42,20 +40,20 @@ pub fn cnxn_main<S: MessageStream>(
                         Either::Left(Ok(RemoteDbResp::Ok))
                     }
                     RemoteDbReq::Query(query) => Either::Right(match tx.take() {
-                        None => socket.send(DbReq::TxQuery(Tx::default(), query)),
-                        Some(existing_tx) => socket.send(DbReq::TxQuery(existing_tx, query)),
+                        None => socket.send(DbReqBody::TxQuery(Tx::default(), query)),
+                        Some(existing_tx) => socket.send(DbReqBody::TxQuery(existing_tx, query)),
                     }),
-                    RemoteDbReq::Ping => Either::Right(socket.send(DbReq::Ping)),
+                    RemoteDbReq::Ping => Either::Right(socket.send(DbReqBody::Ping)),
                     RemoteDbReq::StartTransaction => {
-                        Either::Right(socket.send(DbReq::StartTransaction))
+                        Either::Right(socket.send(DbReqBody::StartTransaction))
                     }
                     RemoteDbReq::Commit => {
                         let tx = tx.take().expect("no active tx");
-                        Either::Right(socket.send(DbReq::Commit(tx)))
+                        Either::Right(socket.send(DbReqBody::Commit(tx)))
                     }
                     RemoteDbReq::Rollback => {
                         let tx = tx.take().expect("no active tx");
-                        Either::Right(socket.send(DbReq::Commit(tx)))
+                        Either::Right(socket.send(DbReqBody::Commit(tx)))
                     }
                     RemoteDbReq::GetRow => {
                         debug!("attempting to get next row");
@@ -77,7 +75,7 @@ pub fn cnxn_main<S: MessageStream>(
                 let resp = match resp {
                     Either::Left(left) => left?,
                     Either::Right(resp) => {
-                        debug!("using response: {:?}", resp);
+                        trace!("using response: {:?}", resp);
                         match resp? {
                             DbResp::Pong => RemoteDbResp::Pong,
                             DbResp::Ok => RemoteDbResp::Ok,
@@ -106,7 +104,7 @@ pub fn cnxn_main<S: MessageStream>(
                 };
 
                 child.make_idle();
-                debug!("Sending response: {:?}", resp);
+                trace!("Sending response: {:?}", resp);
                 stream.write(&Message::Resp(resp))?;
             }
             _ => {

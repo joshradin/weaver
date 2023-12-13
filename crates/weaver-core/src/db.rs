@@ -3,7 +3,7 @@
 use crate::dynamic_table::StorageEngineFactory;
 use std::fmt::Debug;
 
-pub mod concurrency;
+pub mod server;
 pub mod core;
 mod start_db;
 mod start_server;

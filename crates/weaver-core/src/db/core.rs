@@ -1,9 +1,6 @@
 use crate::db::start_db::start_db;
-use crate::dynamic_table::{
-    storage_engine_factory, EngineKey, StorageEngineFactory, Table, IN_MEMORY_KEY,
-};
+use crate::dynamic_table::{storage_engine_factory, EngineKey, StorageEngineFactory, Table, IN_MEMORY_KEY, DynamicTable};
 use crate::error::Error;
-use crate::tables::system_tables::SystemTableFactory;
 use crate::tables::table_schema::TableSchema;
 use crate::tables::InMemoryTable;
 use crate::tx::coordinator::TxCoordinator;
@@ -64,6 +61,24 @@ impl WeaverDbCore {
         }
     }
 
+    /// Add a table directly into the core
+    pub fn add_table<T : DynamicTable + 'static>(&self, table: T) -> Result<(), Error> {
+        debug!("directly adding table {}.{} into core", table.schema().schema(), table.schema().name());
+        let table_schema = table.schema();
+        let (schema, name) = (table_schema.schema().to_string(), table_schema.name().to_string());
+        if self
+            .open_tables
+            .read()
+            .contains_key(&(schema.clone(), name.clone()))
+        {
+            return Ok(());
+        } else {
+            let mut open_tables = self.open_tables.write();
+            let table: Table = Box::new(table);
+            open_tables.insert((schema, name), Arc::new(table));
+            Ok(())
+        }
+    }
     pub fn open_table(&self, schema: &TableSchema) -> Result<(), Error> {
         if self
             .open_tables

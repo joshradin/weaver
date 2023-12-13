@@ -9,10 +9,10 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use crate::db::concurrency::WeakWeaverDb;
+use crate::db::server::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::{debug, error, info, Level, span};
 
 use crate::error::Error;
 
@@ -171,15 +171,33 @@ pub struct ProcessManager {
     weak: WeakWeaverDb,
     next_pid: AtomicU32,
     processes: Arc<RwLock<BTreeMap<WeaverPid, WeaverProcess>>>,
+    process_killed_channel: Sender<WeaverPid>,
+    process_killed_handle: JoinHandle<()>,
 }
 
 impl ProcessManager {
     /// Creates a new process manager
     pub fn new(weak: WeakWeaverDb) -> Self {
+        let (send, read) = unbounded::<WeaverPid>();
+        let processes: Arc<RwLock<BTreeMap<WeaverPid, WeaverProcess>>> = Default::default();
+        let handle = {
+            let processes = processes.clone();
+            thread::spawn(move || {
+            loop {
+                let Ok(pid) = read.recv() else {
+                    break;
+                };
+
+                let _ = processes.write().remove(&pid);
+            }
+        }) };
+
         Self {
             weak,
             next_pid: AtomicU32::new(1),
-            processes: Default::default(),
+            processes,
+            process_killed_channel: send,
+            process_killed_handle: handle
         }
     }
 
@@ -202,21 +220,24 @@ impl ProcessManager {
         let (mut parent, child) = WeaverProcess::new(pid, self.weak.clone());
 
         let handle = {
-            let processes = Arc::downgrade(&self.processes);
-
+            let channel = self.process_killed_channel.clone();
             thread::Builder::new()
                 .name(format!("weaver-db-process-{}", pid))
                 .spawn(move || {
-                    let processes = processes;
+                    span!(Level::ERROR, "process", pid=pid).in_scope(|| {
                     let child = child;
                     let pid = child.pid;
+                    debug!("running process {}", pid);
                     let result = func(child);
+                    debug!("process ended with result {:?}", result);
 
-                    if let Some(processes) = processes.upgrade() {
-                        let _ = processes.write().remove(&pid);
+                    if let Ok(()) = channel.send(pid) {
+                    } else {
+                        error!("couldn't remove process {} from process list", pid);
                     }
 
                     result
+                    })
                 })?
         };
         parent.set_handle(handle);

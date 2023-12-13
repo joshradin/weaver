@@ -1,12 +1,13 @@
 //! Creates an unoptimized [query plan](QueryPlan) from a [query](Query)
 
-use crate::db::concurrency::{DbSocket, WeakWeaverDb, WeaverDb};
+use crate::db::server::socket::DbSocket;
 use crate::dynamic_table::Table;
 use crate::error::Error;
 use crate::queries::ast::Query;
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::KeyIndex;
 use std::collections::VecDeque;
+use crate::db::server::WeakWeaverDb;
 
 #[derive(Debug)]
 pub struct QueryPlanFactory {
