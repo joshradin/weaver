@@ -1,8 +1,3 @@
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 use crate::db::core::WeaverDbCore;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::Table;
@@ -10,15 +5,19 @@ use crate::error::Error;
 use crate::queries::ast::Query;
 use crate::rows::OwnedRows;
 use crate::tx::Tx;
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
 
 /// Headers are used to convey extra data in requests
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct Headers {
-    header: HashMap<String, Vec<String>>
+    header: HashMap<String, Vec<String>>,
 }
 
 impl Headers {
-
     /// Gets header values, if present
     pub fn get(&self, header: impl AsRef<str>) -> Option<&[String]> {
         self.header.get(header.as_ref()).map(|s| s.as_slice())
@@ -26,7 +25,8 @@ impl Headers {
 
     /// Sets a value, appending it to an already existing header if it's already present
     pub fn set(&mut self, header: impl AsRef<str>, value: impl ToString) {
-        self.header.entry(header.as_ref().to_string())
+        self.header
+            .entry(header.as_ref().to_string())
             .or_default()
             .push(value.to_string());
     }
@@ -41,7 +41,7 @@ impl Headers {
 #[derive(Debug)]
 pub struct DbReq {
     headers: Headers,
-    body: DbReqBody
+    body: DbReqBody,
 }
 
 impl DbReq {
@@ -50,8 +50,9 @@ impl DbReq {
         Self { headers, body }
     }
 
-    pub fn on_core<F, T : IntoDbResponse>(cb: F) -> Self
-        where F : FnOnce(&mut WeaverDbCore) -> T + Send + Sync + 'static
+    pub fn on_core<F, T: IntoDbResponse>(cb: F) -> Self
+    where
+        F: FnOnce(&mut WeaverDbCore) -> T + Send + Sync + 'static,
     {
         DbReqBody::on_core(|core| Ok(cb(core).into_db_resp())).into()
     }
@@ -83,7 +84,6 @@ impl DbReq {
 }
 
 impl From<DbReqBody> for DbReq {
-
     /// Creates db request with default headers
     fn from(value: DbReqBody) -> Self {
         Self {
@@ -92,7 +92,6 @@ impl From<DbReqBody> for DbReq {
         }
     }
 }
-
 
 /// The base request that is sent to the database
 
@@ -133,19 +132,14 @@ impl DbReqBody {
 
 /// Converts something to a db response
 pub trait IntoDbResponse {
-
     /// Convert to a db response
     fn into_db_resp(self) -> DbResp;
 }
-impl<R : IntoDbResponse, E : IntoDbResponse> IntoDbResponse for Result<R, E> {
+impl<R: IntoDbResponse, E: IntoDbResponse> IntoDbResponse for Result<R, E> {
     fn into_db_resp(self) -> DbResp {
         match self {
-            Ok(ok) => {
-                ok.into_db_resp()
-            }
-            Err(err) => {
-                err.into_db_resp()
-            }
+            Ok(ok) => ok.into_db_resp(),
+            Err(err) => err.into_db_resp(),
         }
     }
 }
@@ -179,7 +173,7 @@ impl DbResp {
     }
 }
 
-impl<E : std::error::Error> From<E> for DbResp {
+impl<E: std::error::Error> From<E> for DbResp {
     fn from(value: E) -> Self {
         Self::Err(value.to_string())
     }

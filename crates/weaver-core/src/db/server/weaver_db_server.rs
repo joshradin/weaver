@@ -1,21 +1,13 @@
-use std::sync::{Arc, Weak};
-use parking_lot::{Mutex, RwLock};
-use crossbeam::channel::{Sender, unbounded};
-use std::thread::{current, JoinHandle};
-use threadpool_crossbeam_channel::{Builder, ThreadPool};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::net::{SocketAddr, ToSocketAddrs};
-use tracing::{debug, error, error_span, info, info_span, warn};
-use std::thread;
+use super::layers::packets::IntoDbResponse;
 use crate::cnxn::cnxn_loop::cnxn_main;
-use crate::cnxn::{Message, MessageStream, RemoteDbResp};
 use crate::cnxn::tcp::WeaverTcpListener;
+use crate::cnxn::{Message, MessageStream, RemoteDbResp};
 use crate::db::core::WeaverDbCore;
-use crate::db::server::socket::DbSocket;
 use crate::db::server::init_system_tables::init_system_tables;
-use crate::db::server::layers::{Layer, Layers, Service};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
+use crate::db::server::layers::{Layer, Layers, Service};
 use crate::db::server::processes::{ProcessManager, WeaverProcessChild};
+use crate::db::server::socket::DbSocket;
 use crate::error::Error;
 use crate::plugins::{Plugin, PluginError};
 use crate::queries::ast::Query;
@@ -23,7 +15,15 @@ use crate::queries::executor::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
 use crate::tx::coordinator::TxCoordinator;
-use super::layers::packets::IntoDbResponse;
+use crossbeam::channel::{unbounded, Sender};
+use parking_lot::{Mutex, RwLock};
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Weak};
+use std::thread;
+use std::thread::{current, JoinHandle};
+use threadpool_crossbeam_channel::{Builder, ThreadPool};
+use tracing::{debug, error, error_span, info, info_span, warn};
 
 /// A server that allows for multiple connections.
 #[derive(Clone)]
@@ -46,11 +46,10 @@ pub(super) struct WeaverDbShared {
     process_manager: RwLock<ProcessManager>,
 
     /// Layered processor
-    layers: RwLock<Layers>
+    layers: RwLock<Layers>,
 }
 
 impl WeaverDb {
-
     /// Process a request
     fn base_service(&mut self, req: DbReq) -> Result<DbResp, Error> {
         let (_, body) = req.to_parts();
@@ -117,12 +116,14 @@ impl WeaverDb {
 
                                 let mut db = WeaverDb { shared: db };
 
-                                let resp = thread::spawn(move || {
-                                    db.shared.layers.read().process(req)
-                                }).join().map_err(|e| {
-                                    error!("panic occurred while processing a request");
-                                    Error::ThreadPanicked
-                                }).into_db_resp();
+                                let resp =
+                                    thread::spawn(move || db.shared.layers.read().process(req))
+                                        .join()
+                                        .map_err(|e| {
+                                            error!("panic occurred while processing a request");
+                                            Error::ThreadPanicked
+                                        })
+                                        .into_db_resp();
 
                                 let _ = response_channel.send(resp);
                             })
@@ -130,8 +131,6 @@ impl WeaverDb {
                     })
                     .expect("could not start main shard thread")
             };
-
-
 
             let layers = {
                 let weak_db = weak.clone();
@@ -165,10 +164,10 @@ impl WeaverDb {
     }
 
     /// Apply a plugin
-    pub fn apply<P : Plugin>(&mut self, plugin: &P) -> Result<(), PluginError> {
-        error_span!("plugin-apply", plugin=plugin.name().as_ref()).in_scope(|| {
+    pub fn apply<P: Plugin>(&mut self, plugin: &P) -> Result<(), PluginError> {
+        error_span!("plugin-apply", plugin = plugin.name().as_ref()).in_scope(|| {
             match plugin.apply(self) {
-                Ok(()) => { Ok(())}
+                Ok(()) => Ok(()),
                 Err(err) => {
                     error!("failed to apply plugin: {}", err);
                     Err(err)
@@ -178,7 +177,7 @@ impl WeaverDb {
     }
 
     /// Wraps the db server response mechanism with a new layer
-    pub fn wrap_req<L : Layer + 'static>(&mut self, layer: L) {
+    pub fn wrap_req<L: Layer + 'static>(&mut self, layer: L) {
         self.shared.layers.write().wrap(layer)
     }
 
@@ -225,7 +224,10 @@ impl WeaverDb {
                         let mut process_manager = weaver.shared.process_manager.write();
 
                         process_manager.start(move |mut child: WeaverProcessChild| {
-                            let span = info_span!("external-connection", peer_addrr=stream.peer_addr().map(|addr| addr.to_string()));
+                            let span = info_span!(
+                                "external-connection",
+                                peer_addrr = stream.peer_addr().map(|addr| addr.to_string())
+                            );
                             let _enter = span.enter();
                             if let Err(e) = cnxn_main(&mut stream, child) {
                                 warn!("client connection ended with err: {}", e);

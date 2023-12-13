@@ -15,9 +15,7 @@ pub struct User {
 }
 
 #[derive(Default, Debug)]
-pub struct UserTable {
-
-}
+pub struct UserTable {}
 
 impl DynamicTable for UserTable {
     fn schema(&self) -> &TableSchema {
@@ -36,7 +34,11 @@ impl DynamicTable for UserTable {
         todo!()
     }
 
-    fn read<'tx, 'table: 'tx>(&'table self, tx: &'tx Tx, key: &KeyIndex) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
+    fn read<'tx, 'table: 'tx>(
+        &'table self,
+        tx: &'tx Tx,
+        key: &KeyIndex,
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
         todo!()
     }
 

@@ -9,14 +9,18 @@ fn connect() {
     let handle1 = {
         let socket = shard.connect();
         thread::spawn(move || {
-            let pong = socket.send(DbReqBody::Ping).expect("could not get response");
+            let pong = socket
+                .send(DbReqBody::Ping)
+                .expect("could not get response");
             assert!(matches!(pong, DbResp::Pong));
         })
     };
     let handle2 = {
         let socket = shard.connect();
         thread::spawn(move || {
-            let pong = socket.send(DbReqBody::Ping).expect("could not get response");
+            let pong = socket
+                .send(DbReqBody::Ping)
+                .expect("could not get response");
             assert!(matches!(pong, DbResp::Pong));
         })
     };

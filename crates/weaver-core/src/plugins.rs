@@ -1,9 +1,9 @@
 //! Plugin support
 
-use std::borrow::Cow;
-use thiserror::Error;
 use crate::db::server::WeaverDb;
 use crate::error::Error;
+use std::borrow::Cow;
+use thiserror::Error;
 
 /// All plugins must implement this trait
 pub trait Plugin {
@@ -17,5 +17,5 @@ pub trait Plugin {
 pub enum PluginError {
     /// A weaver error
     #[error(transparent)]
-    WeaverError(#[from] crate::error::Error)
+    WeaverError(#[from] crate::error::Error),
 }

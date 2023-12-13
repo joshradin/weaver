@@ -12,7 +12,7 @@ use std::time::Instant;
 use crate::db::server::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, Level, span};
+use tracing::{debug, error, info, span, Level};
 
 use crate::error::Error;
 
@@ -182,22 +182,21 @@ impl ProcessManager {
         let processes: Arc<RwLock<BTreeMap<WeaverPid, WeaverProcess>>> = Default::default();
         let handle = {
             let processes = processes.clone();
-            thread::spawn(move || {
-            loop {
+            thread::spawn(move || loop {
                 let Ok(pid) = read.recv() else {
                     break;
                 };
 
                 let _ = processes.write().remove(&pid);
-            }
-        }) };
+            })
+        };
 
         Self {
             weak,
             next_pid: AtomicU32::new(1),
             processes,
             process_killed_channel: send,
-            process_killed_handle: handle
+            process_killed_handle: handle,
         }
     }
 
@@ -224,19 +223,19 @@ impl ProcessManager {
             thread::Builder::new()
                 .name(format!("weaver-db-process-{}", pid))
                 .spawn(move || {
-                    span!(Level::ERROR, "process", pid=pid).in_scope(|| {
-                    let child = child;
-                    let pid = child.pid;
-                    debug!("running process {}", pid);
-                    let result = func(child);
-                    debug!("process ended with result {:?}", result);
+                    span!(Level::ERROR, "process", pid = pid).in_scope(|| {
+                        let child = child;
+                        let pid = child.pid;
+                        debug!("running process {}", pid);
+                        let result = func(child);
+                        debug!("process ended with result {:?}", result);
 
-                    if let Ok(()) = channel.send(pid) {
-                    } else {
-                        error!("couldn't remove process {} from process list", pid);
-                    }
+                        if let Ok(()) = channel.send(pid) {
+                        } else {
+                            error!("couldn't remove process {} from process list", pid);
+                        }
 
-                    result
+                        result
                     })
                 })?
         };

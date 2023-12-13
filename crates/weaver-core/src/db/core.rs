@@ -1,5 +1,7 @@
 use crate::db::start_db::start_db;
-use crate::dynamic_table::{storage_engine_factory, EngineKey, StorageEngineFactory, Table, IN_MEMORY_KEY, DynamicTable};
+use crate::dynamic_table::{
+    storage_engine_factory, DynamicTable, EngineKey, StorageEngineFactory, Table, IN_MEMORY_KEY,
+};
 use crate::error::Error;
 use crate::tables::table_schema::TableSchema;
 use crate::tables::InMemoryTable;
@@ -62,10 +64,17 @@ impl WeaverDbCore {
     }
 
     /// Add a table directly into the core
-    pub fn add_table<T : DynamicTable + 'static>(&self, table: T) -> Result<(), Error> {
-        debug!("directly adding table {}.{} into core", table.schema().schema(), table.schema().name());
+    pub fn add_table<T: DynamicTable + 'static>(&self, table: T) -> Result<(), Error> {
+        debug!(
+            "directly adding table {}.{} into core",
+            table.schema().schema(),
+            table.schema().name()
+        );
         let table_schema = table.schema();
-        let (schema, name) = (table_schema.schema().to_string(), table_schema.name().to_string());
+        let (schema, name) = (
+            table_schema.schema().to_string(),
+            table_schema.name().to_string(),
+        );
         if self
             .open_tables
             .read()

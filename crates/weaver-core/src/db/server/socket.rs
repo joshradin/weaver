@@ -1,11 +1,11 @@
-use std::sync::Arc;
-use crossbeam::channel::{Receiver, Sender};
-use tracing::error_span;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::dynamic_table::Table;
 use crate::error::Error;
 use crate::tables::TableRef;
 use crate::tx::Tx;
+use crossbeam::channel::{Receiver, Sender};
+use std::sync::Arc;
+use tracing::error_span;
 
 #[derive(Debug)]
 pub struct DbSocket {
@@ -15,14 +15,23 @@ pub struct DbSocket {
 }
 
 impl DbSocket {
-    pub(in super) fn new(main_queue: Sender<(DbReq, Sender<DbResp>)>, resp_sender: Sender<DbResp>, receiver: Receiver<DbResp>) -> Self {
-        Self { main_queue, resp_sender, receiver }
+    pub(super) fn new(
+        main_queue: Sender<(DbReq, Sender<DbResp>)>,
+        resp_sender: Sender<DbResp>,
+        receiver: Receiver<DbResp>,
+    ) -> Self {
+        Self {
+            main_queue,
+            resp_sender,
+            receiver,
+        }
     }
 
     /// Communicate with the db
     pub fn send(&self, req: impl Into<DbReq>) -> Result<DbResp, Error> {
         error_span!("req-resp").in_scope(|| {
-            self.main_queue.send((req.into(), self.resp_sender.clone()))?;
+            self.main_queue
+                .send((req.into(), self.resp_sender.clone()))?;
             Ok(self.receiver.recv()?)
         })
     }
@@ -47,5 +56,4 @@ impl DbSocket {
 
         Ok(table)
     }
-
 }

@@ -1,28 +1,27 @@
-use std::collections::VecDeque;
-use std::fmt::{Debug, Formatter};
-use std::marker::PhantomData;
-use serde::Deserialize;
-use tracing::{error_span, info_span, span};
 use crate::db::server::layers::packets::{DbReq, DbResp, IntoDbResponse};
 use crate::error::Error;
 use crate::rows::OwnedRows;
+use serde::Deserialize;
+use std::collections::VecDeque;
+use std::fmt::{Debug, Formatter};
+use std::marker::PhantomData;
+use tracing::{error_span, info_span, span};
 
 pub mod packets;
 
 /// A service
-pub trait Service : Send + Sync {
-
+pub trait Service: Send + Sync {
     fn process(&self, db_req: DbReq) -> DbResp;
 }
 
 /// A layer
-pub trait Layer : Send + Sync {
+pub trait Layer: Send + Sync {
     fn process(&self, db_req: DbReq, next: &Next) -> DbResp;
 }
 
 /// The next layer
 pub struct Next {
-    inner: Box<dyn Service>
+    inner: Box<dyn Service>,
 }
 
 impl Service for Next {
@@ -31,38 +30,43 @@ impl Service for Next {
     }
 }
 
-
 /// A layer created from a function
 pub struct FromFn<F, R>
-    where F : Fn(DbReq, &Next) -> R,
-        R : IntoDbResponse
+where
+    F: Fn(DbReq, &Next) -> R,
+    R: IntoDbResponse,
 {
     func: F,
-    _ret: PhantomData<R>
+    _ret: PhantomData<R>,
 }
 
-impl<F, R> Debug for FromFn<F, R> where F: Fn(DbReq,&Next) -> R,
-                                    R: IntoDbResponse {
+impl<F, R> Debug for FromFn<F, R>
+where
+    F: Fn(DbReq, &Next) -> R,
+    R: IntoDbResponse,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FromFn").finish_non_exhaustive()
     }
 }
 
-
-impl<F, R> Layer for FromFn<F, R> where
-    F: Fn(DbReq,&Next) -> R,
+impl<F, R> Layer for FromFn<F, R>
+where
+    F: Fn(DbReq, &Next) -> R,
     F: Send + Sync,
-    R: IntoDbResponse + Send + Sync {
+    R: IntoDbResponse + Send + Sync,
+{
     fn process(&self, db_req: DbReq, next: &Next) -> DbResp {
         (self.func)(db_req, next).into_db_resp()
     }
 }
 
-
 /// Create a layer from a function
 pub fn from_fn<F, R>(cb: F) -> FromFn<F, R>
-    where F : Fn(DbReq, &Next) -> R,
-                             R : IntoDbResponse {
+where
+    F: Fn(DbReq, &Next) -> R,
+    R: IntoDbResponse,
+{
     FromFn {
         func: cb,
         _ret: PhantomData,
@@ -77,25 +81,20 @@ pub struct Layers {
 }
 
 impl Layers {
-
     /// Creates a new, empty layer stack
     pub fn new<S: Service + 'static>(service: S) -> Self {
         Self {
             layer_count: 1,
-            inner: Some(Box::new(move |req| {
-                service.process(req)
-            })),
+            inner: Some(Box::new(move |req| service.process(req))),
         }
     }
 
     /// Wraps the layers
-    pub fn wrap<L : Layer + 'static>(&mut self, layer: L) {
+    pub fn wrap<L: Layer + 'static>(&mut self, layer: L) {
         let inner = self.inner.take().expect("should always have inner server");
         let next = Next { inner };
         self.layer_count += 1;
-        let new_service = move |db_req: DbReq| {
-            layer.process(db_req, &next)
-        };
+        let new_service = move |db_req: DbReq| layer.process(db_req, &next);
         self.inner = Some(Box::new(new_service))
     }
 }
@@ -103,13 +102,17 @@ impl Layers {
 impl Service for Layers {
     fn process(&self, db_req: DbReq) -> DbResp {
         error_span!("request-handling").in_scope(|| {
-            self.inner.as_ref().expect("should always have base service").process(db_req)
+            self.inner
+                .as_ref()
+                .expect("should always have base service")
+                .process(db_req)
         })
     }
 }
 
-impl<F : Fn(DbReq) -> R + 'static, R : IntoDbResponse + 'static> Service for F
-    where F : Send + Sync
+impl<F: Fn(DbReq) -> R + 'static, R: IntoDbResponse + 'static> Service for F
+where
+    F: Send + Sync,
 {
     fn process(&self, db_req: DbReq) -> DbResp {
         (self)(db_req).into_db_resp()
@@ -118,15 +121,16 @@ impl<F : Fn(DbReq) -> R + 'static, R : IntoDbResponse + 'static> Service for F
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::packets::*;
+    use super::*;
 
     #[test]
     fn layered_processing() {
-        let mut layers = Layers::new(|req| {
+        let mut layers = Layers::new(|req| DbResp::Pong);
+        assert!(matches!(
+            layers.process(DbReq::from(DbReqBody::Ping)),
             DbResp::Pong
-        });
-        assert!(matches!(layers.process(DbReq::from(DbReqBody::Ping)), DbResp::Pong));
+        ));
         layers.wrap(from_fn(|req, next| {
             let resp = next.process(req);
             if matches!(resp, DbResp::Pong) {
@@ -135,6 +139,9 @@ mod tests {
                 resp
             }
         }));
-        assert!(matches!(layers.process(DbReq::from(DbReqBody::Ping)), DbResp::Ok));
+        assert!(matches!(
+            layers.process(DbReq::from(DbReqBody::Ping)),
+            DbResp::Ok
+        ));
     }
 }

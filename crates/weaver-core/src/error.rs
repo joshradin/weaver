@@ -1,12 +1,12 @@
 use crate::data::types::Type;
 use crate::data::values::Value;
+use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp, IntoDbResponse};
 use crate::db::server::processes::WeaverPid;
 use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError};
-use crossbeam::channel::{RecvError, Sender, SendError};
+use crossbeam::channel::{RecvError, SendError, Sender};
 use serde::ser::StdError;
 use std::io;
 use thiserror::Error;
-use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp, IntoDbResponse};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -61,7 +61,6 @@ pub enum Error {
 }
 
 impl Error {
-
     /// A server error occurred
     pub fn server_error(error: impl ToString) -> Self {
         Self::ServerError(error.to_string())
@@ -73,4 +72,3 @@ impl IntoDbResponse for Error {
         DbResp::Err(self.to_string())
     }
 }
-

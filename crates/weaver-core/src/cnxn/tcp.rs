@@ -1,17 +1,16 @@
 //! TCP based connections
 
-use std::collections::HashMap;
 use crate::cnxn::handshake::{handshake_client, handshake_listener};
 use crate::cnxn::{read_msg, write_msg, Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use crate::db::server::WeakWeaverDb;
 use crate::error::Error;
+use std::collections::HashMap;
 use std::io;
 use std::io::{ErrorKind, Read, Write};
 use std::mem::size_of;
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::time::Duration;
 use tracing::{debug, trace};
-
 
 /// A tcp stream that connects to a
 #[derive(Debug)]
@@ -70,7 +69,6 @@ impl WeaverTcpStream {
         self.socket.peer_addr().ok()
     }
 }
-
 
 impl MessageStream for WeaverTcpStream {
     fn read(&mut self) -> Result<Message, Error> {

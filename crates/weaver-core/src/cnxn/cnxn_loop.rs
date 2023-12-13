@@ -6,8 +6,8 @@ use std::time::Duration;
 use tracing::{debug, error, trace, warn};
 
 use crate::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
-use crate::db::server::processes::{ProcessState, WeaverProcessChild};
 use crate::db::server::layers::packets::{DbReqBody, DbResp};
+use crate::db::server::processes::{ProcessState, WeaverProcessChild};
 use crate::error::Error;
 use crate::rows::OwnedRows;
 use crate::tx::Tx;

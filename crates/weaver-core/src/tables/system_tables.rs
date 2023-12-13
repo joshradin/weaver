@@ -3,6 +3,7 @@
 
 use crate::data::row::Row;
 use crate::data::values::Value;
+use crate::db::server::layers::packets::{DbReqBody, DbResp};
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::socket::DbSocket;
 use crate::dynamic_table::{Col, DynamicTable, StorageEngineFactory, Table};
@@ -12,7 +13,6 @@ use crate::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 use std::fmt::Debug;
 use std::sync::Arc;
-use crate::db::server::layers::packets::{DbReqBody, DbResp};
 
 /// Provide a system table
 pub struct SystemTable {

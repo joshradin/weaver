@@ -12,12 +12,11 @@ use weaver_core::error::Error;
 mod cli;
 
 fn main() -> Result<(), Error> {
-    let subscriber =
-        tracing_subscriber::registry().with(
-            fmt::Layer::new()
-                .with_thread_names(true)
-                .with_filter(LevelFilter::DEBUG)
-        );
+    let subscriber = tracing_subscriber::registry().with(
+        fmt::Layer::new()
+            .with_thread_names(true)
+            .with_filter(LevelFilter::DEBUG),
+    );
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let span = info_span!("main");

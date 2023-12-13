@@ -1,19 +1,19 @@
-use std::sync::Arc;
-use crate::data::types::Type;
-use crate::db::core::WeaverDbCore;
-use crate::dynamic_table::{EngineKey, SYSTEM_TABLE_KEY};
-use crate::error::Error;
-use crate::tables::system_tables::{SystemTable};
-use crate::tables::table_schema::TableSchema;
-use std::time::Instant;
-use tracing::{debug, info_span};
 use crate::data::row::Row;
+use crate::data::types::Type;
 use crate::data::values::Value;
+use crate::db::core::WeaverDbCore;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::socket::DbSocket;
 use crate::db::server::WeaverDb;
+use crate::dynamic_table::{EngineKey, SYSTEM_TABLE_KEY};
+use crate::error::Error;
 use crate::rows::{DefaultOwnedRows, OwnedRowsExt};
+use crate::tables::system_tables::SystemTable;
+use crate::tables::table_schema::TableSchema;
+use std::sync::Arc;
+use std::time::Instant;
+use tracing::{debug, info_span};
 
 pub static SYSTEM_SCHEMA: &str = "system";
 
@@ -29,7 +29,6 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
 
         Ok(())
     }))?;
-
 
     let duration = start.elapsed();
     debug!(
@@ -65,7 +64,7 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                         Value::String(format!("{state:?}")),
                         Value::String(format!("{info}")),
                     ])
-                        .to_owned()
+                    .to_owned()
                 },
             );
             Ok(DbResp::rows(DefaultOwnedRows::new(schema.clone(), rows)))
