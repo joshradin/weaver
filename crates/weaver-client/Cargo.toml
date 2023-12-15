@@ -1,6 +1,6 @@
 [package]
 name = "weaver-client"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 
 [[bin]]
@@ -15,3 +15,4 @@ log = "0.4.20"
 eyre = "0.6.10"
 simplelog = "0.12.1"
 prettytable = "0.10.0"
+color-eyre = "0.6.2"

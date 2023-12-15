@@ -7,7 +7,7 @@ use std::time::Duration;
 use tracing::{debug, error, info_span, instrument, span, trace, Level};
 
 /// The client connecting to a listener should be the handshake driver
-pub fn handshake_client<T: MessageStream>(server: &mut T, timeout: Duration) -> Result<(), Error> {
+pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), Error> {
     let span = info_span!("client handshake");
     let _enter = span.enter();
 
@@ -24,7 +24,7 @@ pub fn handshake_client<T: MessageStream>(server: &mut T, timeout: Duration) -> 
     let Message::Handshake {
         ack: true,
         nonce: nonce_resp,
-    } = (match server.read_timeout(timeout) {
+    } = (match server.read() {
         Ok(msg) => msg,
         Err(e) => {
             error!("No message received from server received because of error: {e}");
@@ -53,7 +53,7 @@ pub fn handshake_listener<T: MessageStream>(
     let span = info_span!("server handshake");
     let _enter = span.enter();
     debug!("Starting handshake from listener, waiting for client handshake request...");
-    let Message::Handshake { ack: false, nonce } = (match client.read_timeout(timeout.clone()) {
+    let Message::Handshake { ack: false, nonce } = (match client.read() {
         Ok(msg) => msg,
         Err(e) => {
             error!("No message received from client received because of error: {e}");

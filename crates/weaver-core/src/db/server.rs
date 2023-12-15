@@ -1,5 +1,5 @@
 use crate::cnxn::MessageStream;
-use crate::plugins::Plugin;
+use crate::modules::Module;
 use crate::rows::{OwnedRows, OwnedRowsExt, Rows, RowsExt};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;

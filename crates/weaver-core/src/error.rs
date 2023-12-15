@@ -7,6 +7,8 @@ use crossbeam::channel::{RecvError, SendError, Sender};
 use serde::ser::StdError;
 use std::io;
 use thiserror::Error;
+use crate::access_control::auth::error::AuthInitError;
+use crate::db::server::socket::MainQueueItem;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -43,7 +45,7 @@ pub enum Error {
     #[error("WeaverDb instance already bound to tcp socket")]
     TcpAlreadyBound,
     #[error(transparent)]
-    SendError(#[from] SendError<(DbReq, Sender<DbResp>)>),
+    SendError(#[from] SendError<MainQueueItem>),
     #[error(transparent)]
     RecvError(#[from] RecvError),
     #[error("No core available")]
@@ -58,6 +60,14 @@ pub enum Error {
     ServerError(String),
     #[error("thread panicked")]
     ThreadPanicked,
+    #[error("Authentication failed")]
+    AuthenticationFailed,
+    #[error("Ssl handshake error")]
+    SslHandshakeError,
+    #[error("No host name")]
+    NoHostName,
+    #[error(transparent)]
+    AuthInitError(#[from] AuthInitError)
 }
 
 impl Error {

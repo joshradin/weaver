@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tracing::level_filters::LevelFilter;
-use weaver_core::cnxn::tcp::WeaverTcpStream;
-use weaver_core::cnxn::{Message, MessageStream};
+use weaver_core::cnxn::stream::WeaverStream;
+use weaver_core::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use weaver_core::db::server::layers::packets::{DbReqBody, DbResp};
 use weaver_core::db::server::WeaverDb;
 use weaver_core::error::Error;
@@ -17,14 +17,14 @@ fn bind_to_tcp() -> Result<(), Error> {
     server.bind_tcp(("localhost", 0))?;
     let socket = server.local_addr().unwrap();
 
-    let mut stream = WeaverTcpStream::connect_timeout(socket, Duration::from_secs(1))?;
-    stream.write(&Message::Req(DbReqBody::Ping))?;
-    let Message::Resp(DbResp::Pong) = stream.read()? else {
+    let mut stream = WeaverStream::connect_timeout(socket, Duration::from_secs(1))?;
+    stream.write(&Message::Req(RemoteDbReq::Ping.into()))?;
+    let Message::Resp(RemoteDbResp::Pong) = stream.read()? else {
         panic!("must return pong")
     };
-    let mut stream = WeaverTcpStream::connect_timeout(socket, Duration::from_secs(1))?;
-    stream.write(&Message::Req(DbReqBody::Ping))?;
-    let Message::Resp(DbResp::Pong) = stream.read()? else {
+    let mut stream = WeaverStream::connect_timeout(socket, Duration::from_secs(1))?;
+    stream.write(&Message::Req(RemoteDbReq::Ping.into()))?;
+    let Message::Resp(RemoteDbResp::Pong) = stream.read()? else {
         panic!("must return pong")
     };
 

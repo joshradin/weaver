@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Headers are used to convey extra data in requests
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -176,5 +177,51 @@ impl DbResp {
 impl<E: std::error::Error> From<E> for DbResp {
     fn from(value: E) -> Self {
         Self::Err(value.to_string())
+    }
+}
+
+/// An id of a packet. Useful for multiplexing
+pub type PacketId = u64;
+
+static PACKET_ID_SOURCE: AtomicU64 = AtomicU64::new(1);
+
+/// Packets contain a body and a packet id
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Packet<T> {
+    id: PacketId,
+    body: T
+}
+
+impl<T> Packet<T> {
+    /// Create a new packet with a generated id
+    pub fn new(body: T) -> Self {
+        Self::with_id(body, PACKET_ID_SOURCE.fetch_add(1, Ordering::SeqCst))
+    }
+
+
+    /// Create a new packet with a given id
+    pub fn with_id(body: T, id: PacketId) -> Self {
+        Self { id, body }
+    }
+
+    /// Gets the id of the packet
+    pub fn id(&self) -> &PacketId {
+        &self.id
+    }
+
+    /// Gets the body
+    pub fn body(&self) -> &T {
+        &self.body
+    }
+
+    /// Unwraps this packet into just it's body
+    pub fn unwrap(self) -> T {
+        self.body
+    }
+}
+
+impl<T> From<T> for Packet<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
     }
 }

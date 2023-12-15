@@ -6,7 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+# provides log events instead of just trace events
 log = ["tracing/log"]
+# Vendor ssl instead of dynamically linking
+vendor-openssl = ["openssl/vendored"]
 
 [dependencies]
 chrono = "0.4.31"
@@ -22,6 +25,12 @@ rand = "0.8.5"
 digest = "0.10.7"
 sha2 = "0.10.8"
 either = "1.9.0"
+openssl = "0.10.61"
+tempfile = "3.8.1"
+interprocess = "1.2.1"
+argon2 = { version = "0.5.2" }
+whoami = "1.4.1"
+zeroize = { version = "1.7.0", features = ["serde"] }
 
 [dev-dependencies]
 tracing-subscriber = "0.3.18"

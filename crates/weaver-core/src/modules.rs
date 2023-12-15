@@ -6,15 +6,15 @@ use std::borrow::Cow;
 use thiserror::Error;
 
 /// All plugins must implement this trait
-pub trait Plugin {
+pub trait Module {
     fn name(&self) -> Cow<str>;
 
-    /// Apply the plugin to the weaver db
-    fn apply(&self, weaver_db: &mut WeaverDb) -> Result<(), PluginError>;
+    /// Apply the module to the weaver db
+    fn apply(&self, weaver_db: &mut WeaverDb) -> Result<(), ModuleError>;
 }
 
 #[derive(Debug, Error)]
-pub enum PluginError {
+pub enum ModuleError {
     /// A weaver error
     #[error(transparent)]
     WeaverError(#[from] crate::error::Error),

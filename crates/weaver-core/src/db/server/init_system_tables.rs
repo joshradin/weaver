@@ -1,3 +1,9 @@
+use std::sync::Arc;
+use std::time::Instant;
+
+use tracing::{debug, info_span};
+
+use crate::access_control::users::UserTable;
 use crate::data::row::Row;
 use crate::data::types::Type;
 use crate::data::values::Value;
@@ -11,9 +17,6 @@ use crate::error::Error;
 use crate::rows::{DefaultOwnedRows, OwnedRowsExt};
 use crate::tables::system_tables::SystemTable;
 use crate::tables::table_schema::TableSchema;
-use std::sync::Arc;
-use std::time::Instant;
-use tracing::{debug, info_span};
 
 pub static SYSTEM_SCHEMA: &str = "system";
 
@@ -26,7 +29,7 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
     let clone = connection.clone();
     connection.send(DbReq::on_core(move |core| -> Result<(), Error> {
         add_process_list(core, &clone)?;
-
+        init_auth(core, &clone)?;
         Ok(())
     }))?;
 
@@ -41,6 +44,8 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
 fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(), Error> {
     let schema = TableSchema::builder(SYSTEM_SCHEMA, "processes")
         .column("pid", Type::Integer, true, None, None)?
+        .column("user", Type::String, true, None, None)?
+        .column("host", Type::String, true, None, None)?
         .column("age", Type::Integer, true, None, None)?
         .column("state", Type::String, true, None, None)?
         .column("info", Type::String, true, None, None)?
@@ -56,7 +61,7 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                      pid,
                      age,
                      state,
-                     info,
+                     info, user, host, using,
                  }| {
                     Row::from([
                         Value::Integer(pid.into()),
@@ -64,7 +69,7 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                         Value::String(format!("{state:?}")),
                         Value::String(format!("{info}")),
                     ])
-                    .to_owned()
+                        .to_owned()
                 },
             );
             Ok(DbResp::rows(DefaultOwnedRows::new(schema.clone(), rows)))
@@ -76,5 +81,11 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
     });
 
     core.add_table(table)?;
+    Ok(())
+}
+
+fn init_auth(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(), Error> {
+    let users = UserTable::default();
+    core.add_table(users)?;
     Ok(())
 }

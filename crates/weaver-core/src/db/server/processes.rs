@@ -13,16 +13,25 @@ use crate::db::server::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, span, Level};
+use crate::access_control::users::User;
 
 use crate::error::Error;
 
 pub type WeaverPid = u32;
 
+#[derive(Debug)]
+struct WeaverProcessShared {
+    pid: WeaverPid,
+    started: Instant,
+    user: String,
+    host: String,
+    using: Option<String>
+}
+
 /// A weaver process
 #[derive(Debug)]
 pub struct WeaverProcess {
-    pid: WeaverPid,
-    started: Instant,
+    shared: Arc<WeaverProcessShared>,
     state: Arc<RwLock<ProcessState>>,
     info: Arc<RwLock<String>>,
     kill_channel: Sender<Kill>,
@@ -36,28 +45,36 @@ pub struct WeaverProcessInfo {
     pub age: u32,
     pub state: ProcessState,
     pub info: String,
+    pub user: String,
+    pub host: String,
+    pub using: Option<String>
 }
 
 impl WeaverProcess {
     /// Creates the process and it's child struct
-    fn new(pid: WeaverPid, weak: WeakWeaverDb) -> (Self, WeaverProcessChild) {
+    fn new(pid: WeaverPid, user: &User, weak: WeakWeaverDb) -> (Self, WeaverProcessChild) {
         let (rx, tx) = unbounded::<Kill>();
 
         let state = Arc::<RwLock<ProcessState>>::new(Default::default());
         let info = Arc::<RwLock<String>>::new(Default::default());
         let started = Instant::now();
+        let shared = Arc::new(WeaverProcessShared {
+            pid,
+            started,
+            user: user.name().to_string(),
+            host: user.host().to_string(),
+            using: None,
+        });
         (
             WeaverProcess {
-                pid,
-                started,
+               shared: shared.clone(),
                 state: state.clone(),
                 info: info.clone(),
                 kill_channel: rx,
                 handle: OnceLock::new(),
             },
             WeaverProcessChild {
-                pid,
-                started,
+                shared: shared.clone(),
                 kill_channel: tx,
                 state,
                 info,
@@ -73,20 +90,23 @@ impl WeaverProcess {
     /// Gets the info struct
     pub fn info(&self) -> WeaverProcessInfo {
         WeaverProcessInfo {
-            pid: self.pid,
-            age: self.started.elapsed().as_secs() as u32,
+            pid: self.shared.pid,
+            age: self.shared.started.elapsed().as_secs() as u32,
             state: self.state.read().clone(),
             info: self.info.read().clone(),
+            user: self.shared.user.clone(),
+            host: self.shared.host.clone(),
+            using: self.shared.using.clone(),
         }
     }
 
     pub fn join(mut self) -> Result<(), Error> {
         self.handle
             .take()
-            .ok_or(Error::ProcessFailed(self.pid))
+            .ok_or(Error::ProcessFailed(self.shared.pid))
             .and_then(|t| match t.join() {
                 Ok(ok) => ok,
-                Err(_) => Err(Error::ProcessFailed(self.pid)),
+                Err(_) => Err(Error::ProcessFailed(self.shared.pid)),
             })
     }
 }
@@ -107,8 +127,7 @@ impl Drop for WeaverProcess {
 /// The child of a weaver process must have access to this information
 #[derive(Debug)]
 pub struct WeaverProcessChild {
-    pid: WeaverPid,
-    started: Instant,
+    shared: Arc<WeaverProcessShared>,
     kill_channel: Receiver<Kill>,
     state: Arc<RwLock<ProcessState>>,
     info: Arc<RwLock<String>>,
@@ -121,7 +140,7 @@ struct Kill();
 impl WeaverProcessChild {
     /// Provides access to the pid of the process
     pub fn pid(&self) -> WeaverPid {
-        self.pid
+        self.shared.pid
     }
 
     /// Provides access to a weak connection to the weaver db
@@ -145,10 +164,13 @@ impl WeaverProcessChild {
     /// Gets the info struct
     pub fn info(&self) -> WeaverProcessInfo {
         WeaverProcessInfo {
-            pid: self.pid,
-            age: self.started.elapsed().as_secs() as u32,
+            pid: self.shared.pid,
+            age: self.shared.started.elapsed().as_secs() as u32,
             state: self.state.read().clone(),
             info: self.info.read().clone(),
+            user: self.shared.user.clone(),
+            host: self.shared.host.clone(),
+            using: self.shared.using.clone(),
         }
     }
 }
@@ -209,14 +231,14 @@ impl ProcessManager {
     }
 
     /// Starts a process
-    pub fn start<F>(&mut self, func: F) -> Result<WeaverPid, Error>
+    pub fn start<F>(&mut self, user: &User, func: F) -> Result<WeaverPid, Error>
     where
         F: FnOnce(WeaverProcessChild) -> Result<(), Error>,
         F: Send + 'static,
     {
         let pid = self.next_pid.fetch_add(1, Ordering::SeqCst);
 
-        let (mut parent, child) = WeaverProcess::new(pid, self.weak.clone());
+        let (mut parent, child) = WeaverProcess::new(pid, user, self.weak.clone());
 
         let handle = {
             let channel = self.process_killed_channel.clone();
@@ -225,7 +247,7 @@ impl ProcessManager {
                 .spawn(move || {
                     span!(Level::ERROR, "process", pid = pid).in_scope(|| {
                         let child = child;
-                        let pid = child.pid;
+                        let pid = child.shared.pid;
                         debug!("running process {}", pid);
                         let result = func(child);
                         debug!("process ended with result {:?}", result);
@@ -240,7 +262,7 @@ impl ProcessManager {
                 })?
         };
         parent.set_handle(handle);
-        let pid = parent.pid;
+        let pid = parent.shared.pid;
         self.processes.write().insert(pid, parent);
 
         Ok(pid)

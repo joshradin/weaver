@@ -12,6 +12,8 @@ use std::time::Duration;
 pub mod cnxn_loop;
 mod handshake;
 pub mod tcp;
+pub mod interprocess;
+pub mod stream;
 
 /// The default port to use
 pub static DEFAULT_PORT: u16 = 5234;
@@ -67,9 +69,6 @@ pub trait MessageStream {
     /// Read a message
     fn read(&mut self) -> Result<Message, Error>;
 
-    /// Read a message with a timeout. Requires mutable access to the message stream
-    fn read_timeout(&mut self, duration: Duration) -> Result<Message, Error>;
-
     /// Write a message
     fn write(&mut self, message: &Message) -> Result<(), Error>;
 
@@ -86,10 +85,6 @@ pub trait MessageStream {
 impl<M: MessageStream> MessageStream for &mut M {
     fn read(&mut self) -> Result<Message, Error> {
         (*self).read()
-    }
-
-    fn read_timeout(&mut self, duration: Duration) -> Result<Message, Error> {
-        (*self).read_timeout(duration)
     }
 
     fn write(&mut self, message: &Message) -> Result<(), Error> {
