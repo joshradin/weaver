@@ -9,11 +9,11 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
+use crate::access_control::users::User;
 use crate::db::server::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, span, Level};
-use crate::access_control::users::User;
 
 use crate::error::Error;
 
@@ -25,7 +25,7 @@ struct WeaverProcessShared {
     started: Instant,
     user: String,
     host: String,
-    using: Option<String>
+    using: Option<String>,
 }
 
 /// A weaver process
@@ -47,7 +47,7 @@ pub struct WeaverProcessInfo {
     pub info: String,
     pub user: String,
     pub host: String,
-    pub using: Option<String>
+    pub using: Option<String>,
 }
 
 impl WeaverProcess {
@@ -67,7 +67,7 @@ impl WeaverProcess {
         });
         (
             WeaverProcess {
-               shared: shared.clone(),
+                shared: shared.clone(),
                 state: state.clone(),
                 info: info.clone(),
                 kill_channel: rx,

@@ -8,13 +8,16 @@ pub struct AuthInitError {
 }
 
 impl<E> From<E> for AuthInitError
-    where AuthInitErrorKind : From<E> {
+where
+    AuthInitErrorKind: From<E>,
+{
     fn from(value: E) -> Self {
-        Self { kind: AuthInitErrorKind::from(value)}
+        Self {
+            kind: AuthInitErrorKind::from(value),
+        }
     }
 }
 impl AuthInitError {
-
     /// Ges the error kind
     pub fn kind(&self) -> &AuthInitErrorKind {
         &self.kind

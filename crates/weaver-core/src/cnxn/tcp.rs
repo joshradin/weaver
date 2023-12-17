@@ -3,22 +3,25 @@
 use std::io;
 use std::io::ErrorKind;
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
-use std::sync::OnceLock;
 use std::time::Duration;
 
-use tracing::debug;
 use stream::tcp_server_handshake;
+use tracing::debug;
 
 use crate::access_control::auth::LoginContext;
 use crate::cnxn::handshake::handshake_listener;
 use crate::cnxn::stream;
-use crate::cnxn::stream::{Transport, WeaverStream};
+use crate::cnxn::stream::WeaverStream;
+use crate::cnxn::transport::Transport;
 use crate::db::server::WeakWeaverDb;
 use crate::error::Error;
 
 impl WeaverStream<TcpStream> {
     /// Connect to a tcp stream
-    pub fn connect<A: ToSocketAddrs>(socket_addr: A, login_context: LoginContext) -> Result<Self, Error> {
+    pub fn connect<A: ToSocketAddrs>(
+        socket_addr: A,
+        login_context: LoginContext,
+    ) -> Result<Self, Error> {
         Self::connect_timeout(socket_addr, Duration::MAX, login_context)
     }
 
@@ -26,7 +29,7 @@ impl WeaverStream<TcpStream> {
     pub fn connect_timeout<A: ToSocketAddrs>(
         socket_addr: A,
         timeout: Duration,
-        login_context: LoginContext
+        login_context: LoginContext,
     ) -> Result<Self, Error> {
         let connected = {
             let mut iter = socket_addr.to_socket_addrs()?;
@@ -47,12 +50,10 @@ impl WeaverStream<TcpStream> {
         let mut socket = Self::new(
             socket_addr,
             connected.peer_addr().ok(),
-            Transport::Insecure(connected));
+            Transport::Insecure(connected.into()),
+        );
         Ok(socket.login(login_context)?)
     }
-
-
-
 }
 
 /// A tcp stream listener that accepts tcp connections
@@ -84,15 +85,11 @@ impl WeaverTcpListener {
         let mut socket = WeaverStream::new(
             Some(socket_addr),
             stream.local_addr().ok(),
-            Transport::Insecure(stream),
+            Transport::Insecure(stream.into()),
         );
 
         handshake_listener(&mut socket, Duration::from_secs(10))?; // ensures correct connection type first
-        let socket = tcp_server_handshake(
-            socket,
-            db.auth_context(),
-            &db.connect()
-        )?;
+        let socket = tcp_server_handshake(socket, db.auth_context(), &db.connect())?;
 
         Ok(socket)
     }

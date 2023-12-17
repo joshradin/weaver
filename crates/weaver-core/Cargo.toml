@@ -10,6 +10,7 @@ edition = "2021"
 log = ["tracing/log"]
 # Vendor ssl instead of dynamically linking
 vendor-openssl = ["openssl/vendored"]
+transport-sniffing = []
 
 [dependencies]
 chrono = "0.4.31"
@@ -31,6 +32,7 @@ interprocess = "1.2.1"
 argon2 = { version = "0.5.2" }
 whoami = "1.4.1"
 zeroize = { version = "1.7.0", features = ["serde"] }
+cfg-if = "1.0.0"
 
 [dev-dependencies]
 tracing-subscriber = "0.3.18"

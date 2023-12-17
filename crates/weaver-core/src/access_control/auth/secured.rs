@@ -1,13 +1,13 @@
 //! A secured client connection
 
-use std::io::{Read, Write};
-use openssl::ssl::{SslConnector, SslMethod, SslStream};
 use crate::common::stream_support::Stream;
 use crate::error::Error;
+use openssl::ssl::{SslConnector, SslMethod, SslStream};
+use std::io::{Read, Write};
 /// Wrapper type around a secured stream
 #[derive(Debug)]
-pub struct Secured<T : Stream> {
-    inner: SslStream<T>
+pub struct Secured<T: Stream> {
+    inner: SslStream<T>,
 }
 
 impl<T: Stream> Secured<T> {
@@ -18,14 +18,14 @@ impl<T: Stream> Secured<T> {
     /// Secures an existing stream over tls
     pub fn new(host: &str, stream: T) -> Result<Self, Error> {
         let mut connector = SslConnector::builder(SslMethod::tls_client())
-            .map_err(|_| Error::SslHandshakeError)
-            ?.build();
-        let stream = connector.connect(host, stream).map_err(|_| Error::SslHandshakeError)?;
+            .map_err(|e| Error::SslConnectorBuilderError(e))?
+            .build();
+        let stream = connector.connect(host, stream)?;
         Ok(Self::wrap(stream))
     }
 }
 
-impl<T : Stream> AsRef<T> for Secured<T> {
+impl<T: Stream> AsRef<T> for Secured<T> {
     fn as_ref(&self) -> &T {
         self.inner.get_ref()
     }
@@ -46,4 +46,3 @@ impl<T: Stream> Read for Secured<T> {
         self.inner.read(buf)
     }
 }
-

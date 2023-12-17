@@ -11,9 +11,10 @@ use std::time::Duration;
 
 pub mod cnxn_loop;
 mod handshake;
-pub mod tcp;
 pub mod interprocess;
 pub mod stream;
+pub mod tcp;
+pub mod transport;
 
 /// The default port to use
 pub static DEFAULT_PORT: u16 = 5234;

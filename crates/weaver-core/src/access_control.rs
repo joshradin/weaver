@@ -1,4 +1,4 @@
 //! Provide safe mechanisms for accessing data
 
-pub mod users;
 pub mod auth;
+pub mod users;

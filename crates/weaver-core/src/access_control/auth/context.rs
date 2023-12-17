@@ -1,16 +1,15 @@
 //! The auth context for creating streams
 
-use std::fmt::{Debug, Formatter};
-use openssl::pkey::{PKey, Private};
-use openssl::rsa::Rsa;
-use openssl::ssl::{SslAcceptor, SslMethod};
-use openssl::x509::X509;
 use crate::access_control::auth::error::{AuthInitError, AuthInitErrorKind};
 use crate::access_control::auth::secured::Secured;
-use crate::cnxn::stream::Transport;
+use crate::cnxn::transport::Transport;
 use crate::common::stream_support::Stream;
 use crate::error::Error;
-
+use openssl::pkey::{PKey, Private};
+use openssl::rsa::Rsa;
+use openssl::ssl::{HandshakeError, SslAcceptor, SslMethod};
+use openssl::x509::X509;
+use std::fmt::{Debug, Formatter};
 
 /// The auth context
 #[derive(Clone)]
@@ -19,21 +18,22 @@ pub struct AuthContext {
 }
 
 impl AuthContext {
-
     /// Creates a ssl protected stream
-    pub fn stream<S : Stream>(&self, stream: S) -> Result<Secured<S>, Error> {
-        self.acceptor.accept(stream).map_err(|_| Error::SslHandshakeError)
-            .map(Secured::wrap)
+    pub fn stream<S: Stream>(&self, stream: S) -> Result<Secured<S>, Error> {
+        Ok(self.acceptor.accept(stream).map(Secured::wrap)?)
     }
 
-    pub fn secure_transport<S : Stream>(&self, transport: &mut Transport<S>) -> Result<(), Error> {
-        if let Transport::Insecure(_) = transport {
-            let mut taken = std::mem::replace(transport, Transport::None);
-            let Transport::Insecure(secure) = taken else {
+    pub fn secure_transport<S: Stream>(
+        &self,
+        transport: &mut Option<Transport<S>>,
+    ) -> Result<(), Error> {
+        if let Some(Transport::Insecure(_)) = transport.as_ref() {
+            let mut taken = std::mem::replace(transport, Option::None);
+            let Some(Transport::Insecure(to_secure)) = taken else {
                 unreachable!();
             };
-            let accept = self.stream(secure)?;
-            *transport = Transport::Secure(accept);
+            let accept = self.stream(to_secure)?;
+            *transport = Some(Transport::Secure(accept));
         }
         Ok(())
     }
@@ -54,10 +54,9 @@ impl AuthContext {
     }
 }
 
-
 pub struct AuthContextBuilder {
     pkey: Option<PKey<Private>>,
-    cert: Option<X509>
+    cert: Option<X509>,
 }
 
 impl AuthContextBuilder {
@@ -73,12 +72,9 @@ impl AuthContextBuilder {
 }
 
 impl AuthContextBuilder {
-
     /// Builds the auth context
     pub fn build(self) -> Result<AuthContext, AuthInitError> {
-        let mut acceptor = SslAcceptor::mozilla_intermediate(
-            SslMethod::tls()
-        )?;
+        let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
         let pkey = self.pkey.ok_or_else(|| AuthInitErrorKind::NoPrivateKey)?;
         acceptor.set_private_key(pkey.as_ref())?;
         let cert = self.cert.ok_or_else(|| AuthInitErrorKind::NoCertificate)?;
@@ -89,4 +85,3 @@ impl AuthContextBuilder {
         })
     }
 }
-

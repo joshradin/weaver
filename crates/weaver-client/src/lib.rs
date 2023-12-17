@@ -16,7 +16,7 @@ pub mod write_rows;
 
 /// A client to attach to a weaver instance
 #[derive(Debug)]
-pub struct WeaverClient<T : Stream> {
+pub struct WeaverClient<T: Stream> {
     stream: WeaverStream<T>,
     pid: WeaverPid,
 }
@@ -35,15 +35,13 @@ impl WeaverClient<TcpStream> {
         })
     }
 }
-impl<T : Stream> WeaverClient<T> {
+impl<T: Stream> WeaverClient<T> {
     pub fn query(&mut self, query: &Query) -> eyre::Result<(impl Rows, Duration)> {
         let start = Instant::now();
         match self.stream.send(&RemoteDbReq::Query(query.clone()))? {
-            RemoteDbResp::Ok => {},
-            RemoteDbResp::Err(e) => {
-                return Err(eyre!("query failed: {e}"))
-            }
-            e => return Err(eyre!("unexpected response: {e:?}"))
+            RemoteDbResp::Ok => {}
+            RemoteDbResp::Err(e) => return Err(eyre!("query failed: {e}")),
+            e => return Err(eyre!("unexpected response: {e:?}")),
         };
 
         let RemoteDbResp::Schema(schema) = self.stream.send(&RemoteDbReq::GetSchema)? else {
@@ -61,12 +59,12 @@ impl<T : Stream> WeaverClient<T> {
 }
 
 #[derive(Debug)]
-pub struct RemoteRows<'a, T : Stream> {
+pub struct RemoteRows<'a, T: Stream> {
     schema: TableSchema,
     stream: &'a mut WeaverStream<T>,
 }
 
-impl<'a, T : Stream> Rows<'a> for RemoteRows<'a, T> {
+impl<'a, T: Stream> Rows<'a> for RemoteRows<'a, T> {
     fn schema(&self) -> &TableSchema {
         &self.schema
     }

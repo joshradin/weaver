@@ -1,19 +1,17 @@
-use crate::cli::App;
+use std::fs::File;
+use std::io::stdout;
+
 use clap::Parser;
 use log::{error, info, LevelFilter};
 use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
-use std::fs::File;
-use std::io::stdout;
-use std::thread::sleep;
-use std::time::Duration;
+
 use weaver_client::write_rows::write_rows;
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::LoginContext;
-use weaver_core::cnxn::stream::WeaverStream;
-use weaver_core::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
-use weaver_core::db::server::layers::packets::DbReqBody;
-use weaver_core::error::Error;
+use weaver_core::cnxn::MessageStream;
 use weaver_core::queries::ast::Query;
+
+use crate::cli::App;
 
 mod cli;
 

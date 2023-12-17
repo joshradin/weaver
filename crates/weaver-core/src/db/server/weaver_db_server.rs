@@ -1,4 +1,6 @@
 use super::layers::packets::{IntoDbResponse, Packet};
+use crate::access_control::auth::context::AuthContext;
+use crate::access_control::auth::init::{init_auth_context, AuthConfig};
 use crate::cnxn::cnxn_loop::cnxn_main;
 use crate::cnxn::tcp::WeaverTcpListener;
 use crate::cnxn::{Message, MessageStream, RemoteDbResp};
@@ -24,8 +26,6 @@ use std::thread;
 use std::thread::{current, JoinHandle};
 use threadpool_crossbeam_channel::{Builder, ThreadPool};
 use tracing::{debug, error, error_span, info, info_span, warn};
-use crate::access_control::auth::context::AuthContext;
-use crate::access_control::auth::init::{AuthConfig, init_auth_context};
 
 /// A server that allows for multiple connections.
 #[derive(Clone)]
@@ -53,8 +53,12 @@ pub(super) struct WeaverDbShared {
 }
 
 impl WeaverDb {
-    pub fn new(workers: usize, shard: WeaverDbCore, auth_config: AuthConfig) -> Result<Self, Error> {
-        let auth_context =  init_auth_context(&auth_config)?;
+    pub fn new(
+        workers: usize,
+        shard: WeaverDbCore,
+        auth_config: AuthConfig,
+    ) -> Result<Self, Error> {
+        let auth_context = init_auth_context(&auth_config)?;
         let inner = Arc::new_cyclic(move |weak| {
             let mut shard = shard;
             shard.tx_coordinator = Some(TxCoordinator::new(WeakWeaverDb(weak.clone()), 0));
@@ -88,14 +92,16 @@ impl WeaverDb {
 
                                 let req_id = *req.id();
                                 let req = req.unwrap();
-                                let resp =
-                                    thread::spawn(move || error_span!("packet", id=req_id).in_scope(|| db.shared.layers.read().process(req)))
-                                        .join()
-                                        .map_err(|e| {
-                                            error!("panic occurred while processing a request");
-                                            Error::ThreadPanicked
-                                        })
-                                        .into_db_resp();
+                                let resp = thread::spawn(move || {
+                                    error_span!("packet", id = req_id)
+                                        .in_scope(|| db.shared.layers.read().process(req))
+                                })
+                                .join()
+                                .map_err(|e| {
+                                    error!("panic occurred while processing a request");
+                                    Error::ThreadPanicked
+                                })
+                                .into_db_resp();
 
                                 let _ = response_channel.send(Packet::with_id(resp, req_id));
                             })
@@ -205,17 +211,15 @@ impl WeaverDb {
                 break;
             };
 
-
             let mut process_manager = weaver.shared.process_manager.write();
 
             let user = stream.user().clone();
 
-
             process_manager.start(&user, move |child: WeaverProcessChild| {
                 let span = info_span!(
-                                "external-connection",
-                                peer_addrr = stream.peer_addr().map(|addr| addr.to_string())
-                            );
+                    "external-connection",
+                    peer_addrr = stream.peer_addr().map(|addr| addr.to_string())
+                );
                 let _enter = span.enter();
                 if let Err(e) = cnxn_main(&mut stream, child) {
                     warn!("client connection ended with err: {}", e);
@@ -296,7 +300,12 @@ impl WeaverDb {
 
 impl Default for WeaverDb {
     fn default() -> Self {
-        Self::new(num_cpus::get(), WeaverDbCore::default(), AuthConfig::default()).unwrap()
+        Self::new(
+            num_cpus::get(),
+            WeaverDbCore::default(),
+            AuthConfig::default(),
+        )
+        .unwrap()
     }
 }
 

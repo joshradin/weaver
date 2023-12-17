@@ -4,36 +4,31 @@ use std::io;
 use std::io::{Read, Write};
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 /// Marker trait for something that you can both read and write to
-pub trait Stream : Read + Write {}
+pub trait Stream: Read + Write {}
 
-impl<S : Read + Write> Stream for S {
-}
+impl<S: Read + Write> Stream for S {}
 
 pub struct Timeout<S> {
     stream: S,
-    timeout: Duration
+    timeout: Duration,
 }
 
 impl<S> Timeout<S> {
-
     /// Creates a new stream that can timeout
     pub fn new(stream: S, timeout: Duration) -> Self {
-        Self {
-            stream,
-            timeout
-        }
+        Self { stream, timeout }
     }
 }
 
-
 /// to send a discrete packet of information to a stream
-pub fn packet_write<T : Serialize, W: Write>(writer: &mut W, data: &T) -> Result<usize, io::Error> {
+pub fn packet_write<T: Serialize, W: Write>(writer: &mut W, data: &T) -> Result<usize, io::Error> {
     let mut data_buffer = vec![];
-    serde_json::to_writer(&mut data_buffer, data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    serde_json::to_writer(&mut data_buffer, data)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
     let len_buffer = (data_buffer.len() as u64).to_be_bytes();
     writer.write_all(&len_buffer)?;
     writer.write_all(&data_buffer[..])?;
@@ -49,7 +44,6 @@ pub fn packet_read<T: DeserializeOwned, R: Read>(reader: &mut R) -> Result<T, io
     reader.read_exact(&mut buffer)?;
     serde_json::from_slice(&buffer[..]).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -75,7 +69,7 @@ mod tests {
         let bytes = packet_write(&mut buffer, &data).expect("couldn't write packet");
         assert!(bytes > 0, "wrote some number of bytes");
         let len_bytes = buffer.range(0..8).copied().collect::<Vec<u8>>();
-        let mut len_bytes_buf= [0; 8];
+        let mut len_bytes_buf = [0; 8];
         len_bytes_buf.copy_from_slice(&len_bytes[..]);
         assert_eq!(u64::from_be_bytes(len_bytes_buf) as usize, buffer.len() - 8);
         let new_data: Test = packet_read(&mut buffer).expect("couldn't read data");

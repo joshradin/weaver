@@ -13,15 +13,13 @@ use argon2::PasswordHash;
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
-pub mod init;
 pub mod context;
 pub mod error;
+pub mod init;
 pub mod secured;
-
 
 /// The handshake to connect a client with
 pub mod handshake {
-    use tracing::{debug, error_span};
     use crate::access_control::auth::context::AuthContext;
     use crate::access_control::auth::LoginContext;
     use crate::access_control::users::User;
@@ -29,26 +27,45 @@ pub mod handshake {
     use crate::common::stream_support::{packet_read, packet_write, Stream};
     use crate::db::server::socket::DbSocket;
     use crate::error::Error;
+    use std::thread::sleep;
+    use std::time::Duration;
+    use tracing::{debug, error_span};
     /// Server side authentication. On success, provides a user struct.
-    pub fn server_auth<T : Stream>(mut stream: WeaverStream<T>, auth_context: &AuthContext, db_socket: &DbSocket) -> Result<WeaverStream<T>, Error> {
+    pub fn server_auth<T: Stream>(
+        mut stream: WeaverStream<T>,
+        auth_context: &AuthContext,
+        db_socket: &DbSocket,
+    ) -> Result<WeaverStream<T>, Error> {
         error_span!("server-auth").in_scope(|| {
-            debug!("performing server-side authentication of peer {}", stream.peer_addr().unwrap());
+            debug!(
+                "performing server-side authentication of peer {}",
+                stream.peer_addr().unwrap()
+            );
+            sleep(Duration::from_secs(5));
             auth_context.secure_transport(stream.transport())?;
-            let login_ctx: LoginContext = packet_read(stream.transport())?;
+            let login_ctx: LoginContext = packet_read(stream.transport().as_mut().unwrap())?;
 
             todo!()
         })
     }
 
-    pub fn client_auth<T : Stream>(stream: WeaverStream<T>, login_context: LoginContext) -> Result<WeaverStream<T>, Error> {
+    pub fn client_auth<T: Stream>(
+        stream: WeaverStream<T>,
+        login_context: LoginContext,
+    ) -> Result<WeaverStream<T>, Error> {
         error_span!("client-auth").in_scope(|| {
             debug!("performing client side authentication");
             debug!("securing stream...");
-            let remote_host = stream.peer_addr().ok_or(Error::NoHostName).map(|addr| addr.ip().to_string())?;
+            let remote_host = stream
+                .peer_addr()
+                .ok_or(Error::NoHostName)
+                .map(|addr| addr.ip().to_string())?;
+            debug!("using remote host: {:?}", remote_host);
+
             let mut stream = stream.to_secure(&remote_host)?;
             debug!("stream now secured on the client side");
             debug!("sending login-context to server about self");
-            packet_write(stream.transport(), &login_context)?;
+            packet_write(stream.transport().as_mut().unwrap(), &login_context)?;
 
             Ok(todo!())
         })
@@ -60,7 +77,7 @@ pub mod handshake {
 pub struct LoginContext {
     user: String,
     host: String,
-    password_hash: Option<Zeroizing<Vec<u8>>>
+    password_hash: Option<Zeroizing<Vec<u8>>>,
 }
 
 impl LoginContext {
@@ -76,15 +93,11 @@ impl LoginContext {
 
     /// Sets the user for this login context
 
-    pub fn set_user<S : AsRef<str>>(&mut self, user: S) {
+    pub fn set_user<S: AsRef<str>>(&mut self, user: S) {
         self.user = user.as_ref().to_string();
     }
 
-    pub fn set_password<S : AsRef<[u8]>>(&mut self, password: Zeroizing<Vec<u8>>) {
+    pub fn set_password<S: AsRef<[u8]>>(&mut self, password: Zeroizing<Vec<u8>>) {
         self.password_hash = Some(password);
     }
 }
-
-
-
-

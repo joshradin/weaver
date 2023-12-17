@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// Headers are used to convey extra data in requests
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -189,7 +189,7 @@ static PACKET_ID_SOURCE: AtomicU64 = AtomicU64::new(1);
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Packet<T> {
     id: PacketId,
-    body: T
+    body: T,
 }
 
 impl<T> Packet<T> {
@@ -197,7 +197,6 @@ impl<T> Packet<T> {
     pub fn new(body: T) -> Self {
         Self::with_id(body, PACKET_ID_SOURCE.fetch_add(1, Ordering::SeqCst))
     }
-
 
     /// Create a new packet with a given id
     pub fn with_id(body: T, id: PacketId) -> Self {

@@ -1510,6 +1510,7 @@ name = "weaver-core"
 version = "0.0.0"
 dependencies = [
  "argon2",
+ "cfg-if 1.0.0",
  "chrono",
  "crossbeam",
  "digest",
@@ -1536,6 +1537,7 @@ name = "weaver-daemon"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "num_cpus",
  "tracing",
  "tracing-subscriber",
  "weaver-core",
@@ -1547,9 +1549,11 @@ version = "0.0.0"
 dependencies = [
  "crossbeam",
  "eyre",
+ "tempfile",
  "tracing-subscriber",
  "weaver-client",
  "weaver-core",
+ "weaver-daemon",
 ]
 
 [[package]]

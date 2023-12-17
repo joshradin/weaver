@@ -1,14 +1,16 @@
+use crate::access_control::auth::error::AuthInitError;
 use crate::data::types::Type;
 use crate::data::values::Value;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp, IntoDbResponse};
 use crate::db::server::processes::WeaverPid;
+use crate::db::server::socket::MainQueueItem;
 use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError};
 use crossbeam::channel::{RecvError, SendError, Sender};
+use openssl::error::ErrorStack;
+use openssl::ssl::HandshakeError;
 use serde::ser::StdError;
 use std::io;
 use thiserror::Error;
-use crate::access_control::auth::error::AuthInitError;
-use crate::db::server::socket::MainQueueItem;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -62,12 +64,18 @@ pub enum Error {
     ThreadPanicked,
     #[error("Authentication failed")]
     AuthenticationFailed,
-    #[error("Ssl handshake error")]
-    SslHandshakeError,
     #[error("No host name")]
     NoHostName,
     #[error(transparent)]
-    AuthInitError(#[from] AuthInitError)
+    AuthInitError(#[from] AuthInitError),
+    #[error(transparent)]
+    SslConnectorBuilderError(ErrorStack),
+    #[error("Ssl handshake setup error: ({0})")]
+    SslHandshakeSetupError(ErrorStack),
+    #[error("Ssl handshake failure error: ({0})")]
+    SslHandshakeFailure(openssl::ssl::Error),
+    #[error("Ssl handshake would block: ({0})")]
+    SslHandshakeWouldBlock(openssl::ssl::Error),
 }
 
 impl Error {
@@ -80,5 +88,15 @@ impl Error {
 impl IntoDbResponse for Error {
     fn into_db_resp(self) -> DbResp {
         DbResp::Err(self.to_string())
+    }
+}
+
+impl<S> From<HandshakeError<S>> for Error {
+    fn from(value: HandshakeError<S>) -> Self {
+        match value {
+            HandshakeError::SetupFailure(error) => Error::SslHandshakeSetupError(error),
+            HandshakeError::Failure(error) => Error::SslHandshakeFailure(error.into_error()),
+            HandshakeError::WouldBlock(error) => Error::SslHandshakeWouldBlock(error.into_error()),
+        }
     }
 }

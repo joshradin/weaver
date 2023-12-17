@@ -61,7 +61,10 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                      pid,
                      age,
                      state,
-                     info, user, host, using,
+                     info,
+                     user,
+                     host,
+                     using,
                  }| {
                     Row::from([
                         Value::Integer(pid.into()),
@@ -69,7 +72,7 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                         Value::String(format!("{state:?}")),
                         Value::String(format!("{info}")),
                     ])
-                        .to_owned()
+                    .to_owned()
                 },
             );
             Ok(DbResp::rows(DefaultOwnedRows::new(schema.clone(), rows)))
