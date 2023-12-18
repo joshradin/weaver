@@ -5,6 +5,7 @@ use crate::dynamic_table::{Col, TableCol};
 use crate::tables::TableRef;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use derive_more::From;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, Headers};
 use crate::tx::Tx;
 
@@ -68,20 +69,3 @@ impl Into<DbReq> for (Tx, Query) {
     }
 }
 
-pub fn visit_query<V : QueryVisitor>(visitor: &mut V, query: &Query) {
-
-}
-
-pub fn visit_select<V : QueryVisitor>(visitor: &mut V, query: &Query) {
-
-}
-
-pub trait QueryVisitor {
-    fn visit_query(&mut self, query: &Query) {
-        visit_query(self, query)
-    }
-}
-
-pub trait QueryVisitorMut {
-
-}
