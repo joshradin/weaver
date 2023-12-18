@@ -5,7 +5,7 @@ use crate::error::Error;
 /// Spins up the db
 pub fn spin_up_shard(shard: &WeaverDb) -> Result<(), Error> {
     let socket = shard.connect();
-    socket.send(DbReqBody::on_core(|shard| Ok(DbResp::Ok)))?;
+    socket.send(DbReqBody::on_core_write(|shard| Ok(DbResp::Ok)))?;
 
     Ok(())
 }

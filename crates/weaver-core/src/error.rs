@@ -76,12 +76,24 @@ pub enum Error {
     SslHandshakeFailure(openssl::ssl::Error),
     #[error("Ssl handshake would block: ({0})")]
     SslHandshakeWouldBlock(openssl::ssl::Error),
+    #[error("Could not parse {0:?}")]
+    ParseError(String),
+    #[error("Could not use unqualified table reference without in-use schema")]
+    UnQualifedTableWithoutInUseSchema,
+
+    #[error("{0}")]
+    Custom(String),
+
 }
 
 impl Error {
     /// A server error occurred
     pub fn server_error(error: impl ToString) -> Self {
         Self::ServerError(error.to_string())
+    }
+
+    pub fn custom<T : ToString + 'static>(error: T) -> Self {
+        Self::Custom(error.to_string())
     }
 }
 

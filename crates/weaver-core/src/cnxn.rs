@@ -7,7 +7,8 @@ use crate::queries::ast::Query;
 use crate::tables::table_schema::TableSchema;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
-use std::time::Duration;
+use crate::cnxn::stream::WeaverStream;
+use crate::common::stream_support::Stream;
 
 pub mod cnxn_loop;
 mod handshake;
@@ -91,4 +92,10 @@ impl<M: MessageStream> MessageStream for &mut M {
     fn write(&mut self, message: &Message) -> Result<(), Error> {
         (*self).write(message)
     }
+}
+
+pub trait WeaverStreamListener {
+    type Stream: Stream;
+    /// Accepts an incoming connection
+    fn accept(&self) -> Result<WeaverStream<Self::Stream>, Error>;
 }

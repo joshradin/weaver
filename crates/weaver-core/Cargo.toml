@@ -33,6 +33,7 @@ argon2 = { version = "0.5.2" }
 whoami = "1.4.1"
 zeroize = { version = "1.7.0", features = ["serde"] }
 cfg-if = "1.0.0"
+derive_more = "0.99.17"
 
 [dev-dependencies]
 tracing-subscriber = "0.3.18"

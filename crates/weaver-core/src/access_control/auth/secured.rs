@@ -2,8 +2,11 @@
 
 use crate::common::stream_support::Stream;
 use crate::error::Error;
-use openssl::ssl::{SslConnector, SslMethod, SslStream};
+use openssl::ssl::{SslConnector, SslMethod, SslStream, SslVerifyMode};
+use openssl::x509::X509;
 use std::io::{Read, Write};
+use tracing::{debug, trace};
+
 /// Wrapper type around a secured stream
 #[derive(Debug)]
 pub struct Secured<T: Stream> {
@@ -17,11 +20,34 @@ impl<T: Stream> Secured<T> {
 
     /// Secures an existing stream over tls
     pub fn new(host: &str, stream: T) -> Result<Self, Error> {
-        let mut connector = SslConnector::builder(SslMethod::tls_client())
-            .map_err(|e| Error::SslConnectorBuilderError(e))?
-            .build();
+        let mut connector = Self::connector()?;
         let stream = connector.connect(host, stream)?;
         Ok(Self::wrap(stream))
+    }
+
+    fn connector() -> Result<SslConnector, Error> {
+        (|| {
+            let mut builder = SslConnector::builder(SslMethod::tls_client())?;
+            builder.set_verify_callback(SslVerifyMode::all(), |res, store| {
+                trace!("verifying x509 cert from server: initial resolution = {res}");
+
+                let Some(cert_chain) = store.chain() else {
+                    return false;
+                };
+
+                for x509_ref in cert_chain {
+                    trace!("checking against x509");
+                    if let Ok(text) = x509_ref.to_text() {
+                        let text = String::from_utf8_lossy(&text[..]);
+                        trace!("human readable: {}", text);
+                    }
+                }
+
+                true
+            });
+            Ok(builder.build())
+        })()
+        .map_err(|e| Error::SslConnectorBuilderError(e))
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::db::server::WeakWeaverDb;
 use crate::tx::behavior::{TxCompletion, TxDropBehavior};
-use crate::tx::{Tx, TxId};
+use crate::tx::{Tx, TxId, TxRef};
 use crossbeam::channel::{unbounded, Sender};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
@@ -82,6 +82,7 @@ impl TxCoordinator {
             _server_ref: Some(self.server.upgrade().expect("no server").into()),
         }
     }
+
     pub fn on_drop(&self) -> TxDropBehavior {
         self.on_drop
     }

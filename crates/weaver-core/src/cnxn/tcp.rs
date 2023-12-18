@@ -10,7 +10,7 @@ use tracing::debug;
 
 use crate::access_control::auth::LoginContext;
 use crate::cnxn::handshake::handshake_listener;
-use crate::cnxn::stream;
+use crate::cnxn::{stream, WeaverStreamListener};
 use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::transport::Transport;
 use crate::db::server::WeakWeaverDb;
@@ -35,6 +35,7 @@ impl WeaverStream<TcpStream> {
             let mut iter = socket_addr.to_socket_addrs()?;
             let mut found_stream = None;
             for ref socket_addr in iter {
+                let socket_addr: &SocketAddr = socket_addr;
                 if let Ok(stream) = TcpStream::connect_timeout(socket_addr, timeout) {
                     found_stream = Some(stream);
                     break;
@@ -50,6 +51,7 @@ impl WeaverStream<TcpStream> {
         let mut socket = Self::new(
             socket_addr,
             connected.peer_addr().ok(),
+            false,
             Transport::Insecure(connected.into()),
         );
         Ok(socket.login(login_context)?)
@@ -72,12 +74,17 @@ impl WeaverTcpListener {
     }
 
     /// Gets the local address of this listener
-    pub fn local_addr(&self) -> Result<SocketAddr, Error> {
+    pub(crate) fn local_addr(&self) -> Result<SocketAddr, Error> {
         Ok(self.tcp_listener.local_addr()?)
     }
+}
+
+impl WeaverStreamListener for WeaverTcpListener {
+    type Stream = TcpStream;
+
 
     /// Accepts an incoming connection
-    pub fn accept(&self) -> Result<WeaverStream<TcpStream>, Error> {
+    fn accept(&self) -> Result<WeaverStream<TcpStream>, Error> {
         let (mut stream, socket_addr) = self.tcp_listener.accept()?;
 
         let mut db = self.weak.upgrade().ok_or(Error::NoCoreAvailable)?;
@@ -85,6 +92,7 @@ impl WeaverTcpListener {
         let mut socket = WeaverStream::new(
             Some(socket_addr),
             stream.local_addr().ok(),
+            false,
             Transport::Insecure(stream.into()),
         );
 

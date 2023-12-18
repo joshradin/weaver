@@ -1,6 +1,7 @@
 //! Transport provider
 
 use crate::access_control::auth::secured::Secured;
+use crate::common::pretty_bytes::PrettyBytes;
 use crate::common::stream_support::Stream;
 use cfg_if::cfg_if;
 use std::io;
@@ -92,7 +93,7 @@ impl<T: Read> Read for StreamSniffer<T> {
             if #[cfg(feature="transport-sniffing")] {
                 match output {
                     Ok(bytes) => {
-                        trace!("read ({bytes} bytes): {:X?}", &buf[..bytes]);
+                        trace!("read ({bytes} bytes): {}", PrettyBytes(&buf[..bytes]));
                     }
                     Err(ref e) => {
                         tracing::warn!("read failed: {}", e);
@@ -108,7 +109,7 @@ impl<T: Write> Write for StreamSniffer<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         cfg_if! {
             if #[cfg(feature="transport-sniffing")] {
-                trace!("write: {:x?}", buf);
+                trace!("write: {}", PrettyBytes(buf));
             }
         }
         let output = self.0.write(buf);

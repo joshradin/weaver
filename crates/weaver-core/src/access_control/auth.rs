@@ -8,8 +8,6 @@
 //!  - client: send password
 //!  - server: check password, and return user if correct
 
-use argon2::password_hash::PasswordHashString;
-use argon2::PasswordHash;
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -20,30 +18,48 @@ pub mod secured;
 
 /// The handshake to connect a client with
 pub mod handshake {
+    use std::fmt::Debug;
+
+    use tracing::{debug, error_span};
+
     use crate::access_control::auth::context::AuthContext;
     use crate::access_control::auth::LoginContext;
     use crate::access_control::users::User;
+    use crate::cnxn::RemoteDbResp;
     use crate::cnxn::stream::WeaverStream;
     use crate::common::stream_support::{packet_read, packet_write, Stream};
+    use crate::data::values::Value;
+    use crate::db::server::layers::packets::{DbReqBody, DbResp};
     use crate::db::server::socket::DbSocket;
     use crate::error::Error;
-    use std::thread::sleep;
-    use std::time::Duration;
-    use tracing::{debug, error_span};
+    use crate::queries::ast::{Op, Query, Where};
+
     /// Server side authentication. On success, provides a user struct.
-    pub fn server_auth<T: Stream>(
+    pub fn server_auth<T: Stream + Debug>(
         mut stream: WeaverStream<T>,
         auth_context: &AuthContext,
         db_socket: &DbSocket,
     ) -> Result<WeaverStream<T>, Error> {
         error_span!("server-auth").in_scope(|| {
             debug!(
-                "performing server-side authentication of peer {}",
-                stream.peer_addr().unwrap()
+                "performing server-side authentication of peer {:?}",
+                stream.peer_addr()
             );
-            sleep(Duration::from_secs(5));
             auth_context.secure_transport(stream.transport())?;
-            let login_ctx: LoginContext = packet_read(stream.transport().as_mut().unwrap())?;
+            let mut login_ctx: LoginContext = packet_read(stream.transport().as_mut().unwrap())?;
+            debug!("received login context: {:#?}", login_ctx);
+            let tx = db_socket.start_tx()?;
+            let query = Query::select(
+                &["user", "host", "password"],
+                "weaver.users",
+                Where::Op(
+                    "user".to_string(),
+                    Op::Eq,
+                    Value::String(login_ctx.user.to_string())
+                )
+            );
+            let resp = db_socket.send((tx, query))?.to_result()?;
+            debug!("resp={resp:#?}");
 
             todo!()
         })
@@ -55,7 +71,7 @@ pub mod handshake {
     ) -> Result<WeaverStream<T>, Error> {
         error_span!("client-auth").in_scope(|| {
             debug!("performing client side authentication");
-            debug!("securing stream...");
+            debug!("securing client-side stream...");
             let remote_host = stream
                 .peer_addr()
                 .ok_or(Error::NoHostName)
@@ -65,9 +81,11 @@ pub mod handshake {
             let mut stream = stream.to_secure(&remote_host)?;
             debug!("stream now secured on the client side");
             debug!("sending login-context to server about self");
-            packet_write(stream.transport().as_mut().unwrap(), &login_context)?;
-
-            Ok(todo!())
+            let transport = stream.transport().as_mut().unwrap();
+            packet_write(transport, &login_context)?;
+            let user = packet_read::<User, _>(transport)?;
+            stream.set_user(user);
+            Ok(stream)
         })
     }
 }

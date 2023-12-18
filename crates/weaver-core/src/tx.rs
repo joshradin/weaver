@@ -99,6 +99,10 @@ impl Tx {
         self.completed = true;
         self._commit();
     }
+
+    pub fn as_ref(&self) -> TxRef {
+        TxRef { id: self.id }
+    }
 }
 
 impl Display for Tx {
@@ -117,4 +121,10 @@ impl Drop for Tx {
             }
         }
     }
+}
+
+/// A reference to a transaction
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct TxRef {
+    id: TxId
 }

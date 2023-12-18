@@ -4,6 +4,7 @@ use std::time::Duration;
 use tracing::level_filters::LevelFilter;
 use weaver_core::cnxn::stream::WeaverStream;
 use weaver_core::cnxn::tcp::WeaverTcpListener;
+use weaver_core::cnxn::WeaverStreamListener;
 use weaver_core::db::server::WeaverDb;
 
 #[test]

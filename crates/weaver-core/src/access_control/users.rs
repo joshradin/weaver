@@ -1,14 +1,18 @@
 //! Users are what connect to the database
 
+use serde::{Deserialize, Serialize};
 use crate::data::row::Row;
+use crate::data::types::Type;
+use crate::db::WEAVER_SCHEMA;
 use crate::dynamic_table::{Col, DynamicTable};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
+use crate::tables::InMemoryTable;
 use crate::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 
 /// A user struct is useful for access control
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct User {
     name: String,
     host: String,
@@ -39,15 +43,18 @@ impl User {
 /// The user table
 #[derive(Debug)]
 pub struct UserTable {
-    schema: TableSchema,
+    in_memory: InMemoryTable
 }
 
 impl UserTable {
     pub fn new() -> Self {
         Self {
-            schema: TableSchema::builder("weaver", "users")
+            in_memory: InMemoryTable::new(TableSchema::builder(WEAVER_SCHEMA, "users")
+                .column("user", Type::String, true, None, None).unwrap()
                 .build()
-                .expect("failed to create users table schema"),
+                .expect("failed to create users table schema")
+            )
+                .expect("couldn't create users table")
         }
     }
 }
@@ -60,7 +67,7 @@ impl Default for UserTable {
 
 impl DynamicTable for UserTable {
     fn schema(&self) -> &TableSchema {
-        &self.schema
+        &self.in_memory.schema()
     }
 
     fn auto_increment(&self, col: Col) -> i64 {
@@ -80,7 +87,7 @@ impl DynamicTable for UserTable {
         tx: &'tx Tx,
         key: &KeyIndex,
     ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
-        todo!()
+        self.in_memory.read(tx, key)
     }
 
     fn update(&self, tx: &Tx, row: Row) -> Result<(), Error> {
@@ -94,8 +101,6 @@ impl DynamicTable for UserTable {
 
 #[cfg(test)]
 mod tests {
-    use crate::access_control::users::User;
-
     #[test]
     fn detect_host() {
         // let user = User::detect_host("root");

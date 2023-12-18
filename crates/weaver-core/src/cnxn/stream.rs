@@ -10,11 +10,12 @@ use crate::common::stream_support::Stream;
 use crate::db::server::socket::DbSocket;
 use crate::error::Error;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 use std::io::{Read, Write};
 use std::mem::size_of;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::OnceLock;
-use tracing::trace;
+use tracing::{debug_span, trace};
 
 /// A tcp stream that connects to a
 #[derive(Debug)]
@@ -22,6 +23,7 @@ pub struct WeaverStream<T: Stream> {
     pub(super) peer_addr: Option<SocketAddr>,
     pub(super) local_addr: Option<SocketAddr>,
     pub(super) socket: Option<Transport<T>>,
+    localhost: bool,
     user: OnceLock<User>,
 }
 
@@ -29,12 +31,14 @@ impl<T: Stream> WeaverStream<T> {
     pub(super) fn new(
         peer_addr: Option<SocketAddr>,
         local_addr: Option<SocketAddr>,
+        localhost: bool,
         socket: Transport<T>,
     ) -> Self {
         Self {
             peer_addr,
             local_addr,
             socket: Some(socket),
+            localhost,
             user: OnceLock::new(),
         }
     }
@@ -55,10 +59,12 @@ impl<T: Stream> WeaverStream<T> {
 
     /// Makes this connection secure, if it's not already
     pub fn to_secure(mut self, host: &str) -> Result<Self, Error> {
-        if let Some(Transport::Insecure(socket)) = self.socket {
-            self.socket = Some(Transport::Secure(Secured::new(host, socket)?));
-        }
-        Ok(self)
+        debug_span!("ssl accept stream").in_scope(|| {
+            if let Some(Transport::Insecure(socket)) = self.socket {
+                self.socket = Some(Transport::Secure(Secured::new(host, socket)?));
+            }
+            Ok(self)
+        })
     }
 
     /// Gets the local socket address of the stream
@@ -69,6 +75,10 @@ impl<T: Stream> WeaverStream<T> {
     /// Gets the peer socket address of the stream
     pub fn peer_addr(&self) -> Option<SocketAddr> {
         self.peer_addr.clone()
+    }
+
+    pub fn localhost(&self) -> bool {
+        self.localhost
     }
 
     /// Gets the transports
@@ -107,7 +117,7 @@ impl<T: Stream> MessageStream for WeaverStream<T> {
 }
 
 /// Server side tcp handshake
-pub fn tcp_server_handshake<T: Stream>(
+pub fn tcp_server_handshake<T: Stream + Debug>(
     tcp: WeaverStream<T>,
     auth_context: &AuthContext,
     core: &DbSocket,

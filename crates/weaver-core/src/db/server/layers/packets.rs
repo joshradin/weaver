@@ -4,13 +4,14 @@ use crate::dynamic_table::Table;
 use crate::error::Error;
 use crate::queries::ast::Query;
 use crate::rows::OwnedRows;
-use crate::tx::Tx;
+use crate::tx::{Tx, TxRef};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use crate::db::server::processes::WeaverProcessInfo;
 
 /// Headers are used to convey extra data in requests
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -42,20 +43,29 @@ impl Headers {
 #[derive(Debug)]
 pub struct DbReq {
     headers: Headers,
+    ctx: Option<WeaverProcessInfo>,
     body: DbReqBody,
 }
 
 impl DbReq {
     /// Create a new db response
     pub fn new(headers: Headers, body: DbReqBody) -> Self {
-        Self { headers, body }
+        Self { headers, ctx: None, body }
+    }
+
+    pub fn set_ctx(&mut self, ctx: WeaverProcessInfo) {
+        self.ctx = Some(ctx);
+    }
+
+    pub fn ctx(&self) -> Option<&WeaverProcessInfo> {
+        self.ctx.as_ref()
     }
 
     pub fn on_core<F, T: IntoDbResponse>(cb: F) -> Self
     where
         F: FnOnce(&mut WeaverDbCore) -> T + Send + Sync + 'static,
     {
-        DbReqBody::on_core(|core| Ok(cb(core).into_db_resp())).into()
+        DbReqBody::on_core_write(|core| Ok(cb(core).into_db_resp())).into()
     }
 
     /// Gets the headers
@@ -78,9 +88,9 @@ impl DbReq {
         &self.body
     }
 
-    pub fn to_parts(self) -> (Headers, DbReqBody) {
-        let DbReq { headers, body } = self;
-        (headers, body)
+    pub fn to_parts(self) -> (Headers, Option<WeaverProcessInfo>, DbReqBody) {
+        let DbReq { headers, ctx, body, .. } = self;
+        (headers, ctx, body)
     }
 }
 
@@ -89,6 +99,7 @@ impl From<DbReqBody> for DbReq {
     fn from(value: DbReqBody) -> Self {
         Self {
             headers: Default::default(),
+            ctx: None,
             body: value,
         }
     }
@@ -97,7 +108,8 @@ impl From<DbReqBody> for DbReq {
 /// The base request that is sent to the database
 
 pub enum DbReqBody {
-    OnCore(Box<dyn FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync>),
+    OnCoreWrite(Box<dyn FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync>),
+    OnCore(Box<dyn FnOnce(&WeaverDbCore) -> Result<DbResp, Error> + Send + Sync>),
     OnServer(Box<dyn FnOnce(&mut WeaverDb) -> Result<DbResp, Error> + Send + Sync>),
     /// Send a query to the request
     TxQuery(Tx, Query),
@@ -109,14 +121,43 @@ pub enum DbReqBody {
 
 impl Debug for DbReqBody {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DbReq").finish_non_exhaustive()
+        match self {
+            DbReqBody::TxQuery(tx, query) => {
+                f.debug_tuple("TxQuery").field(tx).field(query).finish()
+            }
+            DbReqBody::Ping => {
+                f.debug_tuple("Ping").finish()
+            }
+            DbReqBody::StartTransaction => {
+                f.debug_tuple("StartTransaction").finish()
+            }
+            DbReqBody::Commit(c) => {
+                f.debug_tuple("Commit").field(c).finish()
+            }
+            DbReqBody::Rollback(r) => {
+                f.debug_tuple("Rollback").field(r).finish()
+            }
+            _ => {
+                f.debug_struct("DbReq").finish_non_exhaustive()
+            }
+        }
+
     }
 }
 
 impl DbReqBody {
     /// Gets full access of db core
-    pub fn on_core<
+    pub fn on_core_write<
         F: FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync + 'static,
+    >(
+        func: F,
+    ) -> Self {
+        Self::OnCoreWrite(Box::new(func))
+    }
+
+    /// Gets full access of db core
+    pub fn on_core<
+        F: FnOnce(&WeaverDbCore) -> Result<DbResp, Error> + Send + Sync + 'static,
     >(
         func: F,
     ) -> Self {
@@ -171,6 +212,16 @@ impl IntoDbResponse for DbResp {
 impl DbResp {
     pub fn rows<T: OwnedRows + Send + Sync + 'static>(rows: T) -> Self {
         Self::Rows(Box::new(rows))
+    }
+
+    pub fn to_result(self) -> Result<DbResp, Error> {
+        match self {
+
+            DbResp::Err(e) => {
+                Err(Error::custom(e))
+            }
+            db => Ok(db),
+        }
     }
 }
 

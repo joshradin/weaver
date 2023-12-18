@@ -273,7 +273,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.40",
 ]
 
 [[package]]
@@ -323,6 +323,12 @@ checksum = "d16048cd947b08fa32c24458a22f5dc5e835264f689f4f5653210c69fd107363"
 dependencies = [
  "crossbeam-utils 0.8.16",
 ]
+
+[[package]]
+name = "convert_case"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
 name = "core-foundation-sys"
@@ -465,6 +471,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8eb30d70a07a3b04884d2677f06bec33509dc67ca60d92949e5535352d3191dc"
 dependencies = [
  "powerfmt",
+]
+
+[[package]]
+name = "derive_more"
+version = "0.99.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fb810d30a7c1953f91334de7244731fc3f3c10d7fe163338a35b9f640960321"
+dependencies = [
+ "convert_case",
+ "proc-macro2",
+ "quote",
+ "rustc_version",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -866,7 +885,7 @@ checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.40",
 ]
 
 [[package]]
@@ -1129,7 +1148,7 @@ checksum = "43576ca501357b9b071ac53cdc7da8ef0cbd9493d8df094cd821777ea6e894d3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.40",
 ]
 
 [[package]]
@@ -1203,6 +1222,17 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "syn"
+version = "1.0.109"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
 version = "2.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13fa70a4ee923979ffb522cacce59d34421ebdea5625e1073c4326ef9d2dd42e"
@@ -1262,7 +1292,7 @@ checksum = "266b2e40bc00e5a6c09c3584011e08b06f123c00362c92b975ba9843aaaa14b8"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.40",
 ]
 
 [[package]]
@@ -1342,7 +1372,7 @@ checksum = "34704c8d6ebcbc939824180af020566b01a7c01f80641264eba0999f6c2b6be7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.40",
 ]
 
 [[package]]
@@ -1459,7 +1489,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.40",
  "wasm-bindgen-shared",
 ]
 
@@ -1481,7 +1511,7 @@ checksum = "f0eb82fcb7930ae6219a7ecfd55b217f5f0893484b7a13022ebb2b2bf20b5283"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.40",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -1499,6 +1529,7 @@ dependencies = [
  "clap",
  "color-eyre",
  "eyre",
+ "interprocess",
  "log",
  "prettytable",
  "simplelog",
@@ -1513,6 +1544,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "chrono",
  "crossbeam",
+ "derive_more",
  "digest",
  "either",
  "interprocess",
@@ -1537,6 +1569,7 @@ name = "weaver-daemon"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "interprocess",
  "num_cpus",
  "tracing",
  "tracing-subscriber",
@@ -1549,6 +1582,7 @@ version = "0.0.0"
 dependencies = [
  "crossbeam",
  "eyre",
+ "log",
  "tempfile",
  "tracing-subscriber",
  "weaver-client",

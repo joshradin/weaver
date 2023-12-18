@@ -20,7 +20,7 @@ fn transactions_in_memory() -> Result<(), Error> {
 
     let socket = db.connect();
     socket
-        .send(DbReqBody::on_core(|db| {
+        .send(DbReqBody::on_core_write(|db| {
             let ref schema = TableSchema::builder("default", "in_mem")
                 .column("id", Type::Integer, true, None, 0)?
                 .column("name", Type::String, true, None, None)?

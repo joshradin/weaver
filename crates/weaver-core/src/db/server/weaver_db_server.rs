@@ -1,14 +1,14 @@
 use super::layers::packets::{IntoDbResponse, Packet};
 use crate::access_control::auth::context::AuthContext;
-use crate::access_control::auth::init::{init_auth_context, AuthConfig};
+use crate::access_control::auth::init::{AuthConfig, init_auth_context};
 use crate::cnxn::cnxn_loop::cnxn_main;
 use crate::cnxn::tcp::WeaverTcpListener;
-use crate::cnxn::{Message, MessageStream, RemoteDbResp};
+use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::db::core::WeaverDbCore;
 use crate::db::server::init_system_tables::init_system_tables;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::{Layer, Layers, Service};
-use crate::db::server::processes::{ProcessManager, WeaverProcessChild};
+use crate::db::server::processes::{ProcessManager, WeaverProcessChild, WeaverProcessInfo};
 use crate::db::server::socket::{DbSocket, MainQueueItem};
 use crate::error::Error;
 use crate::modules::{Module, ModuleError};
@@ -17,15 +17,17 @@ use crate::queries::executor::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
 use crate::tx::coordinator::TxCoordinator;
-use crossbeam::channel::{unbounded, Sender};
+use crossbeam::channel::{Sender, TrySendError, unbounded};
 use parking_lot::{Mutex, RwLock};
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, OnceLock, Weak};
 use std::thread;
-use std::thread::{current, JoinHandle};
+use std::thread::JoinHandle;
 use threadpool_crossbeam_channel::{Builder, ThreadPool};
-use tracing::{debug, error, error_span, info, info_span, warn};
+use tracing::{debug, error, error_span, info, info_span, trace, trace_span, warn};
+use crate::cnxn::interprocess::WeaverLocalSocketListener;
 
 /// A server that allows for multiple connections.
 #[derive(Clone)]
@@ -42,7 +44,10 @@ pub(super) struct WeaverDbShared {
 
     /// Should only be bound to TCP once.
     tcp_bound: AtomicBool,
-    tcp_local_address: RwLock<Option<SocketAddr>>,
+    tcp_local_address: OnceLock<SocketAddr>,
+
+    socket_file_bound: AtomicBool,
+    socket_file: OnceLock<PathBuf>,
     auth_context: AuthContext,
 
     /// Responsible for managing processes.
@@ -76,36 +81,51 @@ impl WeaverDb {
                     .name("db-core".to_string())
                     .spawn(move || {
                         let weak_db = weak_db.clone();
-                        loop {
+                        error_span!("db-server-main").in_scope(|| {loop {
                             let Ok((req, response_channel)) = rc.recv() else {
                                 info!("Db request channel closed");
                                 break;
                             };
+                            debug!("got request packet");
                             let weak_db = weak_db.clone();
-                            worker_pool.execute(move || {
+                            thread::spawn(move || {
                                 let Some(db) = weak_db.upgrade() else {
                                     warn!("db request processing after db dropped");
                                     return;
                                 };
-
                                 let mut db = WeaverDb { shared: db };
 
                                 let req_id = *req.id();
                                 let req = req.unwrap();
-                                let resp = thread::spawn(move || {
-                                    error_span!("packet", id = req_id)
-                                        .in_scope(|| db.shared.layers.read().process(req))
-                                })
-                                .join()
-                                .map_err(|e| {
-                                    error!("panic occurred while processing a request");
-                                    Error::ThreadPanicked
-                                })
-                                .into_db_resp();
 
-                                let _ = response_channel.send(Packet::with_id(resp, req_id));
-                            })
-                        }
+                                if let Err(e) = thread::spawn({
+                                    let response_channel = response_channel.clone();
+                                    move || {
+                                        error_span!("packet", id = req_id)
+                                            .in_scope(|| {
+                                                trace!("packet has begun processing");
+                                                let resp = db.shared.layers.read().process(req);
+                                                trace!("packet has finished being processed");
+                                                let _ = response_channel.send(Packet::with_id(resp, req_id));
+                                            })
+                                    }
+                                }).join()
+                                    .map_err(|e| {
+                                        error!("panic occurred while processing a request");
+                                        Error::ThreadPanicked
+                                    }) {
+                                    error!("{}", e);
+                                    let resp = e.into_db_resp();
+                                    let _ = response_channel.try_send(Packet::with_id(resp, req_id));
+                                }
+
+                            });
+                        }}
+
+
+                        )
+
+
                     })
                     .expect("could not start main shard thread")
             };
@@ -130,7 +150,10 @@ impl WeaverDb {
                 worker_handles: Mutex::default(),
                 req_worker_pool: worker_pool,
                 tcp_bound: AtomicBool::new(false),
-                tcp_local_address: RwLock::default(),
+                tcp_local_address: Default::default(),
+
+                socket_file_bound: AtomicBool::new(false),
+                socket_file: Default::default(),
                 auth_context,
                 process_manager: RwLock::new(ProcessManager::new(WeakWeaverDb(weak.clone()))),
                 layers: RwLock::new(layers),
@@ -164,10 +187,11 @@ impl WeaverDb {
         self.shared.layers.write().wrap(layer)
     }
 
-    pub fn to_plan(&self, query: &Query) -> Result<QueryPlan, Error> {
-        info!("debug query to plan");
+    pub fn to_plan<'a>(&self, query: &Query, plan_context: impl Into<Option< &'a WeaverProcessInfo>>) -> Result<QueryPlan, Error> {
+        info!("query to plan");
         let factory = QueryPlanFactory::new(self.weak());
-        let plan = factory.to_plan(query)?;
+        debug!("created query factory: {:?}", factory);
+        let plan = factory.to_plan(query, plan_context)?;
 
         Ok(plan)
     }
@@ -185,13 +209,36 @@ impl WeaverDb {
             let _ = self
                 .shared
                 .tcp_local_address
-                .write()
-                .insert(listener.local_addr()?);
+                .set(listener.local_addr()?);
 
             let self_clone = self.weak();
             let worker = thread::Builder::new()
                 .name("distro-db-tcp".to_string())
                 .spawn(move || -> Result<(), Error> { Self::tcp_handler(listener, self_clone) })?;
+            self.shared.worker_handles.lock().push(worker);
+            Ok(())
+        } else {
+            Err(Error::TcpAlreadyBound)
+        }
+    }
+
+    /// Bind to a tcp port. Can only be done once
+    pub fn bind_local_socket<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+        let path = path.as_ref().to_path_buf();
+        if self
+            .shared
+            .socket_file_bound
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
+            == Ok(false)
+        {
+            let weak = self.weak();
+            let _ = self.shared.socket_file.set(path.clone());
+            let mut listener = WeaverLocalSocketListener::bind(&path, weak)?;
+
+            let self_clone = self.weak();
+            let worker = thread::Builder::new()
+                .name("distro-db-local-socket".to_string())
+                .spawn(move || -> Result<(), Error> { Self::local_socket_handler(listener, self_clone) })?;
             self.shared.worker_handles.lock().push(worker);
             Ok(())
         } else {
@@ -212,7 +259,39 @@ impl WeaverDb {
             };
 
             let mut process_manager = weaver.shared.process_manager.write();
+            let user = stream.user().clone();
 
+            process_manager.start(&user, move |child: WeaverProcessChild| {
+                let span = info_span!(
+                    "external-connection",
+                    peer_addrr = stream.peer_addr().map(|addr| addr.to_string())
+                );
+                let _enter = span.enter();
+                if let Err(e) = cnxn_main(&mut stream, child) {
+                    warn!("client connection ended with err: {}", e);
+                    stream.write(&Message::Resp(RemoteDbResp::Err(e.to_string())))?;
+                    Err(e)
+                } else {
+                    Ok(())
+                }
+            })?;
+        }
+        info!("Tcp listener shut down");
+        Ok(())
+    }
+    fn local_socket_handler(mut listener: WeaverLocalSocketListener, db: WeakWeaverDb) -> Result<(), Error> {
+        loop {
+            let Ok(mut stream) = listener.accept() else {
+                warn!("Listener closed");
+                break;
+            };
+
+            let Some(weaver) = db.clone().upgrade() else {
+                warn!("distro db closed");
+                break;
+            };
+
+            let mut process_manager = weaver.shared.process_manager.write();
             let user = stream.user().clone();
 
             process_manager.start(&user, move |child: WeaverProcessChild| {
@@ -247,8 +326,7 @@ impl WeaverDb {
     pub fn local_addr(&self) -> Option<SocketAddr> {
         self.shared
             .tcp_local_address
-            .read()
-            .as_ref()
+            .get()
             .map(|s| s.clone())
     }
 
@@ -265,16 +343,31 @@ impl WeaverDb {
 
     /// Process a request
     fn base_service(&mut self, req: DbReq) -> Result<DbResp, Error> {
-        let (_, body) = req.to_parts();
+        let (_, ctx, body) = req.to_parts();
+        trace!("req={:#?}", body);
         match body {
-            DbReqBody::OnCore(cb) => {
-                let mut writable = self.shared.core.write();
-                (cb)(&mut *writable)
+            DbReqBody::OnCoreWrite(cb) => {
+                error_span!("core", mode="write").in_scope(|| {
+                    trace!("getting write access to core");
+                    let mut writable = self.shared.core.write();
+                    (cb)(&mut *writable)
+                })
             }
-            DbReqBody::OnServer(cb) => (cb)(self),
+            DbReqBody::OnCore(cb) => {
+                error_span!("core", mode="read").in_scope(|| {
+                    trace!("getting read access to core");
+                    let readable = self.shared.core.read();
+                    (cb)(&*readable)
+                })
+            }
+            DbReqBody::OnServer(cb) => { (cb)(self) },
             DbReqBody::Ping => Ok(DbResp::Pong),
             DbReqBody::TxQuery(tx, ref query) => {
-                let ref plan = self.to_plan(query)?;
+                let ref plan = self.to_plan(query, ctx.as_ref())
+                    .map_err(|e| {
+                        error!("creating plan resulted in error: {}", e);
+                        e
+                    })?;
                 debug!("created plan: {plan:?}");
                 let executor = self.query_executor();
                 match executor.execute(&tx, plan) {
@@ -283,8 +376,12 @@ impl WeaverDb {
                 }
             }
             DbReqBody::StartTransaction => {
-                let tx = self.shared.core.read().start_transaction();
-                Ok(DbResp::Tx(tx))
+                error_span!("core", mode="write").in_scope(|| {
+                    trace!("getting write access to core");
+                    let tx = self.shared.core.read().start_transaction();
+                    trace!("started transaction (id = {:?})", tx.id());
+                    Ok(DbResp::Tx(tx))
+                })
             }
             DbReqBody::Commit(tx) => {
                 tx.commit();
@@ -294,6 +391,7 @@ impl WeaverDb {
                 tx.rollback();
                 Ok(DbResp::Ok)
             }
+
         }
     }
 }
