@@ -14,6 +14,7 @@ use crate::db::server::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, span, Level};
+use crate::cancellable_task::{CancellableTask, CancellableTaskHandle, Cancelled};
 
 use crate::error::Error;
 
@@ -35,7 +36,7 @@ pub struct WeaverProcess {
     state: Arc<RwLock<ProcessState>>,
     info: Arc<RwLock<String>>,
     kill_channel: Sender<Kill>,
-    handle: OnceLock<JoinHandle<Result<(), Error>>>,
+    handle: OnceLock<CancellableTaskHandle<Result<(), Error>>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -83,7 +84,7 @@ impl WeaverProcess {
         )
     }
 
-    fn set_handle(&mut self, join_handle: JoinHandle<Result<(), Error>>) {
+    fn set_handle(&mut self, join_handle: CancellableTaskHandle<Result<(), Error>>) {
         let _ = self.handle.set(join_handle);
     }
 
@@ -100,12 +101,27 @@ impl WeaverProcess {
         }
     }
 
+    pub fn kill(mut self) -> Result<(), Error> {
+        self.handle
+            .take()
+            .ok_or(Error::ProcessFailed(self.shared.pid))
+            .and_then(|t| match t.cancel() {
+                Ok(ok) => Ok(ok),
+                Err(e) => Err(Error::ProcessFailed(self.shared.pid)),
+            })
+    }
+
     pub fn join(mut self) -> Result<(), Error> {
         self.handle
             .take()
             .ok_or(Error::ProcessFailed(self.shared.pid))
             .and_then(|t| match t.join() {
-                Ok(ok) => ok,
+                Ok(ok) => match ok {
+                    Ok(ok) => {
+                        ok
+                    }
+                    Err(err) => Err(Error::TaskCancelled)
+                },
                 Err(_) => Err(Error::ProcessFailed(self.shared.pid)),
             })
     }
@@ -231,10 +247,7 @@ impl ProcessManager {
     }
 
     /// Starts a process
-    pub fn start<F>(&mut self, user: &User, func: F) -> Result<WeaverPid, Error>
-    where
-        F: FnOnce(WeaverProcessChild) -> Result<(), Error>,
-        F: Send + 'static,
+    pub fn start(&mut self, user: &User, func: CancellableTask<WeaverProcessChild, Result<(), Error>>) -> Result<WeaverPid, Error>
     {
         let pid = self.next_pid.fetch_add(1, Ordering::SeqCst);
 
@@ -242,24 +255,23 @@ impl ProcessManager {
 
         let handle = {
             let channel = self.process_killed_channel.clone();
-            thread::Builder::new()
-                .name(format!("weaver-db-process-{}", pid))
-                .spawn(move || {
-                    span!(Level::ERROR, "process", pid = pid).in_scope(|| {
-                        let child = child;
-                        let pid = child.shared.pid;
-                        debug!("running process {}", pid);
-                        let result = func(child);
-                        debug!("process ended with result {:?}", result);
+            func
+                .wrap(
+                    move |child: WeaverProcessChild, mut inner, canceller| {
+                            let pid = child.shared.pid;
+                            debug!("running process {}", pid);
+                            let result = inner(child);
+                            debug!("process ended with result {:?}", result);
 
-                        if let Ok(()) = channel.send(pid) {
-                        } else {
-                            error!("couldn't remove process {} from process list", pid);
-                        }
+                            if let Ok(()) = channel.send(pid) {
+                            } else {
+                                error!("couldn't remove process {} from process list", pid);
+                            }
 
-                        result
-                    })
-                })?
+                            result
+                    }
+                )
+                .start_with_name(child, format!("weaver-db-process-{}", pid))?
         };
         parent.set_handle(handle);
         let pid = parent.shared.pid;

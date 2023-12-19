@@ -15,3 +15,4 @@ pub mod rows;
 pub mod sentinel;
 pub mod tables;
 pub mod tx;
+pub mod cancellable_task;

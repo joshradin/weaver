@@ -27,6 +27,7 @@ use std::thread;
 use std::thread::JoinHandle;
 use threadpool_crossbeam_channel::{Builder, ThreadPool};
 use tracing::{debug, error, error_span, info, info_span, trace, trace_span, warn};
+use crate::cancellable_task::CancellableTask;
 use crate::cnxn::interprocess::WeaverLocalSocketListener;
 
 /// A server that allows for multiple connections.
@@ -261,20 +262,23 @@ impl WeaverDb {
             let mut process_manager = weaver.shared.process_manager.write();
             let user = stream.user().clone();
 
-            process_manager.start(&user, move |child: WeaverProcessChild| {
+            process_manager.start(&user, CancellableTask::with_cancel(move |child: WeaverProcessChild, cancel| {
                 let span = info_span!(
                     "external-connection",
                     peer_addrr = stream.peer_addr().map(|addr| addr.to_string())
                 );
                 let _enter = span.enter();
-                if let Err(e) = cnxn_main(&mut stream, child) {
+                Ok(if let Err(e) = cnxn_main(&mut stream, child) {
                     warn!("client connection ended with err: {}", e);
-                    stream.write(&Message::Resp(RemoteDbResp::Err(e.to_string())))?;
-                    Err(e)
+                    if let Err(e) = stream.write(&Message::Resp(RemoteDbResp::Err(e.to_string()))) {
+                        Err(e)
+                    } else {
+                        Err(e)
+                    }
                 } else {
                     Ok(())
-                }
-            })?;
+                })
+            }))?;
         }
         info!("Tcp listener shut down");
         Ok(())
@@ -294,20 +298,23 @@ impl WeaverDb {
             let mut process_manager = weaver.shared.process_manager.write();
             let user = stream.user().clone();
 
-            process_manager.start(&user, move |child: WeaverProcessChild| {
+            process_manager.start(&user, CancellableTask::with_cancel(move |child: WeaverProcessChild, recv| {
                 let span = info_span!(
                     "external-connection",
                     peer_addrr = stream.peer_addr().map(|addr| addr.to_string())
                 );
                 let _enter = span.enter();
-                if let Err(e) = cnxn_main(&mut stream, child) {
+                Ok(if let Err(e) = cnxn_main(&mut stream, child) {
                     warn!("client connection ended with err: {}", e);
-                    stream.write(&Message::Resp(RemoteDbResp::Err(e.to_string())))?;
-                    Err(e)
+                    if let Err(e) = stream.write(&Message::Resp(RemoteDbResp::Err(e.to_string()))) {
+                        Err(e)
+                    } else {
+                        Err(e)
+                    }
                 } else {
                     Ok(())
-                }
-            })?;
+                })
+            }))?;
         }
         info!("Tcp listener shut down");
         Ok(())

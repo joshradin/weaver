@@ -80,6 +80,8 @@ pub enum Error {
     ParseError(String),
     #[error("Could not use unqualified table reference without in-use schema")]
     UnQualifedTableWithoutInUseSchema,
+    #[error("Task was cancelled")]
+    TaskCancelled,
 
     #[error("{0}")]
     Custom(String),
