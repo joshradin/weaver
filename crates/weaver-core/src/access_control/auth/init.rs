@@ -31,7 +31,7 @@ impl Default for AuthConfig {
 }
 
 /// Initializes the auth context
-#[instrument]
+#[instrument(level = "trace")]
 pub(crate) fn init_auth_context(config: &AuthConfig) -> Result<AuthContext, AuthInitError> {
     std::fs::create_dir_all(&config.key_store)?;
     let (private_key, new_key) = private_key(&config.key_store)?;

@@ -84,6 +84,18 @@ impl TableSchema {
             .map(|(idx, ..)| idx)
     }
 
+    pub fn get_column(&self, name: &str) -> Option<&ColumnDefinition> {
+        self.all_columns()
+            .into_iter()
+            .find(|col| col.name == name)
+    }
+
+    pub fn contains_column(&self, name: &str) -> bool {
+        self.all_columns()
+            .into_iter()
+            .any(|col| col.name == name)
+    }
+
     /// Gets the primary key of this table
     pub fn primary_key(&self) -> Result<&Key, Error> {
         self.keys
@@ -350,10 +362,50 @@ impl TableSchemaBuilder {
         Ok(self)
     }
 
+    /// Sets the primary key
+    pub fn primary(mut self, cols: &[&str]) -> Result<Self, Error> {
+        self.keys.push(Key::new(
+            "PRIMARY",
+            cols.into_iter().map(ToString::to_string).collect(),
+            true,
+            true,
+            true
+        )?);
+
+        Ok(self)
+    }
+
+    /// Sets the primary key
+    pub fn index(mut self, name: &str, cols: &[&str], unique: bool) -> Result<Self, Error> {
+        let non_null = cols.iter()
+            .try_fold(true, |accum, col| {
+                if let Some(col) = self.columns.iter().find(|column| &column.name == col) {
+                    Ok(col.non_null && accum)
+                } else {
+                    Err(Error::ColumnNotFound(col.to_string()))
+                }
+            })?;
+
+        self.keys.push(Key::new(
+            name.to_string(),
+            cols.into_iter().map(ToString::to_string).collect(),
+            non_null,
+            false,
+            false
+        )?);
+
+        Ok(self)
+    }
+
     /// Sets the used engine
     pub fn engine(mut self, engine_key: EngineKey) -> Self {
         self.engine = Some(engine_key);
         self
+    }
+
+    #[inline]
+    pub fn in_memory(mut self) -> Self {
+        self.engine(EngineKey::new(IN_MEMORY_KEY))
     }
 
     pub fn build(self) -> Result<TableSchema, Error> {
@@ -408,6 +460,25 @@ impl TableSchemaBuilder {
         })
     }
 }
+
+impl From<TableSchema> for TableSchemaBuilder {
+    fn from(value: TableSchema) -> Self {
+        Self::from(&value)
+    }
+}
+
+impl From<&TableSchema> for TableSchemaBuilder {
+    fn from(value: &TableSchema) -> Self {
+        Self {
+            schema: value.schema.clone(),
+            name: value.name.clone(),
+            columns: value.columns.clone(),
+            keys: value.keys.clone(),
+            engine: Some(value.engine.clone()),
+        }
+    }
+}
+
 
 #[derive(Debug)]
 pub struct AllKeyData<'a> {

@@ -27,11 +27,13 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
 
     let connection = Arc::new(db.connect());
     let clone = connection.clone();
-    connection.send(DbReq::on_core(move |core| -> Result<(), Error> {
-        add_process_list(core, &clone)?;
-        init_auth(core, &clone)?;
-        Ok(())
-    }))?;
+    connection
+        .send(DbReq::on_core(move |core, cancel| -> Result<(), Error> {
+            add_process_list(core, &clone)?;
+            init_auth(core, &clone)?;
+            Ok(())
+        }))
+        .join()??;
 
     let duration = start.elapsed();
     debug!(
@@ -53,30 +55,32 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
         .build()?;
     let table = SystemTable::new(schema.clone(), socket.clone(), move |socket, key| {
         let schema = schema.clone();
-        let resp = socket.send(DbReqBody::on_server(move |full| {
-            let processes = full.with_process_manager(|pm| pm.processes());
+        let resp = socket
+            .send(DbReqBody::on_server(move |full, _| {
+                let processes = full.with_process_manager(|pm| pm.processes());
 
-            let rows = processes.into_iter().map(
-                |WeaverProcessInfo {
-                     pid,
-                     age,
-                     state,
-                     info,
-                     user,
-                     host,
-                     using,
-                 }| {
-                    Row::from([
-                        Value::Integer(pid.into()),
-                        Value::Integer(age as i64),
-                        Value::String(format!("{state:?}")),
-                        Value::String(format!("{info}")),
-                    ])
-                    .to_owned()
-                },
-            );
-            Ok(DbResp::rows(DefaultOwnedRows::new(schema.clone(), rows)))
-        }))?;
+                let rows = processes.into_iter().map(
+                    |WeaverProcessInfo {
+                         pid,
+                         age,
+                         state,
+                         info,
+                         user,
+                         host,
+                         using,
+                     }| {
+                        Row::from([
+                            Value::Integer(pid.into()),
+                            Value::Integer(age as i64),
+                            Value::String(format!("{state:?}")),
+                            Value::String(format!("{info}")),
+                        ])
+                        .to_owned()
+                    },
+                );
+                Ok(DbResp::rows(DefaultOwnedRows::new(schema.clone(), rows)))
+            }))
+            .join()??;
         match resp {
             DbResp::Rows(rows) => Ok(rows.to_rows()),
             _ => unreachable!(),

@@ -1,10 +1,11 @@
 use crate::access_control::auth::error::AuthInitError;
+use crate::cancellable_task::Cancelled;
 use crate::data::types::Type;
 use crate::data::values::Value;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp, IntoDbResponse};
 use crate::db::server::processes::WeaverPid;
 use crate::db::server::socket::MainQueueItem;
-use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError};
+use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError, TableCol};
 use crossbeam::channel::{RecvError, SendError, Sender};
 use openssl::error::ErrorStack;
 use openssl::ssl::HandshakeError;
@@ -82,6 +83,15 @@ pub enum Error {
     UnQualifedTableWithoutInUseSchema,
     #[error("Task was cancelled")]
     TaskCancelled,
+    #[error("Channel empty")]
+    ChannelEmpty,
+    #[error("No column named {0:?} could be found")]
+    ColumnNotFound(String),
+    #[error("Mutiple options found for column {col:?}: {positives:#?}")]
+    AmbiguousColumn {
+        col: String,
+        positives: Vec<TableCol>
+    },
 
     #[error("{0}")]
     Custom(String),
@@ -94,14 +104,14 @@ impl Error {
         Self::ServerError(error.to_string())
     }
 
-    pub fn custom<T : ToString + 'static>(error: T) -> Self {
+    pub fn custom<T: ToString + 'static>(error: T) -> Self {
         Self::Custom(error.to_string())
     }
 }
 
 impl IntoDbResponse for Error {
     fn into_db_resp(self) -> DbResp {
-        DbResp::Err(self.to_string())
+        DbResp::Err(self)
     }
 }
 
@@ -112,5 +122,11 @@ impl<S> From<HandshakeError<S>> for Error {
             HandshakeError::Failure(error) => Error::SslHandshakeFailure(error.into_error()),
             HandshakeError::WouldBlock(error) => Error::SslHandshakeWouldBlock(error.into_error()),
         }
+    }
+}
+
+impl From<Cancelled> for Error {
+    fn from(_: Cancelled) -> Self {
+        Self::TaskCancelled
     }
 }

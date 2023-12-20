@@ -27,17 +27,16 @@ impl Span {
     /// Offset the span, with a saturating add/subtraction
     pub fn offset(&mut self, alter: isize) {
         match alter {
-            0 => {},
+            0 => {}
             isize::MIN..=-1 => {
                 self.0 = self.0.saturating_sub(alter as usize);
                 self.1 = self.1.saturating_sub(alter as usize);
-            },
+            }
             1..=isize::MAX => {
                 self.0 = self.0.saturating_add(alter as usize);
                 self.1 = self.1.saturating_add(alter as usize);
             }
-            _ => unreachable!("all patterns should be covered")
+            _ => unreachable!("all patterns should be covered"),
         }
     }
 }
-

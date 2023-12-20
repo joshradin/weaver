@@ -126,5 +126,5 @@ impl Drop for Tx {
 /// A reference to a transaction
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct TxRef {
-    id: TxId
+    id: TxId,
 }

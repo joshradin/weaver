@@ -10,11 +10,11 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 use crate::access_control::users::User;
+use crate::cancellable_task::{CancellableTask, CancellableTaskHandle, Cancelled, Canceller};
 use crate::db::server::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, span, Level};
-use crate::cancellable_task::{CancellableTask, CancellableTaskHandle, Cancelled};
 
 use crate::error::Error;
 
@@ -117,10 +117,8 @@ impl WeaverProcess {
             .ok_or(Error::ProcessFailed(self.shared.pid))
             .and_then(|t| match t.join() {
                 Ok(ok) => match ok {
-                    Ok(ok) => {
-                        ok
-                    }
-                    Err(err) => Err(Error::TaskCancelled)
+                    Ok(ok) => Ok(ok),
+                    Err(err) => Err(Error::TaskCancelled),
                 },
                 Err(_) => Err(Error::ProcessFailed(self.shared.pid)),
             })
@@ -247,31 +245,31 @@ impl ProcessManager {
     }
 
     /// Starts a process
-    pub fn start(&mut self, user: &User, func: CancellableTask<WeaverProcessChild, Result<(), Error>>) -> Result<WeaverPid, Error>
-    {
+    pub fn start(
+        &mut self,
+        user: &User,
+        func: CancellableTask<WeaverProcessChild, Result<(), Error>>,
+    ) -> Result<WeaverPid, Error> {
         let pid = self.next_pid.fetch_add(1, Ordering::SeqCst);
 
         let (mut parent, child) = WeaverProcess::new(pid, user, self.weak.clone());
 
         let handle = {
             let channel = self.process_killed_channel.clone();
-            func
-                .wrap(
-                    move |child: WeaverProcessChild, mut inner, canceller| {
-                            let pid = child.shared.pid;
-                            debug!("running process {}", pid);
-                            let result = inner(child);
-                            debug!("process ended with result {:?}", result);
+            func.wrap(move |child: WeaverProcessChild, mut inner, canceller| {
+                let pid = child.shared.pid;
+                debug!("running process {}", pid);
+                let result = inner(child);
+                debug!("process ended with result {:?}", result);
 
-                            if let Ok(()) = channel.send(pid) {
-                            } else {
-                                error!("couldn't remove process {} from process list", pid);
-                            }
+                if let Ok(()) = channel.send(pid) {
+                } else {
+                    error!("couldn't remove process {} from process list", pid);
+                }
 
-                            result
-                    }
-                )
-                .start_with_name(child, format!("weaver-db-process-{}", pid))?
+                result
+            })
+            .start_with_name(child, format!("weaver-db-process-{}", pid))?
         };
         parent.set_handle(handle);
         let pid = parent.shared.pid;

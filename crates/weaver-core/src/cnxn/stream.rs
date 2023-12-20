@@ -28,7 +28,7 @@ pub struct WeaverStream<T: Stream> {
 }
 
 impl<T: Stream> WeaverStream<T> {
-    pub(super) fn new(
+    pub(crate) fn new(
         peer_addr: Option<SocketAddr>,
         local_addr: Option<SocketAddr>,
         localhost: bool,

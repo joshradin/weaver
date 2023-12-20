@@ -10,9 +10,9 @@ use tracing::debug;
 
 use crate::access_control::auth::LoginContext;
 use crate::cnxn::handshake::handshake_listener;
-use crate::cnxn::{stream, WeaverStreamListener};
 use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::transport::Transport;
+use crate::cnxn::{stream, WeaverStreamListener};
 use crate::db::server::WeakWeaverDb;
 use crate::error::Error;
 
@@ -81,7 +81,6 @@ impl WeaverTcpListener {
 
 impl WeaverStreamListener for WeaverTcpListener {
     type Stream = TcpStream;
-
 
     /// Accepts an incoming connection
     fn accept(&self) -> Result<WeaverStream<TcpStream>, Error> {

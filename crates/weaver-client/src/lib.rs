@@ -1,8 +1,8 @@
 use eyre::eyre;
+use interprocess::local_socket::LocalSocketStream;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::time::{Duration, Instant};
-use interprocess::local_socket::LocalSocketStream;
 use weaver_core::access_control::auth::LoginContext;
 use weaver_core::access_control::users::User;
 use weaver_core::cnxn::stream::WeaverStream;
@@ -36,12 +36,13 @@ impl WeaverClient<TcpStream> {
             pid,
         })
     }
-
-
 }
 
 impl WeaverClient<LocalSocketStream> {
-    pub fn connect_localhost<P : AsRef<Path>>(socket_path: P, login_context: LoginContext) -> eyre::Result<Self> {
+    pub fn connect_localhost<P: AsRef<Path>>(
+        socket_path: P,
+        login_context: LoginContext,
+    ) -> eyre::Result<Self> {
         let mut client = WeaverStream::local_socket(socket_path, login_context)?;
         let RemoteDbResp::ConnectionInfo(cnxn) = client.send(&RemoteDbReq::ConnectionInfo)? else {
             return Err(eyre!("couldn't get connection info"));

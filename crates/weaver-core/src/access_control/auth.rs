@@ -20,19 +20,20 @@ pub mod secured;
 pub mod handshake {
     use std::fmt::Debug;
 
-    use tracing::{debug, error_span};
+    use tracing::{debug, error_span, warn};
 
     use crate::access_control::auth::context::AuthContext;
     use crate::access_control::auth::LoginContext;
     use crate::access_control::users::User;
-    use crate::cnxn::RemoteDbResp;
     use crate::cnxn::stream::WeaverStream;
+    use crate::cnxn::RemoteDbResp;
     use crate::common::stream_support::{packet_read, packet_write, Stream};
     use crate::data::values::Value;
     use crate::db::server::layers::packets::{DbReqBody, DbResp};
     use crate::db::server::socket::DbSocket;
     use crate::error::Error;
     use crate::queries::ast::{Op, Query, Where};
+    use crate::rows::OwnedRows;
 
     /// Server side authentication. On success, provides a user struct.
     pub fn server_auth<T: Stream + Debug>(
@@ -55,11 +56,23 @@ pub mod handshake {
                 Where::Op(
                     "user".to_string(),
                     Op::Eq,
-                    Value::String(login_ctx.user.to_string())
-                )
+                    Value::String(login_ctx.user.to_string()),
+                ),
             );
-            let resp = db_socket.send((tx, query))?.to_result()?;
+            let resp = db_socket
+                .send((tx, query))
+                .join()
+                .map_err(|e| Error::ThreadPanicked)??
+                .to_result()?;
             debug!("resp={resp:#?}");
+            let DbResp::TxRows(tx, mut rows) = resp else {
+                unreachable!();
+            };
+            let Some(row) = rows.next() else {
+                warn!("user query was empty, no user found with name {:?}", login_ctx.user);
+                return Err(Error::custom("no user found"))
+            };
+            debug!("row = {row:?}");
 
             todo!()
         })

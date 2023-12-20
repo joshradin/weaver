@@ -1,6 +1,7 @@
 //! # weaver-core
 
 pub mod access_control;
+pub mod cancellable_task;
 pub mod cnxn;
 pub mod common;
 pub mod conversion;
@@ -15,4 +16,3 @@ pub mod rows;
 pub mod sentinel;
 pub mod tables;
 pub mod tx;
-pub mod cancellable_task;

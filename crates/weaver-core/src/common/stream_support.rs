@@ -1,16 +1,111 @@
 //! Support for streams
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::time::Duration;
+use crossbeam::channel::{Sender, Receiver, unbounded, TryRecvError, RecvError};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use crate::access_control::users::User;
+use crate::cnxn::stream::WeaverStream;
+use crate::cnxn::transport::{StreamSniffer, Transport};
 
 /// Marker trait for something that you can both read and write to
 pub trait Stream: Read + Write {}
 
 impl<S: Read + Write> Stream for S {}
+
+#[derive(Debug)]
+pub struct InternalStream {
+    sender: BufWriter<WriteSender>,
+    receiver: BufReader<ReadReceiver>,
+}
+
+impl Read for InternalStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.receiver.read(buf)
+    }
+}
+
+impl Write for InternalStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.sender.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.sender.flush()
+    }
+}
+
+#[derive(Debug)]
+struct WriteSender(Sender<u8>);
+
+impl Write for WriteSender {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        for x in buf {
+            self.0.send(*x).map_err(|e| io::Error::new(ErrorKind::WouldBlock, "couldn't send data"))?;
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct ReadReceiver(Receiver<u8>);
+
+impl Read for ReadReceiver {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut filled = 0;
+        for x in buf {
+            match self.0.recv() {
+                Ok(u8) => {
+                    *x = u8;
+                    filled += 1;
+                }
+                Err(RecvError) => {
+                    break;
+                }
+            }
+        }
+        Ok(filled)
+    }
+}
+
+
+/// Creates two ends of an internal stream
+pub fn internal_stream() -> (InternalStream, InternalStream) {
+    let (s1, r1) = unbounded();
+    let (s2, r2) = unbounded();
+
+    (InternalStream {
+        sender: BufWriter::new(WriteSender(s1)),
+        receiver: BufReader::new(ReadReceiver(r2))
+    }, InternalStream {
+        sender: BufWriter::new(WriteSender(s2)),
+        receiver: BufReader::new(ReadReceiver(r1))
+    })
+}
+
+
+/// Creates two ends of an internal stream
+pub fn internal_wstream() -> (WeaverStream<InternalStream>, WeaverStream<InternalStream>) {
+    let (tx, rx) = internal_stream();
+
+    let mut stream1 = WeaverStream::new(None, None, true, Transport::Insecure(StreamSniffer::stream(tx)));
+    stream1.set_user(User::new("root", "localhost"));
+    let mut stream2 = WeaverStream::new(None, None, true, Transport::Insecure(StreamSniffer::stream(rx)));
+    stream2.set_user(User::new("root", "localhost"));
+    (stream1,
+     stream2
+    )
+}
+
+
+
 
 pub struct Timeout<S> {
     stream: S,
@@ -44,6 +139,8 @@ pub fn packet_read<T: DeserializeOwned, R: Read>(reader: &mut R) -> Result<T, io
     reader.read_exact(&mut buffer)?;
     serde_json::from_slice(&buffer[..]).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
+
+
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,7 @@
 //! Connections that are used for connecting to [`WeaverDb`](WeaverDb) instances
 
+use crate::cnxn::stream::WeaverStream;
+use crate::common::stream_support::Stream;
 use crate::data::row::OwnedRow;
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::error::Error;
@@ -7,8 +9,6 @@ use crate::queries::ast::Query;
 use crate::tables::table_schema::TableSchema;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
-use crate::cnxn::stream::WeaverStream;
-use crate::common::stream_support::Stream;
 
 pub mod cnxn_loop;
 mod handshake;

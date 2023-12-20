@@ -1,15 +1,15 @@
 //! Users are what connect to the database
 
-use serde::{Deserialize, Serialize};
 use crate::data::row::Row;
 use crate::data::types::Type;
 use crate::db::WEAVER_SCHEMA;
-use crate::dynamic_table::{Col, DynamicTable};
+use crate::dynamic_table::{Col, DynamicTable, EngineKey};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
-use crate::tables::InMemoryTable;
 use crate::tables::table_schema::TableSchema;
+use crate::tables::InMemoryTable;
 use crate::tx::Tx;
+use serde::{Deserialize, Serialize};
 
 /// A user struct is useful for access control
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -43,18 +43,24 @@ impl User {
 /// The user table
 #[derive(Debug)]
 pub struct UserTable {
-    in_memory: InMemoryTable
+    in_memory: InMemoryTable,
 }
 
 impl UserTable {
     pub fn new() -> Self {
         Self {
-            in_memory: InMemoryTable::new(TableSchema::builder(WEAVER_SCHEMA, "users")
-                .column("user", Type::String, true, None, None).unwrap()
-                .build()
-                .expect("failed to create users table schema")
+            in_memory: InMemoryTable::new(
+                TableSchema::builder(WEAVER_SCHEMA, "users")
+                    .column("host", Type::String, true, None, None).unwrap()
+                    .column("user", Type::String, true, None, None).unwrap()
+                    .column("auth_string", Type::String, false, None, None).unwrap()
+                    .primary(&["host", "user"]).unwrap()
+                    .index("SK_user", &["user"], false).unwrap()
+                    .engine(EngineKey::new("USER_TABLE"))
+                    .build()
+                    .expect("failed to create users table schema"),
             )
-                .expect("couldn't create users table")
+            .expect("couldn't create users table"),
         }
     }
 }

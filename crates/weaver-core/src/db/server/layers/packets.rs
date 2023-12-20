@@ -1,17 +1,19 @@
+use crate::cancellable_task::{Cancel, CancelRecv, Cancelled};
 use crate::db::core::WeaverDbCore;
+use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::Table;
 use crate::error::Error;
 use crate::queries::ast::Query;
 use crate::rows::OwnedRows;
 use crate::tx::{Tx, TxRef};
+use crossbeam::channel::Receiver;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use crate::db::server::processes::WeaverProcessInfo;
 
 /// Headers are used to convey extra data in requests
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -50,7 +52,11 @@ pub struct DbReq {
 impl DbReq {
     /// Create a new db response
     pub fn new(headers: Headers, body: DbReqBody) -> Self {
-        Self { headers, ctx: None, body }
+        Self {
+            headers,
+            ctx: None,
+            body,
+        }
     }
 
     pub fn set_ctx(&mut self, ctx: WeaverProcessInfo) {
@@ -63,9 +69,9 @@ impl DbReq {
 
     pub fn on_core<F, T: IntoDbResponse>(cb: F) -> Self
     where
-        F: FnOnce(&mut WeaverDbCore) -> T + Send + Sync + 'static,
+        F: FnOnce(&mut WeaverDbCore, &CancelRecv) -> T + Send + Sync + 'static,
     {
-        DbReqBody::on_core_write(|core| Ok(cb(core).into_db_resp())).into()
+        DbReqBody::on_core_write(|core, cancel| Ok(cb(core, cancel).into_db_resp())).into()
     }
 
     /// Gets the headers
@@ -89,7 +95,9 @@ impl DbReq {
     }
 
     pub fn to_parts(self) -> (Headers, Option<WeaverProcessInfo>, DbReqBody) {
-        let DbReq { headers, ctx, body, .. } = self;
+        let DbReq {
+            headers, ctx, body, ..
+        } = self;
         (headers, ctx, body)
     }
 }
@@ -108,9 +116,23 @@ impl From<DbReqBody> for DbReq {
 /// The base request that is sent to the database
 
 pub enum DbReqBody {
-    OnCoreWrite(Box<dyn FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync>),
-    OnCore(Box<dyn FnOnce(&WeaverDbCore) -> Result<DbResp, Error> + Send + Sync>),
-    OnServer(Box<dyn FnOnce(&mut WeaverDb) -> Result<DbResp, Error> + Send + Sync>),
+    OnCoreWrite(
+        Box<
+            dyn FnOnce(&mut WeaverDbCore, &Receiver<Cancel>) -> Result<DbResp, Cancelled>
+                + Send
+                + Sync,
+        >,
+    ),
+    OnCore(
+        Box<
+            dyn FnOnce(&WeaverDbCore, &Receiver<Cancel>) -> Result<DbResp, Cancelled> + Send + Sync,
+        >,
+    ),
+    OnServer(
+        Box<
+            dyn FnOnce(&mut WeaverDb, &Receiver<Cancel>) -> Result<DbResp, Cancelled> + Send + Sync,
+        >,
+    ),
     /// Send a query to the request
     TxQuery(Tx, Query),
     Ping,
@@ -122,33 +144,22 @@ pub enum DbReqBody {
 impl Debug for DbReqBody {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DbReqBody::TxQuery(tx, query) => {
+            DbReqBody::TxQuery(tx, query, ..) => {
                 f.debug_tuple("TxQuery").field(tx).field(query).finish()
             }
-            DbReqBody::Ping => {
-                f.debug_tuple("Ping").finish()
-            }
-            DbReqBody::StartTransaction => {
-                f.debug_tuple("StartTransaction").finish()
-            }
-            DbReqBody::Commit(c) => {
-                f.debug_tuple("Commit").field(c).finish()
-            }
-            DbReqBody::Rollback(r) => {
-                f.debug_tuple("Rollback").field(r).finish()
-            }
-            _ => {
-                f.debug_struct("DbReq").finish_non_exhaustive()
-            }
+            DbReqBody::Ping => f.debug_tuple("Ping").finish(),
+            DbReqBody::StartTransaction => f.debug_tuple("StartTransaction").finish(),
+            DbReqBody::Commit(c) => f.debug_tuple("Commit").field(c).finish(),
+            DbReqBody::Rollback(r) => f.debug_tuple("Rollback").field(r).finish(),
+            _ => f.debug_struct("DbReq").finish_non_exhaustive(),
         }
-
     }
 }
 
 impl DbReqBody {
     /// Gets full access of db core
     pub fn on_core_write<
-        F: FnOnce(&mut WeaverDbCore) -> Result<DbResp, Error> + Send + Sync + 'static,
+        F: FnOnce(&mut WeaverDbCore, &CancelRecv) -> Result<DbResp, Cancelled> + Send + Sync + 'static,
     >(
         func: F,
     ) -> Self {
@@ -157,7 +168,7 @@ impl DbReqBody {
 
     /// Gets full access of db core
     pub fn on_core<
-        F: FnOnce(&WeaverDbCore) -> Result<DbResp, Error> + Send + Sync + 'static,
+        F: FnOnce(&WeaverDbCore, &CancelRecv) -> Result<DbResp, Cancelled> + Send + Sync + 'static,
     >(
         func: F,
     ) -> Self {
@@ -165,7 +176,9 @@ impl DbReqBody {
     }
 
     /// Gets full access of db server
-    pub fn on_server<F: FnOnce(&mut WeaverDb) -> Result<DbResp, Error> + Send + Sync + 'static>(
+    pub fn on_server<
+        F: FnOnce(&mut WeaverDb, &CancelRecv) -> Result<DbResp, Cancelled> + Send + Sync + 'static,
+    >(
         func: F,
     ) -> Self {
         Self::OnServer(Box::new(func))
@@ -200,7 +213,7 @@ pub enum DbResp {
     TxTable(Tx, Arc<Table>),
     TxRows(Tx, Box<dyn OwnedRows + Send + Sync>),
     Rows(Box<dyn OwnedRows + Send + Sync>),
-    Err(String),
+    Err(Error),
 }
 
 impl IntoDbResponse for DbResp {
@@ -216,18 +229,15 @@ impl DbResp {
 
     pub fn to_result(self) -> Result<DbResp, Error> {
         match self {
-
-            DbResp::Err(e) => {
-                Err(Error::custom(e))
-            }
+            DbResp::Err(e) => Err(Error::custom(e)),
             db => Ok(db),
         }
     }
 }
 
-impl<E: std::error::Error> From<E> for DbResp {
+impl<E: Into<Error>> From<E> for DbResp {
     fn from(value: E) -> Self {
-        Self::Err(value.to_string())
+        Self::Err(value.into())
     }
 }
 

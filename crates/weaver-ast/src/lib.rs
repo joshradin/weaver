@@ -2,12 +2,12 @@ use nom::branch::alt;
 use nom::bytes::streaming::tag;
 use nom::character::streaming::{alpha0, alpha1, alphanumeric1};
 use nom::combinator::recognize;
-use nom::IResult;
 use nom::multi::{fold_many1, many0_count};
 use nom::sequence::pair;
+use nom::IResult;
 
-pub mod tokens;
 pub mod span;
+pub mod tokens;
 
 #[derive(Debug)]
 pub struct QueryParser;
@@ -18,11 +18,5 @@ impl QueryParser {
     }
 }
 
-
-
-
 #[cfg(test)]
-mod tests {
-
-
-}
+mod tests {}

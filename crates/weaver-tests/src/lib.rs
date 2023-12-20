@@ -76,7 +76,10 @@ impl Drop for WeaverDbInstance {
 
 pub fn run_full_stack<F>(cb: F, path: &Path) -> Result<(), eyre::Error>
 where
-    F: FnOnce(&mut WeaverDbInstance, &mut WeaverClient<LocalSocketStream>) -> Result<(), eyre::Error>,
+    F: FnOnce(
+        &mut WeaverDbInstance,
+        &mut WeaverClient<LocalSocketStream>,
+    ) -> Result<(), eyre::Error>,
 {
     let server = start_server(0, path, None);
     DualResult::zip_with(server, |server| match server {

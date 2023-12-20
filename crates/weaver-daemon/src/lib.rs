@@ -35,7 +35,7 @@ pub fn run(app: App) -> Result<(), Error> {
     let cnxn = weaver.connect();
     loop {
         trace!("Checking if weaver db is alive...");
-        let resp = cnxn.send(DbReqBody::Ping)?;
+        let resp = cnxn.send(DbReqBody::Ping).join()??;
         if !matches!(resp, DbResp::Pong) {
             break;
         }

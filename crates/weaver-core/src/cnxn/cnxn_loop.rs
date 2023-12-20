@@ -1,6 +1,10 @@
 //! The connect loop provides the "main" method for newly created connections
 
+use crate::cancellable_task::{Cancel, CancellableTaskHandle, Cancelled, Canceller};
+use crossbeam::channel::{unbounded, Receiver, RecvError, TryRecvError};
 use either::Either;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
 use tracing::{debug, error, trace, warn};
@@ -13,24 +17,25 @@ use crate::rows::OwnedRows;
 use crate::tx::Tx;
 
 /// The main method to use when connecting to a client
-pub fn cnxn_main<S: MessageStream>(
+pub fn remote_stream_loop<S: MessageStream + Send>(
     mut stream: S,
     mut child: WeaverProcessChild,
+    cancel: &Receiver<Cancel>,
 ) -> Result<(), Error> {
     let socket = child.db().upgrade().unwrap().connect();
     let mut tx = Option::<Tx>::None;
     let mut rows = Option::<Box<dyn OwnedRows>>::None;
-    loop {
-        let Ok(message) = stream.read() else {
-            warn!("Connection closed");
-            break;
-        };
 
+    loop {
+        let message = stream.read()?;
         match message {
             Message::Req(req) => {
                 trace!("Received req {:?}", req);
                 child.set_state(ProcessState::Active);
-                let resp: Either<Result<RemoteDbResp, Error>, Result<DbResp, Error>> = match req {
+                let resp: Either<
+                    Result<RemoteDbResp, Error>,
+                    CancellableTaskHandle<Result<DbResp, Error>>,
+                > = match req {
                     RemoteDbReq::ConnectionInfo => {
                         child.set_info("Getting connection info");
                         Either::Left(Ok(RemoteDbResp::ConnectionInfo(child.info())))
@@ -74,12 +79,14 @@ pub fn cnxn_main<S: MessageStream>(
 
                 let resp = match resp {
                     Either::Left(left) => left?,
-                    Either::Right(resp) => {
+                    Either::Right(mut resp) => {
+                        resp.on_cancel(cancel.clone()); // cancelling loop also cancels task
+                        let resp = resp.join()?;
                         trace!("using response: {:?}", resp);
                         match resp? {
                             DbResp::Pong => RemoteDbResp::Pong,
                             DbResp::Ok => RemoteDbResp::Ok,
-                            DbResp::Err(err) => RemoteDbResp::Err(err),
+                            DbResp::Err(err) => RemoteDbResp::Err(err.to_string()),
                             DbResp::Tx(received_tx) => {
                                 tx = Some(received_tx);
                                 RemoteDbResp::Ok
@@ -113,6 +120,5 @@ pub fn cnxn_main<S: MessageStream>(
             }
         }
     }
-
     Ok(())
 }
