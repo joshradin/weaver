@@ -13,6 +13,6 @@ pub mod key;
 pub mod modules;
 pub mod queries;
 pub mod rows;
-pub mod sentinel;
+pub mod storage;
 pub mod tables;
 pub mod tx;

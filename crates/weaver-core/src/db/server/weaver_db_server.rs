@@ -1,30 +1,32 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock, Weak};
 use std::thread;
 use std::thread::JoinHandle;
 
-use crossbeam::channel::{Sender, unbounded};
+use crossbeam::channel::{unbounded, Sender};
 use parking_lot::{Mutex, RwLock};
 use threadpool_crossbeam_channel::{Builder, ThreadPool};
 use tracing::{debug, error, error_span, info, info_span, trace, warn};
 
 use crate::access_control::auth::context::AuthContext;
-use crate::access_control::auth::init::{AuthConfig, init_auth_context};
-use crate::cancellable_task::{CancellableTask, Cancelled, CancelRecv};
-use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
+use crate::access_control::auth::init::{init_auth_context, AuthConfig};
+use crate::cancellable_task::{CancelRecv, CancellableTask, Cancelled};
 use crate::cnxn::cnxn_loop::remote_stream_loop;
 use crate::cnxn::interprocess::WeaverLocalSocketListener;
 use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::tcp::WeaverTcpListener;
+use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::common::stream_support::Stream;
 use crate::db::core::WeaverDbCore;
 use crate::db::server::init_system_tables::init_system_tables;
-use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
-use crate::db::server::processes::{ProcessManager, WeaverPid, WeaverProcessChild, WeaverProcessInfo};
+use crate::db::server::layers::{Layer, Layers};
+use crate::db::server::processes::{
+    ProcessManager, WeaverPid, WeaverProcessChild, WeaverProcessInfo,
+};
 use crate::db::server::socket::{DbSocket, MainQueueItem};
 use crate::error::Error;
 use crate::modules::{Module, ModuleError};
@@ -119,12 +121,12 @@ impl WeaverDb {
                                         })
                                     }
                                 })
-                                    .run()
-                                    .join()
-                                    .map_err(|e| {
-                                        error!("panic occurred while processing a request");
-                                        Error::ThreadPanicked
-                                    }) {
+                                .run()
+                                .join()
+                                .map_err(|e| {
+                                    error!("panic occurred while processing a request");
+                                    Error::ThreadPanicked
+                                }) {
                                     error!("{}", e);
                                     let resp = e.into_db_resp();
                                     let _ =
@@ -295,7 +297,10 @@ impl WeaverDb {
         Ok(())
     }
 
-    pub fn handle_connection<T: Stream + Send + Sync + 'static>(&self, mut stream: WeaverStream<T>) -> Result<WeaverPid, Error> {
+    pub fn handle_connection<T: Stream + Send + Sync + 'static>(
+        &self,
+        mut stream: WeaverStream<T>,
+    ) -> Result<WeaverPid, Error> {
         let mut process_manager = self.shared.process_manager.write();
         let user = stream.user().clone();
 
@@ -303,9 +308,9 @@ impl WeaverDb {
             &user,
             CancellableTask::with_cancel(move |child: WeaverProcessChild, recv| {
                 let span = info_span!(
-                        "external-connection",
-                        peer_addrr = stream.peer_addr().map(|addr| addr.to_string())
-                    );
+                    "external-connection",
+                    peer_addrr = stream.peer_addr().map(|addr| addr.to_string())
+                );
                 let _enter = span.enter();
                 Ok(
                     if let Err(e) = remote_stream_loop(&mut stream, child, recv) {
@@ -321,7 +326,7 @@ impl WeaverDb {
                         Ok(())
                     },
                 )
-            })
+            }),
         )
     }
 
@@ -407,7 +412,7 @@ impl Default for WeaverDb {
             WeaverDbCore::default(),
             AuthConfig::default(),
         )
-            .unwrap()
+        .unwrap()
     }
 }
 

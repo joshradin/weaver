@@ -69,8 +69,11 @@ pub mod handshake {
                 unreachable!();
             };
             let Some(row) = rows.next() else {
-                warn!("user query was empty, no user found with name {:?}", login_ctx.user);
-                return Err(Error::custom("no user found"))
+                warn!(
+                    "user query was empty, no user found with name {:?}",
+                    login_ctx.user
+                );
+                return Err(Error::custom("no user found"));
             };
             debug!("row = {row:?}");
 

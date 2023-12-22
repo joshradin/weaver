@@ -1,0 +1,242 @@
+//! Cells are parts of slotted pages, and are used to store data that we know can be variable in size
+//! and shape.
+
+use std::io::Write;
+use std::mem::size_of;
+
+use bitfield::bitfield;
+use derive_more::From;
+
+use crate::data::row::OwnedRow;
+use crate::data::serde::{deserialize_data_typed, serialize_data_typed, serialize_data_untyped};
+use crate::key::KeyData;
+use crate::rows::{KeyIndex, KeyIndexKind};
+use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
+
+/// A cell can either just store a key, or a key-value
+#[derive(Debug, PartialEq, Eq, Clone, From)]
+pub enum Cell {
+    Key(KeyCell),
+    KeyValue(KeyValueCell),
+}
+
+impl Cell {
+    pub fn len(&self) -> usize {
+        match self {
+            Cell::Key(k) => k.len(),
+            Cell::KeyValue(kv) => kv.len(),
+        }
+    }
+
+    pub fn key_data(&self) -> KeyData {
+        match self {
+            Cell::Key(k) => k.key_data(),
+            Cell::KeyValue(kv) => kv.key_data(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct KeyCell {
+    /// The size of the key
+    key_size: u32,
+    /// The id of the child page this cell is pointing to
+    page_id: u32,
+    /// The key bytes
+    bytes: Box<[u8]>,
+}
+
+impl KeyCell {
+    /// Create a key cell from a key index
+    pub fn new(page_id: u32, key: &KeyIndex) -> Self {
+        let mut buffer: Vec<u8> = vec![];
+        match key.kind() {
+            KeyIndexKind::All => {
+                buffer.push(0);
+            }
+            KeyIndexKind::One(key_data) => {
+                buffer.push(1);
+            }
+            KeyIndexKind::Range { low, high } => {
+                buffer.push(2);
+            }
+        }
+        Self {
+            key_size: buffer.len() as u32,
+            page_id,
+            bytes: buffer.into_boxed_slice(),
+        }
+    }
+
+    pub fn key_data(&self) -> KeyData {
+        let deserializer = todo!();
+    }
+
+    pub fn len(&self) -> usize {
+        2 * size_of::<u32>() + self.bytes.len()
+    }
+}
+
+impl<'a> StorageBackedData<'a> for KeyCell {
+    /// Try to read a keycell
+    fn read(buf: &'a [u8]) -> ReadResult<Self> {
+        let mut u32_buf = [0u8; 4];
+        u32_buf.clone_from_slice(buf.get(..4).ok_or(ReadDataError::UnexpectedEof)?);
+        let key_size = u32::from_be_bytes(u32_buf);
+        let mut u32_buf = [0u8; 4];
+        u32_buf.clone_from_slice(buf.get(4..12).ok_or(ReadDataError::UnexpectedEof)?);
+        let page_id = u32::from_be_bytes(u32_buf);
+        let key_data = buf
+            .get(8..)
+            .ok_or(ReadDataError::UnexpectedEof)?
+            .get(..key_size as usize)
+            .ok_or(ReadDataError::UnexpectedEof)?;
+        Ok(KeyCell {
+            key_size,
+            page_id,
+            bytes: Vec::from(key_data).into_boxed_slice(),
+        })
+    }
+    /// Write a key cell, returns the number of bytes written if successful
+
+    fn write(&'a self, mut buf: &mut [u8]) -> WriteResult<usize> {
+        buf.write_all(&self.key_size.to_be_bytes())
+            .map_err(|e| WriteDataError::InsufficientSpace)?;
+        buf.write_all(&self.page_id.to_be_bytes())
+            .map_err(|e| WriteDataError::InsufficientSpace)?;
+        buf.write_all(&self.bytes)
+            .map_err(|e| WriteDataError::InsufficientSpace)?;
+        Ok(size_of::<u32>() * 2 + self.bytes.len())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct KeyValueCell {
+    flags: Flags,
+    key_size: u32,
+    value_size: u32,
+    key: Box<[u8]>,
+    data_record: Box<[u8]>,
+}
+
+impl KeyValueCell {
+    /// Creates a new key value cell from an owned row
+    pub fn new(key: KeyData, record: OwnedRow) -> Self {
+        let key_data = serialize_data_typed(&key);
+        let record_data = serialize_data_untyped(&record);
+        Self {
+            flags: Flags(0),
+            key_size: key_data.len() as u32,
+            value_size: record_data.len() as u32,
+            key: key_data.into_boxed_slice(),
+            data_record: record_data.into_boxed_slice(),
+        }
+    }
+
+    pub fn flags_mut(&mut self) -> &mut Flags {
+        &mut self.flags
+    }
+
+    pub fn flags(&self) -> &Flags {
+        &self.flags
+    }
+
+    pub fn len(&self) -> usize {
+        size_of::<Flags>() + 2 * size_of::<u32>() + self.key.len() + self.data_record.len()
+    }
+
+    pub fn key_data(&self) -> KeyData {
+        KeyData::from(deserialize_data_typed(&self.key).expect("should be valid"))
+    }
+}
+
+bitfield! {
+    #[derive(Copy, Clone, Eq, PartialEq)]
+    #[repr(transparent)]
+    pub struct Flags(u8);
+    impl Debug;
+}
+
+impl<'a> StorageBackedData<'a> for KeyValueCell {
+    fn read(buf: &'a [u8]) -> ReadResult<Self> {
+        let flags = Flags(*buf.get(0).ok_or(ReadDataError::UnexpectedEof)?);
+        let mut u32_buf = [0u8; 4];
+        u32_buf.clone_from_slice(buf.get(1..5).ok_or(ReadDataError::UnexpectedEof)?);
+        let key_size = u32::from_be_bytes(u32_buf);
+        u32_buf.clone_from_slice(buf.get(5..9).ok_or(ReadDataError::UnexpectedEof)?);
+        let value_size = u32::from_be_bytes(u32_buf);
+        let key = buf
+            .get(9..)
+            .ok_or(ReadDataError::UnexpectedEof)?
+            .get(..key_size as usize)
+            .ok_or(ReadDataError::UnexpectedEof)?;
+        let data_record = buf
+            .get((9 + key_size as usize)..)
+            .ok_or(ReadDataError::UnexpectedEof)?
+            .get(..value_size as usize)
+            .ok_or(ReadDataError::UnexpectedEof)?;
+        Ok(KeyValueCell {
+            flags,
+            key_size,
+            value_size,
+            key: Vec::from(key).into_boxed_slice(),
+            data_record: Vec::from(data_record).into_boxed_slice(),
+        })
+    }
+
+    fn write(&'a self, mut buf: &mut [u8]) -> WriteResult<usize> {
+        buf.write_all(&[self.flags.0])
+            .map_err(|e| WriteDataError::InsufficientSpace)?;
+        buf.write_all(&self.key_size.to_be_bytes())
+            .map_err(|e| WriteDataError::InsufficientSpace)?;
+        buf.write_all(&self.value_size.to_be_bytes())
+            .map_err(|e| WriteDataError::InsufficientSpace)?;
+        buf.write_all(&self.key)
+            .map_err(|e| WriteDataError::InsufficientSpace)?;
+        buf.write_all(&self.data_record)
+            .map_err(|e| WriteDataError::InsufficientSpace)?;
+        Ok(1 + size_of::<u32>() * 2 + self.key_size as usize + self.value_size as usize)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::storage::cells::{Flags, KeyCell, KeyValueCell};
+    use crate::storage::StorageBackedData;
+
+    #[test]
+    fn read_write_key_cell() {
+        let key_cell = KeyCell {
+            key_size: 4,
+            page_id: 55,
+            bytes: Box::new([1, 2, 3, 4]),
+        };
+        let mut buffer = vec![0_u8; 12];
+        key_cell
+            .write(&mut buffer)
+            .expect("could not write key cell");
+        println!("buffer: {:?}", buffer);
+        assert!(buffer.iter().any(|b| *b > 0));
+        let read_key_cell = KeyCell::read(&buffer).expect("could not read key cell");
+        assert_eq!(read_key_cell, key_cell);
+    }
+
+    #[test]
+    fn read_write_key_value_cell() {
+        let key_cell = KeyValueCell {
+            flags: Flags(55),
+            key_size: 4,
+            value_size: 6,
+            key: Box::new([1, 2, 3, 4]),
+            data_record: Box::new([1, 2, 3, 4, 5, 6]),
+        };
+        let mut buffer = vec![0_u8; 32];
+        let len = key_cell
+            .write(&mut buffer)
+            .expect("could not write key cell");
+        println!("buffer: {:?}", &buffer[..len]);
+        assert!(buffer.iter().any(|b| *b > 0));
+        let read_key_cell = KeyValueCell::read(&buffer).expect("could not read key cell");
+        assert_eq!(read_key_cell, key_cell);
+    }
+}

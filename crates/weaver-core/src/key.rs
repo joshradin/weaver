@@ -1,4 +1,6 @@
 use crate::data::row::{OwnedRow, Row};
+use crate::data::values::Value;
+use derive_more::From;
 use std::cmp::Ordering;
 use std::ops::Deref;
 
@@ -25,6 +27,30 @@ where
 {
     fn from(value: T) -> Self {
         KeyData(Row::from(value).to_owned())
+    }
+}
+
+impl<'a> AsRef<Row<'a>> for KeyData {
+    fn as_ref(&self) -> &Row<'a> {
+        self.0.as_ref()
+    }
+}
+
+impl IntoIterator for KeyData {
+    type Item = Value;
+    type IntoIter = <Row<'static> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Row::from(self.0).into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a KeyData {
+    type Item = &'a Value;
+    type IntoIter = <&'a OwnedRow as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 

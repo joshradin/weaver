@@ -1,9 +1,12 @@
 use crate::data::values::Value;
+use crate::error::Error;
+use crate::storage::ReadDataError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Copy, Clone)]
+#[repr(u8)]
 pub enum Type {
-    String,
+    String = 1,
     Blob,
     Integer,
     Boolean,
@@ -22,6 +25,22 @@ impl Type {
             (Float, Value::Float(..)) => true,
             (_, Value::Null) => true,
             _ => false,
+        }
+    }
+}
+
+impl TryFrom<u8> for Type {
+    type Error = ReadDataError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        use Type::*;
+        match value {
+            1 => Ok(String),
+            2 => Ok(Blob),
+            3 => Ok(Integer),
+            4 => Ok(Boolean),
+            5 => Ok(Float),
+            u => Err(Self::Error::UnknownTypeDiscriminant(u)),
         }
     }
 }

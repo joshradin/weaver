@@ -85,15 +85,11 @@ impl TableSchema {
     }
 
     pub fn get_column(&self, name: &str) -> Option<&ColumnDefinition> {
-        self.all_columns()
-            .into_iter()
-            .find(|col| col.name == name)
+        self.all_columns().into_iter().find(|col| col.name == name)
     }
 
     pub fn contains_column(&self, name: &str) -> bool {
-        self.all_columns()
-            .into_iter()
-            .any(|col| col.name == name)
+        self.all_columns().into_iter().any(|col| col.name == name)
     }
 
     /// Gets the primary key of this table
@@ -369,7 +365,7 @@ impl TableSchemaBuilder {
             cols.into_iter().map(ToString::to_string).collect(),
             true,
             true,
-            true
+            true,
         )?);
 
         Ok(self)
@@ -377,21 +373,20 @@ impl TableSchemaBuilder {
 
     /// Sets the primary key
     pub fn index(mut self, name: &str, cols: &[&str], unique: bool) -> Result<Self, Error> {
-        let non_null = cols.iter()
-            .try_fold(true, |accum, col| {
-                if let Some(col) = self.columns.iter().find(|column| &column.name == col) {
-                    Ok(col.non_null && accum)
-                } else {
-                    Err(Error::ColumnNotFound(col.to_string()))
-                }
-            })?;
+        let non_null = cols.iter().try_fold(true, |accum, col| {
+            if let Some(col) = self.columns.iter().find(|column| &column.name == col) {
+                Ok(col.non_null && accum)
+            } else {
+                Err(Error::ColumnNotFound(col.to_string()))
+            }
+        })?;
 
         self.keys.push(Key::new(
             name.to_string(),
             cols.into_iter().map(ToString::to_string).collect(),
             non_null,
             false,
-            false
+            false,
         )?);
 
         Ok(self)
@@ -478,7 +473,6 @@ impl From<&TableSchema> for TableSchemaBuilder {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub struct AllKeyData<'a> {

@@ -5,6 +5,7 @@ use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
+use std::collections::VecDeque;
 use std::fmt::Formatter;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::slice::SliceIndex;
@@ -39,7 +40,7 @@ impl<'a> Row<'a> {
     }
 
     /// Iterator over a row
-    pub fn iter(&self) -> impl Iterator<Item = &Cow<'a, Value>> {
+    pub fn iter(&self) -> RowRefIter<'a, '_> {
         self.0.iter()
     }
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Cow<'a, Value>> {
@@ -197,6 +198,41 @@ impl<'a> ToOwned for Row<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct RowIter {
+    values: VecDeque<Value>,
+}
+
+impl Iterator for RowIter {
+    type Item = Value;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.values.pop_front()
+    }
+}
+
+impl<'a> IntoIterator for Row<'a> {
+    type Item = Value;
+    type IntoIter = RowIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        RowIter {
+            values: self.0.iter().map(|t| (**t).clone()).collect(),
+        }
+    }
+}
+
+pub type RowRefIter<'a, 'b: 'a> = <&'b [Cow<'a, Value>] as IntoIterator>::IntoIter;
+
+impl<'a, 'b: 'a> IntoIterator for &'b Row<'a> {
+    type Item = &'b Cow<'a, Value>;
+    type IntoIter = RowRefIter<'a, 'b>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Hash, Serialize)]
 pub struct OwnedRow(Row<'static>);
 
@@ -260,6 +296,29 @@ impl Deref for OwnedRow {
 impl DerefMut for OwnedRow {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+pub struct OwnedRowRefIter<'a> {
+    values: VecDeque<&'a Value>,
+}
+
+impl<'a> Iterator for OwnedRowRefIter<'a> {
+    type Item = &'a Value;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.values.pop_front()
+    }
+}
+
+impl<'a> IntoIterator for &'a OwnedRow {
+    type Item = &'a Value;
+    type IntoIter = OwnedRowRefIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        OwnedRowRefIter {
+            values: self.iter().map(|s| s.as_ref()).collect(),
+        }
     }
 }
 

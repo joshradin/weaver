@@ -51,11 +51,16 @@ impl UserTable {
         Self {
             in_memory: InMemoryTable::new(
                 TableSchema::builder(WEAVER_SCHEMA, "users")
-                    .column("host", Type::String, true, None, None).unwrap()
-                    .column("user", Type::String, true, None, None).unwrap()
-                    .column("auth_string", Type::String, false, None, None).unwrap()
-                    .primary(&["host", "user"]).unwrap()
-                    .index("SK_user", &["user"], false).unwrap()
+                    .column("host", Type::String, true, None, None)
+                    .unwrap()
+                    .column("user", Type::String, true, None, None)
+                    .unwrap()
+                    .column("auth_string", Type::String, false, None, None)
+                    .unwrap()
+                    .primary(&["host", "user"])
+                    .unwrap()
+                    .index("SK_user", &["user"], false)
+                    .unwrap()
                     .engine(EngineKey::new("USER_TABLE"))
                     .build()
                     .expect("failed to create users table schema"),

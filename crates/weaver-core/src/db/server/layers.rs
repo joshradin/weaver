@@ -25,8 +25,7 @@ pub struct Layers {
 impl Layers {
     /// Creates a new, empty layer stack
     pub fn new<S: Service + 'static>(service: S) -> Self {
-        let func =
-            FromFnService::new(move |req, cancel| service.process(req, cancel));
+        let func = FromFnService::new(move |req, cancel| service.process(req, cancel));
         Self {
             layer_count: 1,
             inner: Some(Box::new(func)),
@@ -38,7 +37,8 @@ impl Layers {
         let inner = self.inner.take().expect("should always have inner server");
         let next = Next { inner };
         self.layer_count += 1;
-        let new_service = FromFnService::new(move |db_req: DbReq, cancel| layer.process(db_req, cancel, &next));
+        let new_service =
+            FromFnService::new(move |db_req: DbReq, cancel| layer.process(db_req, cancel, &next));
         self.inner = Some(Box::new(new_service))
     }
 }
@@ -67,7 +67,10 @@ mod tests {
     fn layered_processing() {
         let mut layers = Layers::new(FromFnService::new(|req, cancel| Ok(DbResp::Pong)));
         CancellableTask::spawn(move |cancel| {
-            assert!(matches!(layers.process(DbReq::from(DbReqBody::Ping), cancel)?, DbResp::Pong));
+            assert!(matches!(
+                layers.process(DbReq::from(DbReqBody::Ping), cancel)?,
+                DbResp::Pong
+            ));
             layers.wrap(from_fn(|req, next, cancel| {
                 let resp = next.process(req, cancel);
                 if matches!(resp, Ok(DbResp::Pong)) {
@@ -76,10 +79,13 @@ mod tests {
                     resp
                 }
             }));
-            assert!(matches!(layers.process(DbReq::from(DbReqBody::Ping), cancel)?, DbResp::Ok));
+            assert!(matches!(
+                layers.process(DbReq::from(DbReqBody::Ping), cancel)?,
+                DbResp::Ok
+            ));
             Ok(())
-        }).join().unwrap();
-
-
+        })
+        .join()
+        .unwrap();
     }
 }

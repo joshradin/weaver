@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 /// The query type
-#[derive(Debug, Clone,  Serialize, Deserialize, From)]
+#[derive(Debug, Clone, Serialize, Deserialize, From)]
 pub enum Query {
-    Select(Select)
+    Select(Select),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,7 +44,7 @@ pub enum Where {
 }
 
 impl Where {
-    pub fn  columns(&self) -> HashSet<String> {
+    pub fn columns(&self) -> HashSet<String> {
         match self {
             Where::Op(col, _, _) => HashSet::from([col.clone()]),
             Where::All(all) => all.iter().flat_map(|i| i.columns()).collect(),

@@ -6,10 +6,13 @@ use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp, IntoDbRespons
 use crate::db::server::processes::WeaverPid;
 use crate::db::server::socket::MainQueueItem;
 use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError, TableCol};
+use crate::storage::slotted_page::PageType;
+use crate::storage::{ReadDataError, WriteDataError};
 use crossbeam::channel::{RecvError, SendError, Sender};
 use openssl::error::ErrorStack;
 use openssl::ssl::HandshakeError;
 use serde::ser::StdError;
+use std::convert::Infallible;
 use std::io;
 use thiserror::Error;
 
@@ -17,6 +20,7 @@ use thiserror::Error;
 pub enum Error {
     #[error("Illegal auto increment: {reason}")]
     IllegalAutoIncrement { reason: String },
+
     #[error("Unexpected value of type found. (expected {expected:?}, received: {actual:?})")]
     TypeError { expected: Type, actual: Value },
     #[error("Illegal definition for column {col:?}: {reason}")]
@@ -90,12 +94,22 @@ pub enum Error {
     #[error("Mutiple options found for column {col:?}: {positives:#?}")]
     AmbiguousColumn {
         col: String,
-        positives: Vec<TableCol>
+        positives: Vec<TableCol>,
+    },
+    #[error("encountered an error trying to read a cell: {0}")]
+    ReadDataError(#[from] ReadDataError),
+    #[error("encountered an error trying to write a cell: {0}")]
+    WriteCellError(#[from] WriteDataError),
+    #[error(
+        "Given cell can not be written on this page (expected: {expected:?}, actual: {actual:?})"
+    )]
+    CellTypeMismatch {
+        expected: PageType,
+        actual: PageType,
     },
 
     #[error("{0}")]
     Custom(String),
-
 }
 
 impl Error {
@@ -128,5 +142,11 @@ impl<S> From<HandshakeError<S>> for Error {
 impl From<Cancelled> for Error {
     fn from(_: Cancelled) -> Self {
         Self::TaskCancelled
+    }
+}
+
+impl From<Infallible> for Error {
+    fn from(_: Infallible) -> Self {
+        unreachable!("infallible values are not constructable")
     }
 }

@@ -1,10 +1,12 @@
+use crate::data::types::Type;
+use derive_more::From;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 
 /// A single value within a row
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, From)]
 #[serde(untagged)]
 pub enum Value {
     String(String),
@@ -23,6 +25,19 @@ impl Value {
         } else {
             None
         }
+    }
+
+    pub fn value_type(&self) -> Option<Type> {
+        Some(match self {
+            Value::String(_) => Type::String,
+            Value::Blob(_) => Type::Blob,
+            Value::Integer(_) => Type::Integer,
+            Value::Boolean(_) => Type::Boolean,
+            Value::Float(_) => Type::Float,
+            Value::Null => {
+                return None;
+            }
+        })
     }
 }
 
