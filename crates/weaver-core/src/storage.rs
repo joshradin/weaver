@@ -27,8 +27,10 @@ pub enum ReadDataError {
 
 #[derive(Debug, Error)]
 pub enum WriteDataError {
-    #[error("Not enough space to store data for this cell")]
+    #[error("Not enough space to store data for this cell on page")]
     InsufficientSpace,
+    #[error("Failed to allocate {size} bytes on page {page_id}")]
+    AllocationFailed { page_id: u32, size: usize },
 }
 
 pub trait StorageBackedData<'a>: Sized {

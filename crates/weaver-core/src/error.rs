@@ -99,7 +99,7 @@ pub enum Error {
     #[error("encountered an error trying to read a cell: {0}")]
     ReadDataError(#[from] ReadDataError),
     #[error("encountered an error trying to write a cell: {0}")]
-    WriteCellError(#[from] WriteDataError),
+    WriteDataError(#[from] WriteDataError),
     #[error(
         "Given cell can not be written on this page (expected: {expected:?}, actual: {actual:?})"
     )]

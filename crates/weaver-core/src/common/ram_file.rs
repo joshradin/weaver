@@ -13,7 +13,7 @@ pub struct RandomAccessFile {
 }
 
 impl RandomAccessFile {
-    pub fn from_file(file: File, auto_sync: bool) -> io::Result<Self> {
+    pub fn with_file(file: File, auto_sync: bool) -> io::Result<Self> {
         let length = file.metadata()?.len();
         Ok(Self {
             file,
@@ -23,15 +23,22 @@ impl RandomAccessFile {
     }
 
     pub fn create<P: AsRef<Path>>(path: P, auto_sync: bool) -> io::Result<Self> {
-        File::create(path).and_then(|file| Self::from_file(file, auto_sync))
+        File::create(path).and_then(|file| Self::with_file(file, auto_sync))
     }
 
     pub fn open<P: AsRef<Path>>(path: P, auto_sync: bool) -> io::Result<Self> {
-        File::open(path).and_then(|file| Self::from_file(file, auto_sync))
+        File::open(path).and_then(|file| Self::with_file(file, auto_sync))
     }
 
     pub fn metadata(&self) -> io::Result<Metadata> {
         self.file.metadata()
+    }
+
+    /// Sets the new length of the file, either extending it or truncating it
+    pub fn set_len(&mut self, len: u64) -> io::Result<()> {
+        self.file.set_len(len)?;
+        self.sync()?;
+        Ok(())
     }
 
     /// Write data at a given offset
@@ -57,7 +64,7 @@ impl RandomAccessFile {
     }
 
     /// Read data at given offset into a buffer
-    pub fn read(&mut self, offset: u64, buffer: &mut [u8]) -> io::Result<u64> {
+    pub fn read(&self, offset: u64, buffer: &mut [u8]) -> io::Result<u64> {
         if offset > self.length {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
@@ -65,15 +72,15 @@ impl RandomAccessFile {
             ));
         }
 
-        self.file.seek(SeekFrom::Start(offset))?;
+        (&self.file).seek(SeekFrom::Start(offset))?;
         let fill_size = (self.length - offset).min(buffer.len() as u64) as usize;
         let inter = &mut buffer[..fill_size];
-        self.file.read_exact(inter)?;
+        (&self.file).read_exact(inter)?;
         Ok(fill_size as u64)
     }
 
     /// Read an exact amount of data, returning an error if this can't be done
-    pub fn read_exact(&mut self, offset: u64, len: u64) -> io::Result<Vec<u8>> {
+    pub fn read_exact(&self, offset: u64, len: u64) -> io::Result<Vec<u8>> {
         if offset > self.length {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
@@ -81,9 +88,9 @@ impl RandomAccessFile {
             ));
         }
 
-        self.file.seek(SeekFrom::Start(offset))?;
+        (&self.file).seek(SeekFrom::Start(offset))?;
         let mut vec = vec![0_u8; len as usize];
-        self.file.read_exact(&mut vec)?;
+        (&self.file).read_exact(&mut vec)?;
         Ok(vec)
     }
 
@@ -92,8 +99,10 @@ impl RandomAccessFile {
         self.length
     }
 
-    pub fn sync(&self) -> io::Result<()> {
-        self.file.sync_all()
+    pub fn sync(&mut self) -> io::Result<()> {
+        self.file.sync_all()?;
+        self.length = self.file.metadata()?.len();
+        Ok(())
     }
 }
 
@@ -101,7 +110,7 @@ impl TryFrom<File> for RandomAccessFile {
     type Error = io::Error;
 
     fn try_from(value: File) -> Result<Self, Self::Error> {
-        RandomAccessFile::from_file(value, false)
+        RandomAccessFile::with_file(value, false)
     }
 }
 
@@ -113,7 +122,7 @@ mod tests {
     #[test]
     fn write_to_ram_file() {
         let temp = tempfile().expect("could not create tempfile");
-        let mut ram = RandomAccessFile::from_file(temp, true).expect("could not create ram file");
+        let mut ram = RandomAccessFile::with_file(temp, true).expect("could not create ram file");
         let test = [1, 2, 3, 4, 5, 6];
         ram.write(0, &test).expect("could not write");
         let mut buffer = [0; 16];

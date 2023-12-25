@@ -9,7 +9,7 @@ use derive_more::From;
 
 use crate::data::row::OwnedRow;
 use crate::data::serde::{deserialize_data_typed, serialize_data_typed, serialize_data_untyped};
-use crate::key::KeyData;
+use crate::key::{KeyData, KeyDataRange};
 use crate::rows::{KeyIndex, KeyIndexKind};
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
 
@@ -48,19 +48,8 @@ pub struct KeyCell {
 
 impl KeyCell {
     /// Create a key cell from a key index
-    pub fn new(page_id: u32, key: &KeyIndex) -> Self {
-        let mut buffer: Vec<u8> = vec![];
-        match key.kind() {
-            KeyIndexKind::All => {
-                buffer.push(0);
-            }
-            KeyIndexKind::One(key_data) => {
-                buffer.push(1);
-            }
-            KeyIndexKind::Range { low, high } => {
-                buffer.push(2);
-            }
-        }
+    pub fn new(page_id: u32, key: KeyData) -> Self {
+        let mut buffer: Vec<u8> = serialize_data_typed(&key);
         Self {
             key_size: buffer.len() as u32,
             page_id,
@@ -69,7 +58,9 @@ impl KeyCell {
     }
 
     pub fn key_data(&self) -> KeyData {
-        let deserializer = todo!();
+        KeyData::from(
+            deserialize_data_typed(&self.bytes).expect("should be unfallible unless corrupted"),
+        )
     }
 
     pub fn len(&self) -> usize {

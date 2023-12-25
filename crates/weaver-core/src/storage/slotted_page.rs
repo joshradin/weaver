@@ -5,16 +5,19 @@
 //! - Reclaim space occupied by the removal of records
 //! - Reference records in the page without regard to their exact location
 
+use derive_more::{Deref, DerefMut};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fs::File;
 use std::mem::{size_of, size_of_val};
 use std::num::NonZeroU32;
+use std::os::unix::raw::off_t;
 use std::path::Path;
 use std::sync::Arc;
 
 use digest::typenum::NonZero;
-use parking_lot::{Mutex, MutexGuard};
+use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tracing::trace;
 
 use crate::common::ram_file::RandomAccessFile;
 use crate::error::Error;
@@ -29,7 +32,7 @@ const HEADER_SIZE: usize = size_of::<Header>();
 /// A slotted page contains data
 #[derive(Debug)]
 pub struct SlottedPage {
-    file: Arc<Mutex<RandomAccessFile>>,
+    file: Arc<RwLock<RandomAccessFile>>,
     index: usize,
     header: Header,
     slots: BTreeMap<KeyData, u64>,
@@ -42,33 +45,45 @@ pub struct SlottedPage {
 impl SlottedPage {
     /// Opens a page at a given path
     pub fn open_path<P: AsRef<Path>>(path: P, page_index: usize) -> Result<SlottedPage, Error> {
-        let file = RandomAccessFile::from_file(File::open(path)?, false)?;
+        let file = RandomAccessFile::with_file(File::open(path)?, false)?;
         Self::open(file, page_index)
     }
 
     pub fn open(file: RandomAccessFile, page_index: usize) -> Result<SlottedPage, Error> {
-        Self::open_mutex(Arc::new(Mutex::new(file)), page_index)
+        Self::open_shared(&Arc::new(RwLock::new(file)), page_index)
+    }
+
+    /// Opens a file, returning a vector of slotted pages
+    pub fn open_vector(file: &Arc<RwLock<RandomAccessFile>>) -> Result<Vec<SlottedPage>, Error> {
+        let arc = file.clone();
+        let lock = arc.read();
+        let pages = (lock.len() / PAGE_SIZE as u64) as usize;
+        (0..pages)
+            .into_iter()
+            .map(|index| Self::open_shared(&file, index))
+            .collect()
     }
 
     /// Opens a page in a file at given offset
     ///
     /// The page offset is an array
-    pub fn open_mutex(
-        file: Arc<Mutex<RandomAccessFile>>,
+    pub fn open_shared(
+        file: &Arc<RwLock<RandomAccessFile>>,
         page_index: usize,
     ) -> Result<SlottedPage, Error> {
-        if file.lock().metadata()?.len() < (page_index as u64 + 1) * (PAGE_SIZE as u64) {
+        let file = file.clone();
+        if file.read().metadata()?.len() < (page_index as u64 + 1) * (PAGE_SIZE as u64) {
             return Err(Error::ReadDataError(ReadDataError::UnexpectedEof));
         }
 
         let file_start = page_index as u64 * (PAGE_SIZE as u64);
 
-        let header = Header::read(&file.lock().read_exact(file_start, HEADER_SIZE as u64)?)?;
+        let header = Header::read(&file.read().read_exact(file_start, HEADER_SIZE as u64)?)?;
         let cells = header.len as u64;
         let slots_ptr = file_start + HEADER_SIZE as u64;
         let mut ptrs = vec![];
         for i in 0..cells {
-            let read = file.lock().read_exact(
+            let read = file.read().read_exact(
                 slots_ptr + i * size_of::<u64>() as u64,
                 size_of::<u64>() as u64,
             )?;
@@ -80,7 +95,7 @@ impl SlottedPage {
         let mut slots = BTreeMap::new();
         let cells_start = ptrs.iter().copied().min().unwrap_or(1);
         for offset in ptrs {
-            let cell = Self::get_cell_at(&mut file.lock(), offset, &header.page_type)?;
+            let cell = Self::get_cell_at(&mut file.read(), offset, &header.page_type)?;
             let key_data = cell.key_data();
             slots.insert(key_data, offset);
             cells.push(cell);
@@ -115,11 +130,31 @@ impl SlottedPage {
             .create(true)
             .open(path)?;
 
+        let file: RandomAccessFile = real_file.try_into()?;
+        Self::init(file, page_id, page_type, page_index)
+    }
+
+    pub fn init(
+        random_access_file: RandomAccessFile,
+        page_id: NonZeroU32,
+        page_type: PageType,
+        page_index: usize,
+    ) -> Result<SlottedPage, Error> {
+        let mutex = Arc::new(RwLock::new(random_access_file));
+        Self::init_shared(&mutex, page_id, page_type, page_index)
+    }
+
+    pub fn init_shared(
+        random_access_file: &Arc<RwLock<RandomAccessFile>>,
+        page_id: NonZeroU32,
+        page_type: PageType,
+        page_index: usize,
+    ) -> Result<SlottedPage, Error> {
+        let mut real_file = random_access_file.write();
         if real_file.metadata()?.len() < (page_index as u64 + 1) * PAGE_SIZE as u64 {
             real_file.set_len(PAGE_SIZE as u64 * (page_index as u64 + 1))?;
         }
 
-        let file: RandomAccessFile = real_file.try_into()?;
         let header = Header {
             magic_number: HEADER_MAGIC_NUMBER,
             page_id: page_id.get(),
@@ -130,7 +165,7 @@ impl SlottedPage {
         };
 
         let mut page = Self {
-            file: Arc::new(Mutex::new(file)),
+            file: random_access_file.clone(),
             index: page_index,
             header,
             slots: Default::default(),
@@ -138,10 +173,20 @@ impl SlottedPage {
             cells_start: ((page_index + 1) * PAGE_SIZE) as u64,
             free_list: Default::default(),
         };
-        page.flush()?;
+        page._flush(&mut real_file)?;
         Ok(page)
     }
 
+    /// Pushes a new slotted page at the end of the random access file
+    pub fn init_last_shared(
+        random_access_file: &Arc<RwLock<RandomAccessFile>>,
+        page_id: NonZeroU32,
+        page_type: PageType,
+    ) -> Result<SlottedPage, Error> {
+        let len = random_access_file.read().metadata()?.len();
+        let pages = PAGE_SIZE / len as usize;
+        Self::init_shared(random_access_file, page_id, page_type, pages)
+    }
     pub fn page_id(&self) -> u32 {
         self.header.page_id
     }
@@ -167,21 +212,20 @@ impl SlottedPage {
         self.header.page_type
     }
 
-    fn free_space(&self) -> u64 {
-        let len = self.file.lock().len();
-
-        todo!()
+    pub fn free_space(&self) -> u64 {
+        (self.cells_start - self.slots_end)
+            + self
+                .free_list
+                .iter()
+                .map(|(&size, offsets)| (size * offsets.len()) as u64)
+                .sum::<u64>()
     }
 
     fn cell_length_at(&self, offset: u64) -> Result<u64, Error> {
-        Self::_cell_length_at(&mut *self.file.lock(), offset, &self.header.page_type)
+        Self::_cell_length_at(&*self.file.read(), offset, &self.header.page_type)
     }
 
-    fn _cell_length_at(
-        ram: &mut RandomAccessFile,
-        offset: u64,
-        ty: &PageType,
-    ) -> Result<u64, Error> {
+    fn _cell_length_at(ram: &RandomAccessFile, offset: u64, ty: &PageType) -> Result<u64, Error> {
         match ty {
             PageType::Key => {
                 let buffer = ram.read_exact(offset, 4)?;
@@ -199,7 +243,7 @@ impl SlottedPage {
         }
     }
 
-    fn get_cell_at(ram: &mut RandomAccessFile, offset: u64, ty: &PageType) -> Result<Cell, Error> {
+    fn get_cell_at(ram: &RandomAccessFile, offset: u64, ty: &PageType) -> Result<Cell, Error> {
         match ty {
             PageType::Key => {
                 let len = Self::_cell_length_at(ram, offset, ty)?;
@@ -214,17 +258,19 @@ impl SlottedPage {
         }
     }
 
+    /// Gets a cell with the given key data
     pub fn get_cell(&self, key_data: &KeyData) -> Option<Cell> {
         self.slots.get(key_data).and_then(|&offset| {
-            Self::get_cell_at(&mut *self.file.lock(), offset, &self.header.page_type).ok()
+            Self::get_cell_at(&*self.file.read(), offset, &self.header.page_type).ok()
         })
     }
 
     /// Checks if adding new entry with a given size is feasible
     fn can_alloc(&self, len: usize) -> bool {
-        println!(
+        trace!(
             "checking if can fit len {len} when cell_start: {} and slot_end: {}",
-            self.cells_start, self.slots_end
+            self.cells_start,
+            self.slots_end
         );
         let new_cells_start = self.cells_start.checked_sub(len as u64);
         let new_slot_end = self.slots_end.checked_add(len as u64);
@@ -236,7 +282,10 @@ impl SlottedPage {
 
     fn alloc(&mut self, len: usize) -> Result<(u64, u64), Error> {
         if !self.can_alloc(len) {
-            return Err(Error::WriteCellError(WriteDataError::InsufficientSpace));
+            return Err(Error::WriteDataError(WriteDataError::AllocationFailed {
+                page_id: self.page_id(),
+                size: len,
+            }));
         }
         let slot_offset = self.slots_end;
         self.slots_end += 8;
@@ -245,7 +294,23 @@ impl SlottedPage {
     }
 
     fn free(&mut self, offset: u64) -> Result<(), Error> {
-        todo!()
+        let cell_length = self.cell_length_at(offset)?;
+        if offset == self.slots_end {
+            // expand
+            self.slots_end += cell_length;
+        } else {
+            self.free_list
+                .entry(cell_length as usize)
+                .or_default()
+                .push(offset);
+        }
+
+        let arc_clone = self.file.clone();
+        let mut lock = arc_clone.write();
+        let mut slots = self.raw_slots(&mut *lock)?;
+        slots.retain(|&slot| slot != offset);
+        self.write_raw_slots(slots, &mut *lock)?;
+        Ok(())
     }
 
     /// Tries to insert,
@@ -265,7 +330,8 @@ impl SlottedPage {
                 key_value.write(&mut data)?;
             }
         }
-        let mut lock = self.file.lock();
+        let arc = self.file.clone();
+        let mut lock = arc.write();
 
         // inserts the cell at the start of the cell block
         // and inserts the pointer at the end of the block
@@ -274,16 +340,66 @@ impl SlottedPage {
         lock.write(slot_offset, &u64::to_be_bytes(cell_offset))?;
         self.header.len += 1;
         self.slots.insert(key_data, cell_offset);
-        self.write_slots(lock)?;
-        self.flush()?;
+        self.write_slots(&mut *lock)?;
+        self._flush(&mut lock)?;
         Ok(())
     }
 
-    fn write_slots(&self, mut lock: MutexGuard<RandomAccessFile>) -> Result<(), Error> {
+    /// Delete a cell by the given key, if present
+    pub fn delete(&mut self, key: &KeyData) -> Result<Option<Cell>, Error> {
+        match self.slots.get(&key) {
+            None => Ok(None),
+            Some(&offset) => {
+                let cell = self.get_cell(key).unwrap();
+                self.free(offset)?;
+
+                Ok(Some(cell))
+            }
+        }
+    }
+
+    fn write_slots(&self, lock: &mut RandomAccessFile) -> Result<(), Error> {
         let mut offset = Header::len() as u64 + (self.index * PAGE_SIZE) as u64;
         for value in self.slots.values() {
             lock.write(offset, &value.to_be_bytes())?;
             offset += 8;
+        }
+        Ok(())
+    }
+
+    fn raw_slots(&self, lock: &mut RandomAccessFile) -> Result<Vec<u64>, Error> {
+        let mut offset = Header::len() as u64 + (self.index * PAGE_SIZE) as u64;
+        let slots_in_use = self.len();
+        let mut slots = vec![];
+        for i in 0..slots_in_use {
+            let read = lock.read_exact(
+                offset + (i * size_of::<u64>()) as u64,
+                size_of::<u64>() as u64,
+            )?;
+            let read_u64 = u64::from_be_bytes(read.try_into().unwrap());
+            slots.push(read_u64);
+        }
+        Ok(slots)
+    }
+
+    fn write_raw_slots(&mut self, vec: Vec<u64>, lock: &mut RandomAccessFile) -> Result<(), Error> {
+        let mut offset = Header::len() as u64 + (self.index * PAGE_SIZE) as u64;
+        for &value in &vec {
+            lock.write(offset, &value.to_be_bytes())?;
+            offset += 8;
+        }
+        if offset != self.slots_end {
+            self.slots_end = offset;
+            self.header.len = vec.len() as u32;
+            self.slots
+                .iter()
+                .filter(|(_, slot_offset)| !vec.contains(slot_offset))
+                .map(|(key, _)| key.clone())
+                .collect::<Vec<_>>()
+                .into_iter()
+                .for_each(|key| {
+                    self.slots.remove(&key);
+                });
         }
         Ok(())
     }
@@ -312,12 +428,17 @@ impl SlottedPage {
     }
 
     pub fn flush(&mut self) -> Result<(), Error> {
+        let ar = self.file.clone();
+        let mut lock = ar.write();
+        self._flush(&mut lock)?;
+        Ok(())
+    }
+
+    fn _flush(&mut self, lock: &mut RwLockWriteGuard<RandomAccessFile>) -> Result<(), Error> {
         // write header
         let mut header_buffer = vec![0u8; size_of_val(&self.header)];
         self.header.write(&mut header_buffer)?;
-        self.file
-            .lock()
-            .write(self.index as u64 * PAGE_SIZE as u64, &header_buffer)?;
+        lock.write(self.index as u64 * PAGE_SIZE as u64, &header_buffer)?;
 
         Ok(())
     }
@@ -421,6 +542,44 @@ impl<'a> StorageBackedData<'a> for PageType {
     }
 }
 
+/// Invariant over Key slotted pages
+#[derive(Debug, Deref, DerefMut)]
+pub struct KeySlottedPage(SlottedPage);
+
+impl TryFrom<SlottedPage> for KeySlottedPage {
+    type Error = Error;
+
+    fn try_from(value: SlottedPage) -> Result<Self, Self::Error> {
+        if value.page_type() != PageType::Key {
+            Err(Error::CellTypeMismatch {
+                expected: PageType::Key,
+                actual: PageType::KeyValue,
+            })
+        } else {
+            Ok(KeySlottedPage(value))
+        }
+    }
+}
+
+/// Invariant over Key Value slotted pages
+#[derive(Debug, Deref, DerefMut)]
+pub struct KeyValueSlottedPage(SlottedPage);
+
+impl TryFrom<SlottedPage> for KeyValueSlottedPage {
+    type Error = Error;
+
+    fn try_from(value: SlottedPage) -> Result<Self, Self::Error> {
+        if value.page_type() != PageType::Key {
+            Err(Error::CellTypeMismatch {
+                expected: PageType::KeyValue,
+                actual: PageType::Key,
+            })
+        } else {
+            Ok(KeyValueSlottedPage(value))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroU32;
@@ -429,13 +588,13 @@ mod tests {
     use crate::error::Error;
     use crate::key::KeyData;
     use crate::storage::cells::KeyValueCell;
-    use crate::storage::slotted_page::{PageType, SlottedPage};
+    use crate::storage::slotted_page::{PageType, SlottedPage, PAGE_SIZE};
     use crate::storage::ReadDataError;
 
     #[test]
     fn can_not_read_uninit_page() {
         let file = tempfile::tempfile().unwrap();
-        file.set_len(1028).unwrap();
+        file.set_len(PAGE_SIZE as u64).unwrap();
         let error = SlottedPage::open(file.try_into().unwrap(), 0).expect_err("should be error");
         assert!(
             matches!(error, Error::ReadDataError(ReadDataError::BadMagicNumber)),
@@ -460,6 +619,24 @@ mod tests {
         let page = SlottedPage::open_path(file, 0).unwrap();
         assert_eq!(page.header.page_id, 1);
         assert_eq!(page.len(), 1);
+    }
+
+    #[test]
+    fn can_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("temp.idb");
+        let mut page =
+            SlottedPage::create(&file, NonZeroU32::new(1).unwrap(), PageType::KeyValue, 0)
+                .expect("should create file");
+        let key_data = KeyData::from(Row::from([1.into()]));
+        page.insert(KeyValueCell::new(
+            key_data.clone(),
+            Row::from([1.into(), 2.into()]).to_owned(),
+        ))
+        .unwrap();
+        assert_eq!(page.len(), 1);
+        page.delete(&key_data).unwrap();
+        assert_eq!(page.len(), 0);
     }
 
     #[test]

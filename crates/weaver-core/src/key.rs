@@ -2,7 +2,7 @@ use crate::data::row::{OwnedRow, Row};
 use crate::data::values::Value;
 use derive_more::From;
 use std::cmp::Ordering;
-use std::ops::Deref;
+use std::ops::{Bound, Deref, RangeBounds};
 
 /// Keys are always order-able
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Hash)]
@@ -54,10 +54,53 @@ impl<'a> IntoIterator for &'a KeyData {
     }
 }
 
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct KeyDataRange(pub Bound<KeyData>, pub Bound<KeyData>);
+
+impl<R: RangeBounds<KeyData>> From<R> for KeyDataRange {
+    fn from(value: R) -> Self {
+        Self(value.start_bound().cloned(), value.end_bound().cloned())
+    }
+}
+
+impl KeyDataRange {
+    pub fn contains(&self, key_data: &KeyData) -> bool {
+        match &self.0 {
+            Bound::Included(included) => {
+                if key_data < included {
+                    return false;
+                }
+            }
+            Bound::Excluded(excluded) => {
+                if key_data <= excluded {
+                    return false;
+                }
+            }
+            Bound::Unbounded => {}
+        }
+
+        match &self.1 {
+            Bound::Included(included) => {
+                if key_data > included {
+                    return false;
+                }
+            }
+            Bound::Excluded(excluded) => {
+                if key_data >= excluded {
+                    return false;
+                }
+            }
+            Bound::Unbounded => {}
+        }
+
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::data::values::Value;
-    use crate::key::KeyData;
+    use crate::key::{KeyData, KeyDataRange};
     use std::collections::{BTreeSet, HashSet};
 
     #[test]
@@ -69,6 +112,18 @@ mod tests {
         let b = btree.iter().collect::<Vec<_>>();
         assert_eq!(&*b[0][0], &Value::Float(1.0));
         assert_eq!(&*b[1][0], &Value::Float(4.0));
+    }
+
+    #[test]
+    fn key_in_range() {
+        let range = KeyDataRange::from(
+            KeyData::from([Value::Float(1.0)])..=KeyData::from([Value::Float(4.0)]),
+        );
+        assert!(!range.contains(&KeyData::from([Value::Float(f64::MIN)])));
+        assert!(range.contains(&KeyData::from([Value::Float(1.0)])));
+        assert!(range.contains(&KeyData::from([Value::Float(2.0)])));
+        assert!(range.contains(&KeyData::from([Value::Float(4.0)])));
+        assert!(!range.contains(&KeyData::from([Value::Float(f64::MAX)])));
     }
 
     #[test]
