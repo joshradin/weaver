@@ -2,11 +2,11 @@ use crate::data::types::Type;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 
 /// A single value within a row
-#[derive(Debug, Clone, Deserialize, Serialize, From)]
+#[derive(Clone, Deserialize, Serialize, From)]
 #[serde(untagged)]
 pub enum Value {
     String(String),
@@ -62,6 +62,35 @@ impl Display for Value {
             }
             Value::Float(fl) => {
                 write!(f, "{fl}")
+            }
+            Value::Null => {
+                write!(f, "null")
+            }
+        }
+    }
+}
+
+impl Debug for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::String(s) => {
+                write!(f, "{s:?}")
+            }
+            Value::Blob(b) => {
+                write!(
+                    f,
+                    "b\"{}\"",
+                    b.iter().map(|s| format!("{:x}", s)).collect::<String>()
+                )
+            }
+            Value::Integer(i) => {
+                write!(f, "{i}_i64")
+            }
+            Value::Boolean(b) => {
+                write!(f, "{b}")
+            }
+            Value::Float(fl) => {
+                write!(f, "{fl}_f64")
             }
             Value::Null => {
                 write!(f, "null")

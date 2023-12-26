@@ -107,6 +107,8 @@ pub enum Error {
         expected: PageType,
         actual: PageType,
     },
+    #[error("No child with id {0} found")]
+    ChildNotFound(u32),
 
     #[error("{0}")]
     Custom(String),

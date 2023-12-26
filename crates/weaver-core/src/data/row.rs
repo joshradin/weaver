@@ -6,12 +6,13 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
 use std::collections::VecDeque;
-use std::fmt::Formatter;
+use std::fmt;
+use std::fmt::{Debug, Formatter, Write};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::slice::SliceIndex;
 
 /// A row of data
-#[derive(Debug, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Hash)]
 pub struct Row<'a>(Box<[Cow<'a, Value>]>);
 
 impl<'a> Row<'a> {
@@ -72,6 +73,22 @@ impl<'a> Serialize for Row<'a> {
             seq.serialize_element(&*val)?;
         }
         seq.end()
+    }
+}
+
+/// Writes a row to a formatter
+pub fn write_row(writer: &mut Formatter, row: &Row) -> fmt::Result {
+    let mut list = writer.debug_list();
+    for value in row {
+        list.entry(value);
+    }
+    list.finish()
+}
+
+impl Debug for Row<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_char('&')?;
+        write_row(f, self)
     }
 }
 
@@ -233,7 +250,7 @@ impl<'a, 'b: 'a> IntoIterator for &'b Row<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Hash, Serialize)]
+#[derive(PartialEq, Eq, PartialOrd, Hash, Serialize)]
 pub struct OwnedRow(Row<'static>);
 
 impl<'de> Deserialize<'de> for OwnedRow {
@@ -296,6 +313,12 @@ impl Deref for OwnedRow {
 impl DerefMut for OwnedRow {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl Debug for OwnedRow {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write_row(f, self.as_ref())
     }
 }
 

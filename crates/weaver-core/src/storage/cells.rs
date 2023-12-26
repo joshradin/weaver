@@ -66,6 +66,9 @@ impl KeyCell {
     pub fn len(&self) -> usize {
         2 * size_of::<u32>() + self.bytes.len()
     }
+    pub fn page_id(&self) -> u32 {
+        self.page_id
+    }
 }
 
 impl<'a> StorageBackedData<'a> for KeyCell {
@@ -75,7 +78,7 @@ impl<'a> StorageBackedData<'a> for KeyCell {
         u32_buf.clone_from_slice(buf.get(..4).ok_or(ReadDataError::UnexpectedEof)?);
         let key_size = u32::from_be_bytes(u32_buf);
         let mut u32_buf = [0u8; 4];
-        u32_buf.clone_from_slice(buf.get(4..12).ok_or(ReadDataError::UnexpectedEof)?);
+        u32_buf.clone_from_slice(buf.get(4..8).ok_or(ReadDataError::UnexpectedEof)?);
         let page_id = u32::from_be_bytes(u32_buf);
         let key_data = buf
             .get(8..)

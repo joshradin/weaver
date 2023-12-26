@@ -6,8 +6,8 @@
 //! - Reference records in the page without regard to their exact location
 
 use derive_more::{Deref, DerefMut};
-use std::collections::BTreeMap;
-use std::fmt::Debug;
+use std::collections::{BTreeMap, Bound};
+use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::mem::{size_of, size_of_val};
 use std::num::NonZeroU32;
@@ -21,7 +21,7 @@ use tracing::trace;
 
 use crate::common::ram_file::RandomAccessFile;
 use crate::error::Error;
-use crate::key::KeyData;
+use crate::key::{KeyData, KeyDataRange};
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell};
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
 
@@ -30,7 +30,6 @@ pub const PAGE_SIZE: usize = 1024 * 16;
 const HEADER_SIZE: usize = size_of::<Header>();
 
 /// A slotted page contains data
-#[derive(Debug)]
 pub struct SlottedPage {
     file: Arc<RwLock<RandomAccessFile>>,
     index: usize,
@@ -184,7 +183,7 @@ impl SlottedPage {
         page_type: PageType,
     ) -> Result<SlottedPage, Error> {
         let len = random_access_file.read().metadata()?.len();
-        let pages = PAGE_SIZE / len as usize;
+        let pages = len as usize / PAGE_SIZE;
         Self::init_shared(random_access_file, page_id, page_type, pages)
     }
     pub fn page_id(&self) -> u32 {
@@ -219,6 +218,7 @@ impl SlottedPage {
                 .iter()
                 .map(|(&size, offsets)| (size * offsets.len()) as u64)
                 .sum::<u64>()
+            + size_of::<Header>() as u64
     }
 
     fn cell_length_at(&self, offset: u64) -> Result<u64, Error> {
@@ -263,6 +263,16 @@ impl SlottedPage {
         self.slots.get(key_data).and_then(|&offset| {
             Self::get_cell_at(&*self.file.read(), offset, &self.header.page_type).ok()
         })
+    }
+
+    /// Gets all value cells in a given range
+    pub fn range(&self, range: &KeyDataRange) -> Result<Vec<Cell>, Error> {
+        Ok(self
+            .slots
+            .iter()
+            .filter(|key| range.contains(&*key.0))
+            .flat_map(|(key, _)| self.get_cell(key))
+            .collect())
     }
 
     /// Checks if adding new entry with a given size is feasible
@@ -442,8 +452,54 @@ impl SlottedPage {
 
         Ok(())
     }
+
+    fn bounds(&self) -> KeyDataRange {
+        self.keys().fold(
+            KeyDataRange(Bound::Unbounded, Bound::Unbounded),
+            |mut accum, next| {
+                match &accum.0 {
+                    Bound::Included(acc) | Bound::Excluded(acc) => {
+                        if next <= acc {
+                            accum.0 = Bound::Included(next.clone());
+                        }
+                    }
+                    Bound::Unbounded => {
+                        accum.0 = Bound::Included(next.clone());
+                    }
+                }
+                match &accum.1 {
+                    Bound::Included(acc) | Bound::Excluded(acc) => {
+                        if next >= acc {
+                            accum.1 = Bound::Included(next.clone());
+                        }
+                    }
+                    Bound::Unbounded => {
+                        accum.1 = Bound::Included(next.clone());
+                    }
+                }
+                accum
+            },
+        )
+    }
+
+    fn keys(&self) -> impl Iterator<Item = &KeyData> {
+        self.slots.keys()
+    }
+
     pub fn index(&self) -> usize {
         self.index
+    }
+}
+
+impl Debug for SlottedPage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SlottedPage")
+            .field("index", &self.index)
+            .field("header", &self.header)
+            .field("slots", &self.slots)
+            .field("space_used", &(PAGE_SIZE as u64 - self.free_space()))
+            .field("free_space", &self.free_space())
+            .finish()
     }
 }
 
@@ -569,7 +625,7 @@ impl TryFrom<SlottedPage> for KeyValueSlottedPage {
     type Error = Error;
 
     fn try_from(value: SlottedPage) -> Result<Self, Self::Error> {
-        if value.page_type() != PageType::Key {
+        if value.page_type() != PageType::KeyValue {
             Err(Error::CellTypeMismatch {
                 expected: PageType::KeyValue,
                 actual: PageType::Key,

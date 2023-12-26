@@ -2,11 +2,23 @@ use crate::data::row::{OwnedRow, Row};
 use crate::data::values::Value;
 use derive_more::From;
 use std::cmp::Ordering;
+use std::fmt::{Debug, Formatter};
 use std::ops::{Bound, Deref, RangeBounds};
 
 /// Keys are always order-able
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct KeyData(OwnedRow);
+
+impl Debug for KeyData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.0.len() > 3 {
+            self.0.fmt(f)
+        } else {
+            write!(f, "{:?}", self.0)
+        }
+    }
+}
+
 impl Ord for KeyData {
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).expect("could not compare keys")
@@ -94,6 +106,59 @@ impl KeyDataRange {
         }
 
         true
+    }
+
+    /// Checks if two ranges overlap
+    pub fn overlaps(&self, other: &Self) -> bool {
+        partial_compare_bounds(&self.0, &other.1)
+            .map(|ordering| ordering.is_le())
+            .unwrap_or(false)
+            && partial_compare_bounds(&other.0, &self.1)
+                .map(|ordering| ordering.is_le())
+                .unwrap_or(false)
+    }
+
+    /// if two ranges overlap, creates a union
+    pub fn union(&self, other: &Self) -> Option<Self> {
+        if !self.overlaps(other) {
+            return None;
+        }
+
+        let min = [&self.0, &other.0]
+            .into_iter()
+            .min_by(|&a, &b| compare_bounds(a, b));
+
+        todo!()
+    }
+}
+
+fn partial_compare_bounds<T: PartialOrd>(b1: &Bound<T>, b2: &Bound<T>) -> Option<Ordering> {
+    match (b1, b2) {
+        (Bound::Unbounded, Bound::Unbounded) => Some(Ordering::Equal),
+        (Bound::Excluded(x), Bound::Excluded(y)) => x.partial_cmp(y),
+        (Bound::Included(x), Bound::Included(y)) => x.partial_cmp(y),
+        (Bound::Included(x), Bound::Excluded(y)) => {
+            x.partial_cmp(y)
+                .map(|ord| if ord.is_eq() { Ordering::Less } else { ord })
+        }
+        (Bound::Excluded(x), Bound::Included(y)) => {
+            x.partial_cmp(y)
+                .map(|ord| if ord.is_eq() { Ordering::Greater } else { ord })
+        }
+        (Bound::Unbounded, _) => Some(Ordering::Less),
+        (_, Bound::Unbounded) => Some(Ordering::Greater),
+    }
+}
+
+fn compare_bounds<T: Ord>(b1: &Bound<T>, b2: &Bound<T>) -> Ordering {
+    match (b1, b2) {
+        (Bound::Unbounded, Bound::Unbounded) => Ordering::Equal,
+        (Bound::Excluded(x), Bound::Excluded(y)) => x.cmp(y),
+        (Bound::Included(x), Bound::Included(y)) => x.cmp(y),
+        (Bound::Included(_), Bound::Excluded(_)) => todo!(),
+        (Bound::Excluded(_), Bound::Included(_)) => todo!(),
+        (Bound::Unbounded, _) => Ordering::Less,
+        (_, Bound::Unbounded) => Ordering::Greater,
     }
 }
 
