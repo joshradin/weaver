@@ -19,11 +19,11 @@ use digest::typenum::NonZero;
 use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::trace;
 
-use crate::common::ram_file::RandomAccessFile;
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell};
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
+use crate::storage::ram_file::RandomAccessFile;
 
 /// PAGE size is 16Kb
 pub const PAGE_SIZE: usize = 1024 * 16;
@@ -275,6 +275,15 @@ impl SlottedPage {
             .collect())
     }
 
+    /// Gets the max key value. This should always be the maximum key value and its associated cell
+    pub fn last_key_value(&self) -> Option<(KeyData, Cell)> {
+        self.slots.last_key_value()
+            .and_then(|(key, &offset)|
+                self.get_cell(key)
+                    .map(|cell| (key.clone(), cell))
+            )
+    }
+
     /// Checks if adding new entry with a given size is feasible
     fn can_alloc(&self, len: usize) -> bool {
         trace!(
@@ -305,9 +314,9 @@ impl SlottedPage {
 
     fn free(&mut self, offset: u64) -> Result<(), Error> {
         let cell_length = self.cell_length_at(offset)?;
-        if offset == self.slots_end {
+        if offset == self.cells_start {
             // expand
-            self.slots_end += cell_length;
+            self.cells_start += cell_length;
         } else {
             self.free_list
                 .entry(cell_length as usize)
@@ -488,6 +497,17 @@ impl SlottedPage {
 
     pub fn index(&self) -> usize {
         self.index
+    }
+
+    pub fn key_data_range(&self) -> KeyDataRange {
+        KeyDataRange(
+            self.slots.first_key_value()
+                .map(|(k, v)| Bound::Included(k.clone()))
+                .unwrap_or(Bound::Unbounded),
+            self.slots.last_key_value()
+                .map(|(k, v)| Bound::Included(k.clone()))
+                .unwrap_or(Bound::Unbounded)
+        )
     }
 }
 

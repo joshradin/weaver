@@ -1,20 +1,24 @@
 //! # Slotted B-Trees
 
+use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fs::File;
+use std::io::Write;
 use std::num::NonZeroU32;
-use std::ops::{Bound, RangeBounds};
+use std::ops::{Bound, Deref, RangeBounds};
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::common::batched::{to_batches, to_n_batches};
 use parking_lot::RwLock;
-use tracing::{trace, warn};
+use ptree::{print_tree, Style, TreeBuilder, TreeItem};
+use tracing::{error, trace, warn};
 
-use crate::common::ram_file::RandomAccessFile;
+use crate::common::batched::to_n_batches;
 use crate::data::row::{OwnedRow, Row};
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell};
+use crate::storage::ram_file::RandomAccessFile;
 use crate::storage::slotted_page::{
     KeySlottedPage, KeyValueSlottedPage, PageType, SlottedPage, PAGE_SIZE,
 };
@@ -66,9 +70,9 @@ impl DiskBTree {
     /// Insert a row
     pub fn insert(&mut self, key_data: KeyData, row: OwnedRow) -> Result<(), Error> {
         let split_id = {
-            let mut root = self.flat_tree[0].write();
+            let root = self.root_node();
             // attempt 1:
-            match root.insert(key_data.clone(), &row, &self.flat_tree) {
+            match BTreeNode::insert_rw(root, key_data.clone(), &row, &self.flat_tree) {
                 Err(Error::WriteDataError(WriteDataError::AllocationFailed { page_id, size })) => {
                     trace!("failed to allocate enough space in page {}", page_id);
                     if size > PAGE_SIZE - (PAGE_SIZE / 4) {
@@ -83,14 +87,36 @@ impl DiskBTree {
                     }
                     page_id
                 }
+                Err(Error::OutOfRange) => {
+                    panic!("out of range")
+                }
                 other => return other,
             }
         };
         // split node
         self.split_node(split_id)?;
         // attempt 2; after split has occurred
-        let mut root = self.flat_tree[0].write();
-        root.insert(key_data, &row, &self.flat_tree)
+        let root = &self.flat_tree[0];
+        BTreeNode::insert_rw(root, key_data.clone(), &row, &self.flat_tree)
+    }
+
+    ///  Gets the max depth of this btree
+    pub fn depth(&self) -> usize {
+        self.root_node().read().depth(&self.flat_tree)
+    }
+
+    ///  Gets the number of nodes in this btree
+    pub fn nodes(&self) -> usize {
+        self.root_node().read().nodes(&self.flat_tree)
+    }
+
+    /// Approximates optimal depth based on number of nodes
+    pub fn optimal_depth(&self) -> f64 {
+        (self.nodes() as f64).log(3.0)
+    }
+
+    fn root_node(&self) -> &RwLock<BTreeNode> {
+        &self.flat_tree[0]
     }
 
     fn get_node_by_page(&self, page_id: u32) -> Option<&RwLock<BTreeNode>> {
@@ -101,23 +127,20 @@ impl DiskBTree {
 
     /// Splits a node into one key node and three key value nodes
     fn split_node(&mut self, page_id: u32) -> Result<(), Error> {
-        let mut cells = {
+        let cells = {
             let node = self
                 .get_node_by_page(page_id)
                 .expect("gave page id that doesn't exist in this btree");
             let node = node.read();
-            node.range(&KeyDataRange::from(..), &self.flat_tree)?
+            SplitData::split_data(node.page())?
         };
-        let cell_count = dbg!(cells.len());
-        let per_split = cell_count / 3;
 
-        let split_1 = cells.drain(..per_split).collect::<Vec<_>>();
-        let split_2 = cells.drain(..per_split).collect::<Vec<_>>();
-        let split_3 = cells;
-
-        let k1 = split_1.iter().map(|cell| cell.key_data()).max().unwrap();
-        let k2 = split_2.iter().map(|cell| cell.key_data()).max().unwrap();
-        let k3 = split_3.iter().map(|cell| cell.key_data()).max().unwrap();
+        let SplitData {
+            keys: [k1, k2, k3],
+            cells: [split1, split2, split3],
+            left_sibling,
+            right_sibling,
+        } = cells;
 
         let insert_all = |cells: Vec<Cell>, page: &mut SlottedPage| -> Result<(), Error> {
             for cell in cells {
@@ -126,30 +149,41 @@ impl DiskBTree {
             Ok(())
         };
 
+
         let mut node_1 =
             SlottedPage::init_last_shared(&self.ram, self.next_id(), PageType::KeyValue)?;
         let node_1_id = node_1.page_id();
-        insert_all(split_1, &mut node_1)?;
+        insert_all(split1, &mut node_1)?;
         self.flat_tree.push(RwLock::new(BTreeNode::LeafNode {
             page: KeyValueSlottedPage::try_from(node_1)?,
             parent: page_id,
+            left_sibling,
+            right_sibling: None,
         }));
         let mut node_2 =
             SlottedPage::init_last_shared(&self.ram, self.next_id(), PageType::KeyValue)?;
         let node_2_id = node_2.page_id();
-        insert_all(split_2, &mut node_2)?;
+        self.flat_tree.last().unwrap().write().set_right_sibling(node_2_id);
+        insert_all(split2, &mut node_2)?;
         self.flat_tree.push(RwLock::new(BTreeNode::LeafNode {
             page: KeyValueSlottedPage::try_from(node_2)?,
             parent: page_id,
+            left_sibling: Some(node_1_id),
+            right_sibling: None,
         }));
         let mut node_3 =
             SlottedPage::init_last_shared(&self.ram, self.next_id(), PageType::KeyValue)?;
         let node_3_id = node_3.page_id();
-        insert_all(split_3, &mut node_3)?;
+        self.flat_tree.last().unwrap().write().set_right_sibling(node_3_id);
+        insert_all(split3, &mut node_3)?;
         self.flat_tree.push(RwLock::new(BTreeNode::LeafNode {
             page: KeyValueSlottedPage::try_from(node_3)?,
             parent: page_id,
+            left_sibling: Some(node_2_id),
+            right_sibling,
         }));
+
+
 
         let mut key_node =
             SlottedPage::init_last_shared(&self.ram, page_id.try_into().unwrap(), PageType::Key)?;
@@ -177,8 +211,6 @@ impl DiskBTree {
         };
 
         *node.write() = new_node;
-        println!("this: {:#?}", self);
-
         Ok(())
     }
 
@@ -192,6 +224,45 @@ impl DiskBTree {
                 .unwrap_or(1),
         )
         .unwrap()
+    }
+
+
+    /// Gets the right-most page id
+    fn rightmost(&self) -> Result<u32, Error> {
+        let mut ptr = self.root_node();
+        loop {
+            let page_type =  ptr.read().page().page_type();
+            match page_type {
+                PageType::Key => {
+                    let children = ptr.read().children().expect("key should always have keys");
+                    let last_child = children.last().unwrap();
+                    ptr = self.get_node_by_page(*last_child).unwrap();
+                }
+                PageType::KeyValue => {
+                    break;
+                }
+            }
+        }
+        Ok(ptr.read().page_id())
+    }
+
+    /// Gets the left-most page id
+    fn leftmost(&self) -> Result<u32, Error> {
+        let mut ptr = self.root_node();
+        loop {
+            let page_type =  ptr.read().page().page_type();
+            match page_type {
+                PageType::Key => {
+                    let children = ptr.read().children().expect("key should always have keys");
+                    let last_child = children.first().unwrap();
+                    ptr = self.get_node_by_page(*last_child).unwrap();
+                }
+                PageType::KeyValue => {
+                    break;
+                }
+            }
+        }
+        Ok(ptr.read().page_id())
     }
 
     pub fn get(&self, key_data: &KeyData) -> Result<Option<OwnedRow>, Error> {
@@ -233,35 +304,9 @@ enum BTreeNode {
     LeafNode {
         page: KeyValueSlottedPage,
         parent: u32,
+        left_sibling: Option<u32>,
+        right_sibling: Option<u32>,
     },
-}
-
-fn to_ranges(keys: &[KeyData], pointers: &[u32]) -> Vec<(KeyDataRange, u32)> {
-    debug_assert!(
-        pointers.len() == keys.len() + 1,
-        "should always provide one more pointer than keys"
-    );
-    let mut vector = vec![];
-    let mut target_len = pointers.len();
-    let mut keys = keys.iter();
-    let mut current_key = None;
-    for (i, &pointer) in (0..target_len).into_iter().zip(pointers) {
-        match i {
-            0 => {
-                let key = keys.next().unwrap().clone();
-                vector.push((KeyDataRange::from(..key.clone()), pointer));
-                current_key = Some(key);
-            }
-            _ => {
-                let key_l = current_key.take().unwrap();
-                let key_r = keys.next().unwrap().clone();
-                vector.push((KeyDataRange::from(key_l..key_r.clone()), pointer));
-                current_key = Some(key_r);
-            }
-        }
-    }
-
-    vector
 }
 
 impl BTreeNode {
@@ -304,7 +349,9 @@ impl BTreeNode {
                         _ => None,
                     })
                     .scan(Bound::Unbounded, |bound, cell| {
-                        let range = KeyDataRange(bound.clone(), Bound::Included(cell.key_data()));
+                        let right_bound = cell.key_data();
+                        let range = KeyDataRange(bound.clone(), Bound::Included(right_bound.clone()));
+                        *bound = Bound::Excluded(right_bound);
                         Some((range, cell.page_id()))
                     })
                     .collect::<Vec<_>>();
@@ -319,7 +366,40 @@ impl BTreeNode {
             PageType::KeyValue => Ok(BTreeNode::LeafNode {
                 page: KeyValueSlottedPage::try_from(page)?,
                 parent,
+                left_sibling: None,
+                right_sibling: None,
             }),
+        }
+    }
+
+    fn right_sibling(&self) -> Option<&u32> {
+        match self {
+            BTreeNode::RootNode { .. } => { None }
+            BTreeNode::InternalNode { right_sibling, .. } => { right_sibling.as_ref() }
+            BTreeNode::LeafNode { right_sibling, .. } => {  right_sibling.as_ref()}
+        }
+    }
+
+    fn set_right_sibling(&mut self, id: impl Into<Option<u32>>) {
+        match self {
+            BTreeNode::RootNode { .. } => { }
+            BTreeNode::InternalNode { right_sibling, .. } => { *right_sibling = id.into() }
+            BTreeNode::LeafNode { right_sibling, .. } => {  *right_sibling = id.into() }
+        }
+    }
+
+    fn left_sibling(&self) -> Option<&u32> {
+        match self {
+            BTreeNode::RootNode { .. } => { None }
+            BTreeNode::InternalNode { left_sibling, .. } => { left_sibling.as_ref() }
+            BTreeNode::LeafNode { left_sibling, .. } => {  left_sibling.as_ref()}
+        }
+    }
+    fn set_left_sibling(&mut self, id: impl Into<Option<u32>>) {
+        match self {
+            BTreeNode::RootNode { .. } => { }
+            BTreeNode::InternalNode { left_sibling, .. } => { *left_sibling = id.into() }
+            BTreeNode::LeafNode { left_sibling, .. } => {  *left_sibling = id.into() }
         }
     }
 
@@ -330,6 +410,20 @@ impl BTreeNode {
             BTreeNode::LeafNode { page, .. } => page.page_id(),
         }
     }
+
+    fn children(&self) -> Option<Vec<u32>> {
+        match self {
+            BTreeNode::RootNode { children: Some(children), .. } | BTreeNode::InternalNode { ranges: children, .. } => {
+                Some(children
+                    .iter()
+                    .map(|(range, id)| *id)
+                    .collect())
+
+            }
+            _ => None
+        }
+    }
+
     fn get(
         &self,
         key_data: &KeyData,
@@ -396,32 +490,127 @@ impl BTreeNode {
         }
     }
 
+    fn insert_rw(
+        node: &RwLock<BTreeNode>,
+        key_data: KeyData,
+        row: &Row,
+        nodes: &[RwLock<BTreeNode>],
+    ) -> Result<(), Error> {
+        let ranges = {
+            let mut guard = node.write();
+            let ranges = match &mut *guard {
+                BTreeNode::RootNode { page, children } => match children {
+                    None => return page.insert(KeyValueCell::new(key_data, row.to_owned())),
+                    Some(ranges) => ranges.clone(),
+                },
+                BTreeNode::InternalNode { ranges, .. } => {
+                    ranges.clone()
+                }
+                BTreeNode::LeafNode { page, .. } => {
+                    return page.insert(KeyValueCell::new(key_data, row.to_owned()));
+                }
+            };
+            drop(guard);
+            ranges
+        };
+        Self::insert_ranged(key_data, row, nodes, &ranges)
+    }
+
     fn insert_ranged(
         key_data: KeyData,
         row: &Row,
         nodes: &[RwLock<BTreeNode>],
-        ranges: &mut Vec<(KeyDataRange, u32)>,
+        ranges: &Vec<(KeyDataRange, u32)>,
     ) -> Result<(), Error> {
-        for (i, (range, child)) in ranges.iter().enumerate() {
-            if range.contains(&key_data) || i == ranges.len() - 1 {
-                println!("key {:?} for page {} in range {:?}", key_data, child, range);
-                let option = nodes.iter().find(|node| {
-                    node.try_read()
-                        .map(|node| node.page_id() == *child)
-                        .unwrap_or(false)
-                });
+        for (index, &(ref range, child_id)) in ranges.iter().enumerate() {
+            if range.contains(&key_data) {
+                trace!("key {:?} for page {} in range {:?}", key_data, child_id, range);
+                let option = Self::get_node(nodes, child_id);
                 let Some(mut node) = option else {
-                    eprintln!("page {} is unavailable", child);
-                    return Err(Error::ChildNotFound(*child));
+                    error!("page {} is unavailable", child_id);
+                    return Err(Error::ChildNotFound(child_id));
                 };
-                println!("inserting into page {}", child);
+                trace!("inserting into page {}", child_id);
                 let mut child_node = node.write();
                 return child_node.insert(key_data, row, nodes);
+            } else if index == ranges.len() - 1 && range.is_greater(&key_data) {
+                let page = Self::get_node(nodes, child_id).unwrap_or_else(|| panic!("page {} should always exist", child_id));
+                let right_sibling = page.read().right_sibling().copied();
+                match right_sibling {
+                    None => {
+                        let right_most_id = page.read().right_most_child(nodes);
+                        let mut breadcrumbs = VecDeque::new();
+                        let mut id = right_most_id;
+                        loop {
+                            breadcrumbs.push_back(id);
+                            let node = Self::get_node(nodes, id).unwrap_or_else(|| panic!("page {} should always exist", id));
+                            let Some(parent) = node.read().parent() else {
+                                break;
+                            };
+                            id = parent;
+                        }
+                        let right_most= Self::get_node(nodes, right_most_id).unwrap_or_else(|| panic!("page {} should always exist", child_id));
+                        right_most.try_write().unwrap_or_else(|| {
+                            panic!("could not get write access to page {} (locked: {}, x-locked: {})", right_most_id, right_most.is_locked(), right_most.is_locked_exclusive())
+                        }).insert(key_data.clone(), row, nodes)?;
+                        while let Some(id) = breadcrumbs.pop_front() {
+                            let node = Self::get_node(nodes, id).unwrap_or_else(|| panic!("page {} should always exist", child_id));
+                            let mut node = node.write();
+                            node.set_new_max(key_data.clone()).unwrap_or_else(|e| {
+                                panic!("failed to new new max for page {}: {}", id, e);
+                            })
+                        }
+
+                        return Ok(())
+                    }
+                    Some(right_sibling) => {
+                        // in case of right sibling existing
+                        trace!("inserting into right sibling {}", right_sibling);
+                        let node = Self::get_node(nodes, right_sibling).unwrap_or_else(|| panic!("right sibling page {} should always exist", child_id));
+                        return node.write().insert(key_data, row, nodes);
+                    }
+                }
             }
         }
-        unreachable!(
-            "since leftmost and rightmost are unbounded, this should not be possible to reach"
-        );
+        Err(Error::OutOfRange)
+    }
+
+    fn set_new_max(&mut self, value: KeyData) -> Result<(), Error> {
+        match self {
+            BTreeNode::RootNode { page, children: Some(ranges) } => {
+                let (lk, cell) = page.last_key_value().unwrap();
+                page.delete(&lk)?;
+                let Cell::Key(key_cell) = cell else {
+                    panic!("must be key cell")
+                };
+                page.insert(KeyCell::new(key_cell.page_id(), value.clone()))?;
+                let (range, _) = ranges.last_mut().unwrap();
+                range.1 = Bound::Included(value);
+                Ok(())
+            }
+            BTreeNode::InternalNode {page, ranges, .. } => {
+                let (lk, cell) = page.last_key_value().unwrap();
+                page.delete(&lk)?;
+                let Cell::Key(key_cell) = cell else {
+                    panic!("must be key cell")
+                };
+                page.insert(KeyCell::new(key_cell.page_id(), value.clone()))?;
+                let (range, _) = ranges.last_mut().unwrap();
+                range.1 = Bound::Included(value);
+                Ok(())
+            }
+            _ => {
+                Ok(())
+            }
+        }
+    }
+
+    fn get_node(nodes: &[RwLock<BTreeNode>], child: u32) -> Option<&RwLock<BTreeNode>> {
+        nodes.iter().find(|node| {
+            node.try_read()
+                .map(|node| node.page_id() == child)
+                .unwrap_or(false)
+        })
     }
 
     fn get_ranged(
@@ -453,16 +642,113 @@ impl BTreeNode {
             }),
         }
     }
+
+    /// Gets the key data range for this node
+    fn key_data_range(&self) -> Result<KeyDataRange, Error> {
+        match self {
+            BTreeNode::RootNode { page, children } => {
+                let kdr = page.key_data_range();
+                Ok(kdr)
+            }
+            BTreeNode::InternalNode { ranges, .. } => {
+                Ok(ranges.iter()
+                    .map(|(range, _)| range)
+                    .cloned()
+                    .reduce(|accum, ref range| {
+                        accum.union(range).expect("ranges should be connectable")
+                    })
+                    .expect("should always have >= 1 values")
+                )
+            }
+            BTreeNode::LeafNode { page, .. } => {
+                let kdr = page.key_data_range();
+                Ok(kdr)
+            }
+        }
+    }
+
+    /// Gets the id of the right most child
+    fn right_most_child(&self, nodes: &[RwLock<BTreeNode>]) -> u32 {
+        match self.children() {
+            None => {
+                self.page_id()
+            }
+            Some(children) => {
+                Self::get_node(nodes, *children.last().unwrap())
+                    .unwrap()
+                    .read()
+                    .right_most_child(nodes)
+            }
+        }
+    }
+
+    /// Gets the id of the left most child
+    fn left_most_child(&self, nodes: &[RwLock<BTreeNode>]) -> u32 {
+        match self.children() {
+            None => {
+                self.page_id()
+            }
+            Some(children) => {
+                Self::get_node(nodes, *children.first().unwrap())
+                    .unwrap()
+                    .read()
+                    .left_most_child(nodes)
+            }
+        }
+    }
+
+    fn parent(&self) -> Option<u32> {
+        match self {
+            BTreeNode::RootNode { .. } => { None }
+            &BTreeNode::InternalNode { parent, ..} => { Some(parent )}
+            &BTreeNode::LeafNode { parent, .. } => { Some(parent)}
+        }
+    }
+
+    fn page(&self) -> &SlottedPage {
+        match self {
+            BTreeNode::RootNode { page, .. } => page,
+            BTreeNode::InternalNode { page, .. } => page.deref(),
+            BTreeNode::LeafNode { page, .. } => page.deref(),
+        }
+    }
+
+    /// Gets the depth that this node
+    fn depth(&self, nodes: &[RwLock<BTreeNode>]) -> usize {
+        match self.children() {
+            None => { 1 }
+            Some(children) => {
+                children.into_iter()
+                    .map(|page| Self::get_node(nodes, page).unwrap().read().depth(nodes))
+                    .max()
+                    .unwrap_or_default() + 1
+            }
+        }
+    }
+
+    /// Gets the total number of nodes in this part of the tree
+    fn nodes(&self, nodes: &[RwLock<BTreeNode>]) -> usize {
+        match self.children() {
+            None => { 1 }
+            Some(children) => {
+                children.into_iter()
+                        .map(|page| Self::get_node(nodes, page).unwrap().read().nodes(nodes))
+                        .sum::<usize>() + 1
+            }
+        }
+    }
 }
 
 struct SplitData {
     keys: [KeyData; 3],
-    cells: [Vec<Cell>; 4],
+    cells: [Vec<Cell>; 3],
+    left_sibling: Option<u32>,
+    right_sibling: Option<u32>,
 }
 
 impl SplitData {
     /// Split a slotted page into split data
-    fn split_data(page: SlottedPage) -> Result<SplitData, Error> {
+    fn split_data(page: &SlottedPage) -> Result<SplitData, Error> {
         if page.page_type() != PageType::KeyValue {
             // Only key values
             return Err(Error::CellTypeMismatch {
@@ -472,37 +758,101 @@ impl SplitData {
         }
 
         let cells = page.range(&(..).into())?;
-        let batches = to_n_batches(4, cells);
+        let batches = to_n_batches(3, cells)
+            .map(|batch| batch.collect::<Vec<_>>())
+            .collect::<Vec<_>>();
 
-        todo!()
+        let cells: [Vec<Cell>; 3] = batches.try_into().unwrap();
+        let keys: [KeyData; 3] = cells
+            .iter()
+            .take(3)
+            .flat_map(|key| key.iter().map(|i| i.key_data()).max())
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        Ok(SplitData { keys, cells, left_sibling: page.left_sibling_id(), right_sibling: page.right_sibling_id() })
+    }
+}
+
+enum InsertCleanup {
+    RangeExpanded,
+
+}
+
+
+
+pub fn print_structure(btree: &DiskBTree) {
+    let root = btree.root_node();
+    let node = root.read();
+    let mut builder = TreeBuilder::new("btree".to_string());
+    print_node(&mut builder, &*node, &btree.flat_tree[..]);
+    print_tree(&builder.build()).expect("could not print");
+}
+
+fn print_node(builder: &mut TreeBuilder, btree: &BTreeNode, nodes: &[RwLock<BTreeNode>]) {
+    match btree {
+        BTreeNode::RootNode { page, children } => {
+            match children {
+                None => {
+                    builder.add_empty_child(format!("values={}", page.len()));
+                }
+                Some(ranges) => {
+                    for (range, child) in ranges {
+                        if let Some(next) = BTreeNode::get_node(nodes, *child) {
+                            builder.begin_child(format!("{range:?}"));
+                            print_node(builder, &*next.read(), nodes);
+                            builder.end_child();
+                        }
+                    }
+                }
+            }
+        }
+        BTreeNode::InternalNode { ranges, .. } => {
+            for (range, child) in ranges {
+                if let Some(next) = BTreeNode::get_node(nodes, *child) {
+                    builder.begin_child(format!("{range:?}"));
+                    print_node(builder, &*next.read(), nodes);
+                    builder.end_child();
+                }
+            }
+        }
+        BTreeNode::LeafNode { page, .. } => {
+            builder.add_empty_child(format!("values={}",page.len()));
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use rand::random;
+    use rand::{random, Rng};
     use tempfile::tempfile;
 
     use crate::data::row::Row;
     use crate::data::values::Value;
     use crate::key::KeyData;
-    use crate::storage::b_tree::DiskBTree;
+    use crate::storage::b_tree::{DiskBTree, print_structure};
 
     fn insert_rand(count: usize) {
-        insert((0..count).into_iter().map(|_| random()))
+        insert((0..count).into_iter().map(|_| rand::thread_rng().gen_range(-10_000..=10_000)))
     }
 
     fn insert<I: IntoIterator<Item = i64>>(iter: I) {
         let temp = tempfile().unwrap();
         let mut btree = DiskBTree::new(temp).expect("couldn't create btree");
-        for id in iter {
-            btree
-                .insert(
-                    KeyData::from([Value::from(id)]),
-                    Row::from([Value::from(id), Value::from(id)]).to_owned(),
-                )
-                .expect("could not insert cell");
-        }
+
+        let result = iter.into_iter()
+            .try_for_each(|id: i64| {
+                btree
+                    .insert(
+                        KeyData::from([Value::from(id)]),
+                        Row::from([Value::from(id), Value::from(id)]).to_owned(),
+                    )
+            });
+        println!("final depth: {}", btree.depth());
+        println!("final node count: {}", btree.nodes());
+        println!("target depth: {}", btree.optimal_depth());
+        print_structure(&btree);
+        let _ = result.expect("failed");
     }
 
     #[test]
@@ -516,7 +866,17 @@ mod tests {
     }
 
     #[test]
+    fn insert_10000() {
+        insert_rand(10000);
+    }
+
+    #[test]
     fn insert_0_to_10000() {
         insert(0..=10000);
+    }
+
+    #[test]
+    fn insert_10000_to_0() {
+        insert((0..=10000).into_iter().rev());
     }
 }

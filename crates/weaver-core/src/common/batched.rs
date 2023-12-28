@@ -17,22 +17,16 @@ pub fn to_batches<T, I: IntoIterator<Item = T>>(
 pub fn to_n_batches<T, I: IntoIterator<Item = T>>(
     batches: usize,
     iter: I,
-) -> Batches<T, <Vec<T> as IntoIterator>::IntoIter>
-{
-
+) -> Batches<T, <Vec<T> as IntoIterator>::IntoIter> {
     let iter = iter.into_iter().fuse();
     let mut all = match iter.size_hint() {
-        (_, Some(max)) => {
-            Vec::with_capacity(max)
-        }
-        (min, None) => {
-            Vec::with_capacity(min)
-        }
+        (_, Some(max)) => Vec::with_capacity(max),
+        (min, None) => Vec::with_capacity(min),
     };
     all.extend(iter);
     let batch_len = all.len() / batches;
     let extra = all.len() % batches;
-    let batch_len = if extra > 0 {  batch_len + 1 } else { batch_len };
+    let batch_len = if extra > 0 { batch_len + 1 } else { batch_len };
     to_batches(batch_len, all)
 }
 

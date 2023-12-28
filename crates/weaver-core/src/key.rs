@@ -11,10 +11,11 @@ pub struct KeyData(OwnedRow);
 
 impl Debug for KeyData {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if self.0.len() > 3 {
-            self.0.fmt(f)
-        } else {
-            write!(f, "{:?}", self.0)
+        match self.0.len() {
+            0 => panic!("key data can not be 0 length"),
+            1 => self.0[0].fmt(f),
+            2..=3 => self.0.fmt(f),
+            _ =>  write!(f, "{:?}", self.0)
         }
     }
 }
@@ -66,7 +67,7 @@ impl<'a> IntoIterator for &'a KeyData {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Eq, PartialEq, Clone)]
 pub struct KeyDataRange(pub Bound<KeyData>, pub Bound<KeyData>);
 
 impl<R: RangeBounds<KeyData>> From<R> for KeyDataRange {
@@ -108,6 +109,32 @@ impl KeyDataRange {
         true
     }
 
+    /// Checks if the given key is greater than the range given
+    pub fn is_greater(&self, key_data: &KeyData) -> bool {
+        match &self.0 {
+            Bound::Included(included) if key_data > included => {
+                true
+            }
+            Bound::Excluded(excluded) if key_data >= excluded  => {
+                true
+            }
+           _ => false
+        }
+    }
+
+    /// Checks if the given key is less than the range given
+    pub fn is_less(&self, key_data: &KeyData) -> bool {
+        match &self.1 {
+            Bound::Included(included) if key_data < included => {
+                true
+            }
+            Bound::Excluded(excluded) if key_data <= excluded  => {
+                true
+            }
+            _ => false
+        }
+    }
+
     /// Checks if two ranges overlap
     pub fn overlaps(&self, other: &Self) -> bool {
         partial_compare_bounds(&self.0, &other.1)
@@ -129,6 +156,35 @@ impl KeyDataRange {
             .min_by(|&a, &b| compare_bounds(a, b));
 
         todo!()
+    }
+}
+
+impl Debug for KeyDataRange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            Bound::Included(i) => {
+                write!(f, "[{i:?}")?
+            }
+            Bound::Excluded(i) => {
+                write!(f, "({i:?}")?
+            }
+            Bound::Unbounded => {
+                write!(f, "(")?
+            }
+        }
+        write!(f, ",")?;
+        match &self.1 {
+            Bound::Included(i) => {
+                write!(f, "{i:?}]")?
+            }
+            Bound::Excluded(i) => {
+                write!(f, "{i:?})")?
+            }
+            Bound::Unbounded => {
+                write!(f, ")")?
+            }
+        }
+        Ok(())
     }
 }
 

@@ -12,6 +12,7 @@ log = ["tracing/log"]
 vendor-openssl = ["openssl/vendored"]
 transport-sniffing = []
 
+
 [dependencies]
 chrono = "0.4.31"
 serde = { version = "1.0.193", features = ["derive"] }
@@ -36,6 +37,7 @@ cfg-if = "1.0.0"
 derive_more = "0.99.17"
 bitfield = "0.14.0"
 once_cell = { version = "1.19.0", features = ["parking_lot"] }
+ptree = "0.4.0"
 
 [dev-dependencies]
 tracing-subscriber = "0.3.18"

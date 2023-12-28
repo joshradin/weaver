@@ -2,6 +2,7 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;
 use tracing::level_filters::LevelFilter;
+use weaver_core::access_control::auth::LoginContext;
 use weaver_core::cnxn::stream::WeaverStream;
 use weaver_core::cnxn::tcp::WeaverTcpListener;
 use weaver_core::cnxn::WeaverStreamListener;
@@ -29,7 +30,7 @@ fn can_handshake() {
     };
 
     barrier.wait();
-    let _ = WeaverStream::connect_timeout(port, Duration::from_secs(10))
+    let _ = WeaverStream::connect_timeout(port, Duration::from_secs(10), LoginContext::new())
         .expect("failed to connect tcp stream");
 
     connect_thread.join().expect("listener thread panicked");

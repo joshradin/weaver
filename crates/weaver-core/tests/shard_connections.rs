@@ -11,6 +11,8 @@ fn connect() {
         thread::spawn(move || {
             let pong = socket
                 .send(DbReqBody::Ping)
+                .join()
+                .unwrap()
                 .expect("could not get response");
             assert!(matches!(pong, DbResp::Pong));
         })
@@ -20,6 +22,8 @@ fn connect() {
         thread::spawn(move || {
             let pong = socket
                 .send(DbReqBody::Ping)
+                .join()
+                .unwrap()
                 .expect("could not get response");
             assert!(matches!(pong, DbResp::Pong));
         })

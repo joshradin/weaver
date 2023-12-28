@@ -7,6 +7,8 @@ use thiserror::Error;
 pub mod b_tree;
 pub mod cells;
 pub mod slotted_page;
+mod abstraction;
+pub mod ram_file;
 
 pub type ReadResult<T> = Result<T, ReadDataError>;
 pub type WriteResult<T> = Result<T, WriteDataError>;

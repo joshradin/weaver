@@ -6,7 +6,7 @@ use weaver_core::data::values::Value;
 use weaver_core::db::core::WeaverDbCore;
 use weaver_core::error::Error;
 use weaver_core::rows::Rows;
-use weaver_core::table_schema::TableSchema;
+use weaver_core::tables::table_schema::TableSchema;
 
 #[test]
 fn create_in_memory() -> Result<(), Error> {

@@ -74,7 +74,7 @@ impl WeaverTcpListener {
     }
 
     /// Gets the local address of this listener
-    pub(crate) fn local_addr(&self) -> Result<SocketAddr, Error> {
+    pub fn local_addr(&self) -> Result<SocketAddr, Error> {
         Ok(self.tcp_listener.local_addr()?)
     }
 }

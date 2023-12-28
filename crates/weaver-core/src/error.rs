@@ -109,9 +109,12 @@ pub enum Error {
     },
     #[error("No child with id {0} found")]
     ChildNotFound(u32),
+    #[error("Out of range")]
+    OutOfRange,
 
     #[error("{0}")]
     Custom(String),
+
 }
 
 impl Error {

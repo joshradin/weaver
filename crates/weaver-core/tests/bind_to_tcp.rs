@@ -1,5 +1,6 @@
 use std::time::Duration;
 use tracing::level_filters::LevelFilter;
+use weaver_core::access_control::auth::LoginContext;
 use weaver_core::cnxn::stream::WeaverStream;
 use weaver_core::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use weaver_core::db::server::layers::packets::{DbReqBody, DbResp};
@@ -17,12 +18,12 @@ fn bind_to_tcp() -> Result<(), Error> {
     server.bind_tcp(("localhost", 0))?;
     let socket = server.local_addr().unwrap();
 
-    let mut stream = WeaverStream::connect_timeout(socket, Duration::from_secs(1))?;
+    let mut stream = WeaverStream::connect_timeout(socket, Duration::from_secs(1), LoginContext::new())?;
     stream.write(&Message::Req(RemoteDbReq::Ping.into()))?;
     let Message::Resp(RemoteDbResp::Pong) = stream.read()? else {
         panic!("must return pong")
     };
-    let mut stream = WeaverStream::connect_timeout(socket, Duration::from_secs(1))?;
+    let mut stream = WeaverStream::connect_timeout(socket, Duration::from_secs(1), LoginContext::new())?;
     stream.write(&Message::Req(RemoteDbReq::Ping.into()))?;
     let Message::Resp(RemoteDbResp::Pong) = stream.read()? else {
         panic!("must return pong")
