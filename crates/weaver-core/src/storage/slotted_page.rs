@@ -5,24 +5,23 @@
 //! - Reclaim space occupied by the removal of records
 //! - Reference records in the page without regard to their exact location
 
-use derive_more::{Deref, DerefMut};
-use std::collections::{BTreeMap, Bound};
+use std::collections::{Bound, BTreeMap};
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::mem::{size_of, size_of_val};
 use std::num::NonZeroU32;
-use std::os::unix::raw::off_t;
 use std::path::Path;
 use std::sync::Arc;
 
+use derive_more::{Deref, DerefMut};
 use digest::typenum::NonZero;
-use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{RwLock, RwLockWriteGuard};
 use tracing::trace;
 
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
-use crate::storage::cells::{Cell, KeyCell, KeyValueCell};
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
+use crate::storage::cells::{Cell, KeyCell, KeyValueCell};
 use crate::storage::ram_file::RandomAccessFile;
 
 /// PAGE size is 16Kb
@@ -664,8 +663,8 @@ mod tests {
     use crate::error::Error;
     use crate::key::KeyData;
     use crate::storage::cells::KeyValueCell;
-    use crate::storage::slotted_page::{PageType, SlottedPage, PAGE_SIZE};
     use crate::storage::ReadDataError;
+    use crate::storage::slotted_page::{PAGE_SIZE, PageType, SlottedPage};
 
     #[test]
     fn can_not_read_uninit_page() {

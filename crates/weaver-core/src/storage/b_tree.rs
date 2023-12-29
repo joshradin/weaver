@@ -1,7 +1,7 @@
 //! # Slotted B-Trees
 
 use std::borrow::Cow;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::fs::File;
 use std::io::Write;
 use std::num::NonZeroU32;
@@ -211,7 +211,18 @@ impl DiskBTree {
         };
 
         *node.write() = new_node;
+
+        if !self.is_balanced() {
+            self.rebalance(page_id)?
+        }
+
         Ok(())
+    }
+
+    /// Re-balances the tree, starting at a given page
+    fn rebalance(&mut self, page_id: u32) -> Result<(), Error> {
+        print_structure(self);
+        todo!("node split caused inbalance: {:#?}", self.balance_factor());
     }
 
     fn next_id(&self) -> NonZeroU32 {
@@ -263,6 +274,44 @@ impl DiskBTree {
             }
         }
         Ok(ptr.read().page_id())
+    }
+
+    /// Gets the balance factors of all the nodes in this tree.
+    ///
+    /// Balance factor is defined as the maximum height minus
+    /// the minimum height of the sub trees of a given node.
+    pub fn balance_factor(&self) -> BTreeMap<u32, usize> {
+        self.flat_tree
+            .iter()
+            .map(|node| node.read().page_id())
+            .map(|node_id| (node_id, self.node_balance_factor(node_id)))
+            .collect()
+    }
+
+    /// Checks if this tree is balanced
+    pub fn is_balanced(&self) -> bool {
+        self.balance_factor()
+            .iter()
+            .all(|(_, &bf)| {
+                bf == 0 || bf == 1
+            })
+    }
+
+    fn node_balance_factor(&self, id: u32) -> usize {
+        let node = self.get_node_by_page(id).expect("no node found");
+        match node.read().children() {
+            None => { 0 }
+            Some(children) => {
+                let child_depths = children.into_iter()
+                    .map(|node| self.get_node_by_page(node).expect("node must exist").read().depth(&self.flat_tree))
+                    .collect::<Vec<_>>();
+                child_depths.iter().max().zip(child_depths.iter().min())
+                    .map(|(&max, &min)| {
+                        max - min
+                    })
+                    .unwrap_or(0)
+            }
+        }
     }
 
     pub fn get(&self, key_data: &KeyData) -> Result<Option<OwnedRow>, Error> {
@@ -794,12 +843,12 @@ fn print_node(builder: &mut TreeBuilder, btree: &BTreeNode, nodes: &[RwLock<BTre
         BTreeNode::RootNode { page, children } => {
             match children {
                 None => {
-                    builder.add_empty_child(format!("values={}", page.len()));
+                    builder.add_empty_child(format!("pg {}: values={}", btree.page_id(), page.len()));
                 }
                 Some(ranges) => {
                     for (range, child) in ranges {
                         if let Some(next) = BTreeNode::get_node(nodes, *child) {
-                            builder.begin_child(format!("{range:?}"));
+                            builder.begin_child(format!("pg {}->{}: {range:?}", btree.page_id(), child));
                             print_node(builder, &*next.read(), nodes);
                             builder.end_child();
                         }
@@ -810,14 +859,14 @@ fn print_node(builder: &mut TreeBuilder, btree: &BTreeNode, nodes: &[RwLock<BTre
         BTreeNode::InternalNode { ranges, .. } => {
             for (range, child) in ranges {
                 if let Some(next) = BTreeNode::get_node(nodes, *child) {
-                    builder.begin_child(format!("{range:?}"));
+                    builder.begin_child(format!("pg {}->{}: {range:?}", btree.page_id(), child));
                     print_node(builder, &*next.read(), nodes);
                     builder.end_child();
                 }
             }
         }
         BTreeNode::LeafNode { page, .. } => {
-            builder.add_empty_child(format!("values={}",page.len()));
+            builder.add_empty_child(format!("pg {}: values={}", btree.page_id(), page.len()));
         }
     }
 }
@@ -851,8 +900,10 @@ mod tests {
         println!("final depth: {}", btree.depth());
         println!("final node count: {}", btree.nodes());
         println!("target depth: {}", btree.optimal_depth());
+        println!("balance factors: {:#?}", btree.balance_factor());
         print_structure(&btree);
         let _ = result.expect("failed");
+        assert!(btree.is_balanced(), "btree is not balanced");
     }
 
     #[test]
