@@ -1,16 +1,19 @@
 //! The second version of the B+ tree
 
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::ops::Bound;
-use std::sync::OnceLock;
+
 use parking_lot::RwLock;
-use crate::data::row::{OwnedRow, OwnedRowRefIter, Row};
+
+use crate::data::row::{OwnedRow, OwnedRowRefIter};
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
 use crate::storage::abstraction::Paged;
-use crate::storage::cells::{Cell, PageId};
-use crate::storage::slotted_page_2::{PageType, SlottedPageAllocator};
+use crate::storage::cells::{Cell, KeyValueCell, PageId};
+use crate::storage::slotted_page::{PageType, SlottedPageAllocator};
+use crate::storage::{ReadDataError, WriteDataError};
 
 /// A BPlusTree that uses a given pager
 #[derive(Debug)]
@@ -57,10 +60,42 @@ impl<P: Paged> BPlusTree<P>
         }
 
         let leaf = self.find_leaf(&key)?;
-
-        todo!()
+        println!("found leaf pageid: {leaf:?}");
+        let mut leaf_page = self.allocator.read().get(leaf).expect("no page found");
+        match leaf_page.insert(KeyValueCell::new(key, value).into()) {
+            Ok(()) => { Ok(() )}
+            Err(Error::WriteDataError(WriteDataError::InsufficientSpace)) => {
+                // insufficient space requires a split
+                todo!("split page")
+            }
+            Err(e) => {
+                return Err(e)
+            }
+        }
     }
 
+    /// Tries to get a matching record based on the given key data.
+    ///
+    /// Only returns an error if something went wrong trying to find the data, and returns `Ok(None` if no
+    /// problems occurred but an associated record was not present.
+    pub fn get(&self, key_data: &KeyData) -> Result<Option<Box<[u8]>>, Error> {
+        let leaf = self.find_leaf(key_data)?;
+        let leaf = self.allocator.read().get(leaf)
+            .ok_or_else(|| Error::ReadDataError(ReadDataError::UnexpectedEof))?;
+        let cell = leaf.get(key_data)?;
+        match cell {
+            None => { Ok(None) }
+            Some(Cell::Key(_)) => {
+                return Err(Error::CellTypeMismatch {
+                    expected: PageType::KeyValue,
+                    actual: PageType::Key,
+                })
+            }
+            Some(Cell::KeyValue(value)) => {
+                Ok(Some(Box::from(value.record())))
+            }
+        }
+    }
 
 
     /// Finds the leaf node that can contain the given key
@@ -90,7 +125,7 @@ impl<P: Paged> BPlusTree<P>
                             ptr = key.page_id()
                         }
                         Err(close) => {
-
+                            panic!("no good index found, but could insert a new key cell at index {close}")
                         }
                     }
                 }
@@ -119,7 +154,9 @@ fn to_ranges(cells: Vec<Cell>) -> Vec<(KeyDataRange, Cell)> {
 #[cfg(test)]
 mod tests {
     use crate::storage::abstraction::VecPaged;
+
     use super::*;
+
     #[test]
     fn create_b_plus_tree() {
         let _ = BPlusTree::new(VecPaged::new(1028));
@@ -128,7 +165,24 @@ mod tests {
 
     #[test]
     fn insert_into_b_plus_tree() {
-        let btree = BPlusTree::new(VecPaged::new(1028));
+        let btree = BPlusTree::new(VecPaged::new(128));
         btree.insert([1], [1, 2, 3]).expect("could not insert");
+        let raw = btree.get(&[1].into()).unwrap().unwrap();
+        println!("raw: {:x?}", raw);
+        assert_eq!(raw.len(), 24);
+    }
+
+    #[test]
+    fn insert_into_b_plus_tree_many() {
+        let btree = BPlusTree::new(VecPaged::new(512));
+
+        for i in 1..=100 {
+            btree.insert([i], [1 + i, 2 * i]).expect("could not insert");
+        }
+
+        btree.insert([1], [1, 2]).expect("could not insert");
+        let raw = btree.get(&[1].into()).unwrap().unwrap();
+        println!("raw: {:x?}", raw);
+        assert_eq!(raw.len(), 24);
     }
 }

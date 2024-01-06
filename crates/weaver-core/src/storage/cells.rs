@@ -5,7 +5,7 @@ use std::io::Write;
 use std::mem::size_of;
 
 use bitfield::bitfield;
-use derive_more::From;
+use derive_more::{Display, From};
 use std::num::NonZeroU32;
 
 use crate::data::row::OwnedRow;
@@ -145,6 +145,13 @@ impl KeyValueCell {
     pub fn key_data(&self) -> KeyData {
         KeyData::from(deserialize_data_typed(&self.key).expect("should be valid"))
     }
+
+    /// Returns the raw record.
+    ///
+    /// Records are stored untyped, and therefore we do not know what it's actually made of.
+    pub fn record(&self) -> &[u8] {
+        self.data_record.as_ref()
+    }
 }
 
 bitfield! {
@@ -240,7 +247,7 @@ mod tests {
 }
 
 /// A page id
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Display)]
 pub struct PageId(u32);
 
 impl PageId {

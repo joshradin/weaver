@@ -4,19 +4,22 @@ use std::borrow::{Borrow, Cow};
 use std::io::Write;
 use std::string::FromUtf8Error;
 use thiserror::Error;
+use crate::storage::cells::PageId;
+
 mod abstraction;
-pub mod b_plus_tree_2;
+pub mod b_plus_tree;
 pub mod cells;
 pub mod indexed_file_page;
 pub mod ram_file;
 pub mod slotted_page;
-pub mod slotted_page_2;
 
 pub type ReadResult<T> = Result<T, ReadDataError>;
 pub type WriteResult<T> = Result<T, WriteDataError>;
 
 #[derive(Debug, Error)]
 pub enum ReadDataError {
+    #[error("Page {0} was not found")]
+    PageNotFound(PageId),
     #[error("No enough space to read data")]
     NotEnoughSpace,
     #[error("Could not read all the data required for this cell because EOF reach unexpectedly")]

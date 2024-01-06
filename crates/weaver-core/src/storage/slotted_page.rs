@@ -1,343 +1,85 @@
-//! # Slotted Page
-//!
-//! Slotted pages are a mechanism for storing data on disk that can
-//! - Store variable-size records with a minimal overhead
-//! - Reclaim space occupied by the removal of records
-//! - Reference records in the page without regard to their exact location
+//! Second version of slotted pages, built over page abstractions
 
-use std::borrow::Cow;
-use std::collections::{BTreeMap, Bound};
-use std::fmt::{Debug, Formatter};
-use std::fs::File;
+use std::collections::{BTreeMap, LinkedList, VecDeque};
+use std::iter::FusedIterator;
 use std::mem::{size_of, size_of_val};
 use std::num::NonZeroU32;
-use std::path::Path;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
-use derive_more::{Deref, DerefMut};
-use digest::typenum::NonZero;
-use parking_lot::{RwLock, RwLockWriteGuard};
-use tracing::trace;
+use parking_lot::RwLock;
 
+use crate::common::track_dirty::Mad;
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
-use crate::storage::cells::{Cell, KeyCell, KeyValueCell};
-use crate::storage::ram_file::RandomAccessFile;
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
+use crate::storage::abstraction::{Page, Paged, PageWithHeader, SplitPage};
+use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
 
-/// PAGE size is 16Kb
-pub const PAGE_SIZE: usize = 1024 * 16;
-const HEADER_SIZE: usize = size_of::<Header>();
+impl StorageBackedData for Option<PageId> {
+    type Owned = Self;
+    fn read(buf: &[u8]) -> ReadResult<Self> {
+        let inner: u32 = u32::read(buf)?;
+        if inner == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(PageId::new(NonZeroU32::new(inner).unwrap())))
+        }
+    }
 
-/// A slotted page contains data
-pub struct SlottedPage {
-    file: Arc<RwLock<RandomAccessFile>>,
-    index: usize,
-    header: Header,
-    slots: BTreeMap<KeyData, u64>,
-    slots_end: u64,
-    cells_start: u64,
-    /// The free list is a mapping between size -> offset
-    free_list: BTreeMap<usize, Vec<u64>>,
+    fn write(&self, buf: &mut [u8]) -> WriteResult<usize> {
+        match self {
+            None => { 0_u32.write(buf) }
+            Some(i) => { i.write(buf) }
+        }
+    }
 }
 
-impl SlottedPage {
-    /// Opens a page at a given path
-    pub fn open_path<P: AsRef<Path>>(path: P, page_index: usize) -> Result<SlottedPage, Error> {
-        let file = RandomAccessFile::with_file(File::open(path)?)?;
-        Self::open(file, page_index)
-    }
+struct CellPtr {
+    /// ptr to the slot
+    slot: usize,
+    /// ptr to the cell
+    cell: usize,
+}
 
-    pub fn open(file: RandomAccessFile, page_index: usize) -> Result<SlottedPage, Error> {
-        Self::open_shared(&Arc::new(RwLock::new(file)), page_index)
-    }
+#[derive(Debug, Clone)]
+struct FreeCell {
+    /// The offset of the free area
+    offset: usize,
+    /// The length of the free area
+    len: usize,
+}
 
-    /// Opens a file, returning a vector of slotted pages
-    pub fn open_vector(file: &Arc<RwLock<RandomAccessFile>>) -> Result<Vec<SlottedPage>, Error> {
-        let arc = file.clone();
-        let lock = arc.read();
-        let pages = (lock.len() / PAGE_SIZE as u64) as usize;
-        (0..pages)
-            .into_iter()
-            .map(|index| Self::open_shared(&file, index))
-            .collect()
-    }
+/// A slotted page implementation over a page
+#[derive(Debug)]
+pub struct SlottedPage<P: Page> {
+    page: SplitPage<P, SlottedPageHeader>,
+    header: Mad<SlottedPageHeader>,
+    /// points to the end of the slots
+    slot_ptr: usize,
+    /// points to the beginning of the cells
+    cell_ptr: usize,
+    /// key to offset
+    slots: BTreeMap<KeyData, usize>,
+    /// A list of free space
+    free_list: LinkedList<FreeCell>,
+}
 
-    /// Opens a page in a file at given offset
-    ///
-    /// The page offset is an array
-    pub fn open_shared(
-        file: &Arc<RwLock<RandomAccessFile>>,
-        page_index: usize,
-    ) -> Result<SlottedPage, Error> {
-        let file = file.clone();
-        if file.read().metadata()?.len() < (page_index as u64 + 1) * (PAGE_SIZE as u64) {
-            return Err(Error::ReadDataError(ReadDataError::UnexpectedEof));
-        }
-
-        let file_start = page_index as u64 * (PAGE_SIZE as u64);
-
-        let header = Header::read(&file.read().read_exact(file_start, HEADER_SIZE as u64)?)?;
-        let cells = header.len as u64;
-        let slots_ptr = file_start + HEADER_SIZE as u64;
-        let mut ptrs = vec![];
-        for i in 0..cells {
-            let read = file.read().read_exact(
-                slots_ptr + i * size_of::<u64>() as u64,
-                size_of::<u64>() as u64,
-            )?;
-            let as_offset = u64::from_be_bytes(read.try_into().unwrap());
-            ptrs.push(as_offset);
-        }
-
-        let mut cells = vec![];
-        let mut slots = BTreeMap::new();
-        let cells_start = ptrs.iter().copied().min().unwrap_or(1);
-        for offset in ptrs {
-            let cell = Self::get_cell_at(&mut file.read(), offset, &header.page_type)?;
-            let key_data = cell.key_data();
-            slots.insert(key_data, offset);
-            cells.push(cell);
-        }
-
-        let slots_end = slots_ptr + (cells.len() * size_of::<u64>()) as u64;
-        debug_assert!(
-            slots_end < cells_start,
-            "slots end must be less than cells start"
-        );
-
-        Ok(Self {
-            file,
-            index: page_index,
-            header,
-            slots,
-            slots_end,
-            cells_start,
-            free_list: Default::default(),
-        })
-    }
-
-    pub fn create<P: AsRef<Path>>(
-        path: P,
-        page_id: NonZeroU32,
-        page_type: PageType,
-        page_index: usize,
-    ) -> Result<SlottedPage, Error> {
-        let real_file = File::options()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(path)?;
-
-        let file: RandomAccessFile = real_file.try_into()?;
-        Self::init(file, page_id, page_type, page_index)
-    }
-
-    pub fn init(
-        random_access_file: RandomAccessFile,
-        page_id: NonZeroU32,
-        page_type: PageType,
-        page_index: usize,
-    ) -> Result<SlottedPage, Error> {
-        let mutex = Arc::new(RwLock::new(random_access_file));
-        Self::init_shared(&mutex, page_id, page_type, page_index)
-    }
-
-    pub fn init_shared(
-        random_access_file: &Arc<RwLock<RandomAccessFile>>,
-        page_id: NonZeroU32,
-        page_type: PageType,
-        page_index: usize,
-    ) -> Result<SlottedPage, Error> {
-        let mut real_file = random_access_file.write();
-        if real_file.metadata()?.len() < (page_index as u64 + 1) * PAGE_SIZE as u64 {
-            real_file.set_len(PAGE_SIZE as u64 * (page_index as u64 + 1))?;
-        }
-
-        let header = Header {
-            magic_number: HEADER_MAGIC_NUMBER,
-            page_id: page_id.get(),
-            left_page_id: None,
-            right_page_id: None,
-            page_type,
-            len: 0,
-        };
-
-        let mut page = Self {
-            file: random_access_file.clone(),
-            index: page_index,
-            header,
-            slots: Default::default(),
-            slots_end: (page_index * PAGE_SIZE) as u64 + Header::len() as u64,
-            cells_start: ((page_index + 1) * PAGE_SIZE) as u64,
-            free_list: Default::default(),
-        };
-        page._flush(&mut real_file)?;
-        Ok(page)
-    }
-
-    /// Pushes a new slotted page at the end of the random access file
-    pub fn init_last_shared(
-        random_access_file: &Arc<RwLock<RandomAccessFile>>,
-        page_id: NonZeroU32,
-        page_type: PageType,
-    ) -> Result<SlottedPage, Error> {
-        let len = random_access_file.read().metadata()?.len();
-        let pages = len as usize / PAGE_SIZE;
-        Self::init_shared(random_access_file, page_id, page_type, pages)
-    }
-    pub fn page_id(&self) -> u32 {
-        self.header.page_id
-    }
-
-    pub fn set_right_sibling(&mut self, id: Option<&SlottedPage>) {
-        self.header.right_page_id = id.map(|page| page.page_id());
-    }
-
-    pub fn right_sibling_id(&self) -> Option<u32> {
-        self.header.right_page_id
-    }
-
-    pub fn set_left_sibling(&mut self, id: Option<&SlottedPage>) {
-        self.header.left_page_id = id.map(|page| page.page_id());
-    }
-
-    pub fn left_sibling_id(&self) -> Option<u32> {
-        self.header.right_page_id
-    }
-
-    /// The page type
-    pub fn page_type(&self) -> PageType {
-        self.header.page_type
-    }
-
-    pub fn cells(&self) -> impl Iterator<Item = Cell> + '_ {
-        self.slots.iter().flat_map(|(key, slot)| self.get_cell(key))
-    }
-
-    pub fn free_space(&self) -> u64 {
-        (self.cells_start - self.slots_end)
-            + self
-                .free_list
-                .iter()
-                .map(|(&size, offsets)| (size * offsets.len()) as u64)
-                .sum::<u64>()
-            + size_of::<Header>() as u64
-    }
-
-    fn cell_length_at(&self, offset: u64) -> Result<u64, Error> {
-        Self::_cell_length_at(&*self.file.read(), offset, &self.header.page_type)
-    }
-
-    fn _cell_length_at(ram: &RandomAccessFile, offset: u64, ty: &PageType) -> Result<u64, Error> {
-        match ty {
-            PageType::Key => {
-                let buffer = ram.read_exact(offset, 4)?;
-                let len = 2 * size_of::<u32>() as u64
-                    + u32::from_be_bytes(buffer.try_into().unwrap()) as u64;
-                Ok(len)
-            }
-            PageType::KeyValue => {
-                let buffer = ram.read_exact(offset + 1, 8)?;
-                let (key_size, value_size) = buffer.split_at(size_of::<u32>());
-                let key_size = u32::from_be_bytes(key_size.try_into().unwrap()) as u64;
-                let value_size = u32::from_be_bytes(value_size.try_into().unwrap()) as u64;
-                Ok(1 + 2 * size_of::<u32>() as u64 + key_size + value_size)
-            }
-        }
-    }
-
-    fn get_cell_at(ram: &RandomAccessFile, offset: u64, ty: &PageType) -> Result<Cell, Error> {
-        match ty {
-            PageType::Key => {
-                let len = Self::_cell_length_at(ram, offset, ty)?;
-                Ok(Cell::Key(KeyCell::read(&ram.read_exact(offset, len)?)?))
-            }
-            PageType::KeyValue => {
-                let len = Self::_cell_length_at(ram, offset, ty)?;
-                Ok(Cell::KeyValue(KeyValueCell::read(
-                    &ram.read_exact(offset, len)?,
-                )?))
-            }
-        }
-    }
-
-    /// Gets a cell with the given key data
-    pub fn get_cell(&self, key_data: &KeyData) -> Option<Cell> {
-        self.slots.get(key_data).and_then(|&offset| {
-            Self::get_cell_at(&*self.file.read(), offset, &self.header.page_type).ok()
-        })
-    }
-
-    /// Gets all value cells in a given range
-    pub fn range(&self, range: &KeyDataRange) -> Result<Vec<Cell>, Error> {
-        Ok(self
-            .slots
-            .iter()
-            .filter(|key| range.contains(&*key.0))
-            .flat_map(|(key, _)| self.get_cell(key))
-            .collect())
-    }
-
-    /// Gets the max key value. This should always be the maximum key value and its associated cell
-    pub fn last_key_value(&self) -> Option<(KeyData, Cell)> {
-        self.slots
-            .last_key_value()
-            .and_then(|(key, &offset)| self.get_cell(key).map(|cell| (key.clone(), cell)))
-    }
-
-    /// Checks if adding new entry with a given size is feasible
-    fn can_alloc(&self, len: usize) -> bool {
-        let new_cells_start = self.cells_start.checked_sub(len as u64);
-        let new_slot_end = self.slots_end.checked_add(len as u64);
-        new_slot_end
-            .zip(new_cells_start)
-            .map(|(new_slots_end, new_cells_start)| new_slots_end <= new_cells_start)
-            .unwrap_or(false)
-    }
-
-    fn alloc(&mut self, len: usize) -> Result<(u64, u64), Error> {
-        if !self.can_alloc(len) {
-            return Err(Error::WriteDataError(WriteDataError::AllocationFailed {
-                page_id: self.page_id(),
-                size: len,
-            }));
-        }
-        let slot_offset = self.slots_end;
-        self.slots_end += 8;
-        self.cells_start -= len as u64;
-        Ok((slot_offset, self.cells_start))
-    }
-
-    fn free(&mut self, offset: u64) -> Result<(), Error> {
-        let cell_length = self.cell_length_at(offset)?;
-        if offset == self.cells_start {
-            // expand
-            self.cells_start += cell_length;
-        } else {
-            self.free_list
-                .entry(cell_length as usize)
-                .or_default()
-                .push(offset);
-        }
-
-        let arc_clone = self.file.clone();
-        let mut lock = arc_clone.write();
-        let mut slots = self.raw_slots(&mut *lock)?;
-        slots.retain(|&slot| slot != offset);
-        self.write_raw_slots(slots, &mut *lock)?;
-        Ok(())
-    }
-
-    /// Tries to insert,
-    pub fn insert<T: Into<Cell>>(&mut self, cell: T) -> Result<(), Error> {
-        let cell = cell.into();
+impl<P: Page> SlottedPage<P> {
+    /// Insert a cell into a slotted page
+    pub fn insert(&mut self, cell: Cell) -> Result<(), Error> {
         self.assert_cell_type(&cell)?;
-        let key_data = cell.key_data();
+        let ref key_data = cell.key_data();
         let cell_len = cell.len();
-        let (slot_offset, cell_offset) = self.alloc(cell_len)?;
+        if self.contains(key_data) {
+            self.delete(key_data)?;
+        }
+        let Some(CellPtr { slot: _, cell: cell_ptr }) = self.alloc(cell_len) else {
+            return Err(WriteDataError::InsufficientSpace.into());
+        };
+        println!("inserting cell at {}", cell_ptr);
 
-        let mut data = vec![0_u8; cell_len];
+        let mut data = &mut self.page.as_mut_slice()[cell_ptr..][..cell_len];
+
         match cell {
             Cell::Key(key) => {
                 key.write(&mut data)?;
@@ -346,77 +88,273 @@ impl SlottedPage {
                 key_value.write(&mut data)?;
             }
         }
-        let arc = self.file.clone();
-        let mut lock = arc.write();
 
-        // inserts the cell at the start of the cell block
-        // and inserts the pointer at the end of the block
 
-        lock.write(cell_offset, &data)?;
-        lock.write(slot_offset, &u64::to_be_bytes(cell_offset))?;
-        self.header.len += 1;
-        self.slots.insert(key_data, cell_offset);
-        self.write_slots(&mut *lock)?;
-        self._flush(&mut lock)?;
+        self.sync_slots();
+
         Ok(())
     }
 
-    /// Delete a cell by the given key, if present
-    pub fn delete(&mut self, key: &KeyData) -> Result<Option<Cell>, Error> {
-        match self.slots.get(&key) {
-            None => Ok(None),
-            Some(&offset) => {
-                let cell = self.get_cell(key).unwrap();
-                self.free(offset)?;
+    /// Checks if this page contains
+    pub fn contains(&self, key_data: &KeyData) -> bool {
+        self.slots.contains_key(key_data)
+    }
 
-                Ok(Some(cell))
+    /// Get a cell by key value
+    pub fn get(&self, key_data: &KeyData) -> Result<Option<Cell>, Error> {
+        match self.slots.get(key_data)
+                  .map(|&index| {
+                      self.get_cell_at_offset(index)
+                  }) {
+            None => { Ok(None) }
+            Some(result) => {
+                result.map(Some)
             }
         }
     }
 
-    fn write_slots(&self, lock: &mut RandomAccessFile) -> Result<(), Error> {
-        let mut offset = Header::len() as u64 + (self.index * PAGE_SIZE) as u64;
-        for value in self.slots.values() {
-            lock.write(offset, &value.to_be_bytes())?;
-            offset += 8;
+    /// Get cells within a range
+    pub fn get_range<I: Into<KeyDataRange>>(&self, key_data: I) -> Result<Vec<Cell>, Error> {
+        let range = key_data.into();
+        self.slots
+            .range((range.start_bound(), range.end_bound()))
+            .fuse()
+            .map(|(_, &c_offset)| {
+                self.get_cell_at_offset(c_offset)
+            })
+            .collect::<Result<_, _>>()
+    }
+
+    /// Gets all the cells within this page
+    #[inline]
+    pub fn all(&self) -> Result<Vec<Cell>, Error> {
+        self.get_range(..)
+    }
+
+    /// Deletes the cell with a given key if present
+    pub fn delete(&mut self, key_data: &KeyData) -> Result<Option<Cell>, Error> {
+        if !self.contains(key_data) {
+            return Ok(None);
         }
+
+        let &cell_offset = self.slots.get(key_data).unwrap();
+        let slot_offset = self.get_slot_offset_from_cell_offset(cell_offset)?.expect("slot offset should exist");
+
+        let read = self.get_cell_at_offset(cell_offset)?;
+        self.free_slot(slot_offset)?;
+        self.sync_slots();
+        Ok(Some(read))
+    }
+
+    /// allocate a given length within the slotted page
+    ///
+    /// If successful, returns the offset where the cell should be inserted, otherwise
+    /// `None` is returned.
+    ///
+    /// # Error
+    /// Will return `None` if and only if there isn't enough space to store both
+    /// `size + sizeof::<u64>`
+    fn alloc(&mut self, size: usize) -> Option<CellPtr> {
+        let total_len = size + size_of::<u64>();
+        let existing = self.free_list
+                           .iter()
+                           .enumerate()
+                           .filter(|(_, free_cell)| free_cell.len >= size)
+                           .min_by_key(|(_, free_cell)| free_cell.len)
+                           .map(|tuple| tuple.0);
+
+        if self.slot_ptr + size_of::<u64>() >= self.cell_ptr {
+            return None;
+        }
+        let cell_ptr = if let Some(existing) = existing {
+            let mut tail = self.free_list.split_off(existing);
+            let mut cell = tail.pop_front().expect("should contain one cell");
+            let offset = cell.offset;
+            if cell.len > size {
+                cell.len -= size;
+                cell.offset += size;
+                self.free_list.push_back(cell);
+            }
+
+            self.free_list.append(&mut tail);
+            offset
+        } else if self.cell_ptr - self.slot_ptr >= total_len {
+            self.cell_ptr -= size;
+            let ptr = self.cell_ptr;
+            ptr
+        } else {
+            return None;
+        };
+        let slot_ptr = self.slot_ptr;
+        self.slot_ptr += size_of::<u64>();
+        self.header.to_mut().size += 1;
+
+        self.page.as_mut_slice()[slot_ptr..][..size_of::<u64>()]
+            .copy_from_slice(&(cell_ptr as u64).to_be_bytes());
+
+        Some(CellPtr { slot: slot_ptr, cell: cell_ptr })
+    }
+
+
+    /// Frees the slot at the given offset
+    fn free_slot(&mut self, slot_offset: usize) -> Result<(), Error> {
+        if slot_offset >= self.slot_ptr {
+            return Err(Error::WriteDataError(WriteDataError::InsufficientSpace));
+        }
+        let cell_ptr = self.read_ptr(slot_offset)?;
+        let cell_len = self.get_cell_at_offset(cell_ptr)?.len();
+        self.page.as_mut_slice()[cell_ptr..][..cell_len].fill(0);
+
+        if self.slot_ptr == slot_offset {
+            self.slot_ptr -= size_of::<u64>();
+        } else {
+            let end_ptr = self.slot_ptr - size_of::<u64>();
+            let a = self.read_ptr(slot_offset)?;
+            let b = self.read_ptr(end_ptr)?;
+            self.write_ptr(slot_offset, b)?;
+            self.write_ptr(end_ptr, a)?;
+
+            self.slot_ptr -= size_of::<u64>();
+        }
+        self.write_ptr(self.slot_ptr, 0)?;
+        self.header.to_mut().size -= 1;
+        if self.cell_ptr == cell_ptr {
+            // can just increase the cell ptr to ignore
+            self.cell_ptr += cell_len;
+        } else {
+            // add to free list
+            let free_cell = FreeCell { offset: cell_ptr, len: cell_len };
+            self.free_list.push_back(free_cell);
+            self.merge_free_cells();
+        }
+
         Ok(())
     }
 
-    fn raw_slots(&self, lock: &mut RandomAccessFile) -> Result<Vec<u64>, Error> {
-        let mut offset = Header::len() as u64 + (self.index * PAGE_SIZE) as u64;
-        let slots_in_use = self.len();
-        let mut slots = vec![];
-        for i in 0..slots_in_use {
-            let read = lock.read_exact(
-                offset + (i * size_of::<u64>()) as u64,
-                size_of::<u64>() as u64,
-            )?;
-            let read_u64 = u64::from_be_bytes(read.try_into().unwrap());
-            slots.push(read_u64);
-        }
-        Ok(slots)
-    }
+    fn sync_slots(&mut self) {
+        let key_to_cell_offset = (0..self.count())
+            .into_iter()
+            .map(|i| (self.get_cell(i).expect("could not get slot").key_data(), self.get_cell_offset(i).unwrap()))
+            .collect::<BTreeMap<_, _>>();
 
-    fn write_raw_slots(&mut self, vec: Vec<u64>, lock: &mut RandomAccessFile) -> Result<(), Error> {
-        let mut offset = Header::len() as u64 + (self.index * PAGE_SIZE) as u64;
-        for &value in &vec {
-            lock.write(offset, &value.to_be_bytes())?;
-            offset += 8;
-        }
-        if offset != self.slots_end {
-            self.slots_end = offset;
-            self.header.len = vec.len() as u32;
-            self.slots
-                .iter()
-                .filter(|(_, slot_offset)| !vec.contains(slot_offset))
-                .map(|(key, _)| key.clone())
+        let in_order = key_to_cell_offset
+            .values()
+            .map(|&index| {
+                index
+            })
+            .collect::<Vec<_>>();
+
+        in_order.into_iter().zip(self.slots_offsets())
                 .collect::<Vec<_>>()
                 .into_iter()
-                .for_each(|key| {
-                    self.slots.remove(&key);
-                });
+                .try_for_each(|(cell_offset, slot_offset)| -> Result<_, _> {
+                    self.write_ptr(slot_offset, cell_offset)
+                }).expect("failed to sync slots in data");
+
+        self.slots.clear();
+        for slot_index in 0..self.count() {
+            let offset = self.get_cell_offset(slot_index).expect("could not get slot index");
+            let cell = self.get_cell_at_offset(offset).expect("could not get cell");
+            self.slots.insert(cell.key_data(), offset);
         }
+    }
+
+    fn merge_free_cells(&mut self) {
+        let mut cells = Vec::from_iter(self.free_list.split_off(0));
+        cells.sort_by_key(|cell| cell.offset);
+        self.free_list.append(&mut cells.into_iter()
+                                        .fold(LinkedList::new(), |mut list, next| {
+                                            let merged = if let Some(last) = list.back_mut() {
+                                                if last.offset + last.len == next.offset {
+                                                    last.len += next.len;
+                                                    true
+                                                } else {
+                                                    false
+                                                }
+                                            } else {
+                                                false
+                                            };
+                                            if !merged {
+                                                list.push_back(next);
+                                            }
+                                            list
+                                        }))
+    }
+
+    fn get_slot_offset_from_cell_offset(&self, cell_offset: usize) -> Result<Option<usize>, Error> {
+        for slot_offset in self.slots_offsets() {
+            let cell_offset_f = self.read_ptr(slot_offset)?;
+            if cell_offset == cell_offset_f {
+                return Ok(Some(slot_offset));
+            }
+        }
+        Ok(None)
+    }
+    fn slots_offsets(&self) -> impl FusedIterator<Item=usize> + '_ {
+        (0..self.count())
+            .into_iter()
+            .map(|i| self.get_slot_offset(i).expect("could not get slot"))
+            .fuse()
+    }
+
+    fn cell_offsets(&self) -> impl FusedIterator<Item=usize> + '_ {
+        (0..self.count())
+            .into_iter()
+            .map(|i| self.get_cell_offset(i).expect("could not get slot"))
+            .fuse()
+    }
+
+    /// Gets the given cell at a known offset
+    fn get_cell_at_offset(&self, offset: usize) -> Result<Cell, Error> {
+        match self.page_type() {
+            PageType::Key => {
+                Ok(KeyCell::read(&self.page.as_slice()[offset..])?.into())
+            }
+            PageType::KeyValue => {
+                Ok(KeyValueCell::read(&self.page.as_slice()[offset..])?.into())
+            }
+        }
+    }
+
+    /// Gets the given cell at the slot index
+    fn get_cell(&self, slot: usize) -> Result<Cell, Error> {
+        let cell_ptr = self.get_cell_offset(slot)?;
+        self.get_cell_at_offset(cell_ptr)
+    }
+
+    /// Gets the cell offset of a slot
+    fn get_cell_offset(&self, slot: usize) -> Result<usize, Error> {
+        let slot_offset = self.get_slot_offset(slot)?;
+        self.read_ptr(slot_offset)
+    }
+
+    /// Gets the offset of the slot at the given index
+    fn get_slot_offset(&self, index: usize) -> Result<usize, Error> {
+        if index >= self.count() {
+            return Err(Error::ReadDataError(ReadDataError::UnexpectedEof));
+        }
+        Ok(index * size_of::<u64>())
+    }
+
+    /// Reads a pointer (offset from page) at a given offset
+    fn read_ptr(&self, offset: usize) -> Result<usize, Error> {
+        if offset > self.page.body_len() - size_of::<u64>() {
+            return Err(ReadDataError::NotEnoughSpace.into());
+        }
+        Ok(u64::from_be_bytes(self.page.as_slice()[offset..][..size_of::<u64>()].try_into().expect("should be correct number of bytes")) as usize)
+    }
+
+    /// Writes a pointer (offset from page) at a given offset
+    fn write_ptr(&mut self, offset: usize, ptr: usize) -> Result<(), Error> {
+        if offset > self.page.body_len() - size_of::<u64>() {
+            return Err(ReadDataError::NotEnoughSpace.into());
+        }
+
+        let buffer = &mut self.page.as_mut_slice()[offset..][..size_of::<u64>()];
+        buffer.copy_from_slice(
+            &(ptr as u64).to_be_bytes()
+        );
+
         Ok(())
     }
 
@@ -424,161 +362,171 @@ impl SlottedPage {
         match (cell, self.page_type()) {
             (Cell::Key(_), PageType::KeyValue) => {
                 return Err(Error::CellTypeMismatch {
-                    expected: PageType::KeyValue,
-                    actual: PageType::Key,
+                    expected: crate::storage::slotted_page::PageType::KeyValue,
+                    actual: crate::storage::slotted_page::PageType::Key,
                 });
             }
             (Cell::KeyValue(_), PageType::Key) => {
                 return Err(Error::CellTypeMismatch {
-                    expected: PageType::Key,
-                    actual: PageType::KeyValue,
+                    expected: crate::storage::slotted_page::PageType::Key,
+                    actual: crate::storage::slotted_page::PageType::KeyValue,
                 });
             }
             _ => Ok(()),
         }
     }
 
-    /// Gets the number of cells stored in this header
-    pub fn len(&self) -> usize {
-        self.header.len as usize
+
+    pub fn page_id(&self) -> PageId {
+        self.header.page_id
     }
 
-    pub fn flush(&mut self) -> Result<(), Error> {
-        let ar = self.file.clone();
-        let mut lock = ar.write();
-        self._flush(&mut lock)?;
-        Ok(())
+    pub fn page_type(&self) -> PageType {
+        self.header.page_type.expect("page type should be set at initialization")
     }
 
-    fn _flush(&mut self, lock: &mut RwLockWriteGuard<RandomAccessFile>) -> Result<(), Error> {
-        // write header
-        let mut header_buffer = vec![0u8; size_of_val(&self.header)];
-        self.header.write(&mut header_buffer)?;
-        lock.write(self.index as u64 * PAGE_SIZE as u64, &header_buffer)?;
-
-        Ok(())
+    /// Gets the page id of the right sibling of this page
+    pub fn right_sibling(&self) -> Option<PageId> {
+        self.header.right_page_id
     }
 
-    fn bounds(&self) -> KeyDataRange {
-        self.keys().fold(
-            KeyDataRange(Bound::Unbounded, Bound::Unbounded),
-            |mut accum, next| {
-                match &accum.0 {
-                    Bound::Included(acc) | Bound::Excluded(acc) => {
-                        if next <= acc {
-                            accum.0 = Bound::Included(next.clone());
-                        }
-                    }
-                    Bound::Unbounded => {
-                        accum.0 = Bound::Included(next.clone());
-                    }
-                }
-                match &accum.1 {
-                    Bound::Included(acc) | Bound::Excluded(acc) => {
-                        if next >= acc {
-                            accum.1 = Bound::Included(next.clone());
-                        }
-                    }
-                    Bound::Unbounded => {
-                        accum.1 = Bound::Included(next.clone());
-                    }
-                }
-                accum
-            },
-        )
+    /// Gets the page id of the left sibling of this page
+    pub fn left_sibling(&self) -> Option<PageId> {
+        self.header.left_page_id
     }
 
-    fn keys(&self) -> impl Iterator<Item = &KeyData> {
-        self.slots.keys()
+    pub fn parent(&self) -> Option<PageId> {
+        self.header.parent_page_id
     }
 
-    pub fn index(&self) -> usize {
-        self.index
-    }
-
-    pub fn key_data_range(&self) -> KeyDataRange {
-        KeyDataRange(
-            self.slots
-                .first_key_value()
-                .map(|(k, v)| Bound::Included(k.clone()))
-                .unwrap_or(Bound::Unbounded),
-            self.slots
-                .last_key_value()
-                .map(|(k, v)| Bound::Included(k.clone()))
-                .unwrap_or(Bound::Unbounded),
-        )
-    }
-
-    pub fn swap(left: &mut Self, right: &mut Self) -> Result<(), Error> {
-        std::mem::swap(&mut left.index, &mut right.index);
-        left.flush().and(right.flush())
+    pub fn count(&self) -> usize {
+        self.header.size() as usize
     }
 }
 
-impl Debug for SlottedPage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SlottedPage")
-            .field("index", &self.index)
-            .field("header", &self.header)
-            .field("slots", &self.slots)
-            .field("space_used", &(PAGE_SIZE as u64 - self.free_space()))
-            .field("free_space", &self.free_space())
-            .finish()
-    }
-}
-
-impl Drop for SlottedPage {
+impl<P: Page> Drop for SlottedPage<P> {
     fn drop(&mut self) {
-        let _ = self.flush();
+        if self.header.is_dirty() {
+            let _ = self.page.set_header(self.header.as_ref().clone());
+        }
     }
 }
 
-const HEADER_MAGIC_NUMBER: u64 =
-    u64::from_be_bytes([b'W', b'E', b'A', b'V', b'E', b'R', b'D', b'B']);
+impl<P: Page> Page for SlottedPage<P> {
+    fn len(&self) -> usize {
+        self.page.len()
+    }
 
-#[derive(Debug)]
-struct Header {
+    fn as_slice(&self) -> &[u8] {
+        self.page.as_slice()
+    }
+
+    fn as_mut_slice(&mut self) -> &mut [u8] {
+        self.page.as_mut_slice()
+    }
+}
+
+const MAGIC: u64 = u64::from_be_bytes([b'W', b'E', b'A', b'V', b'E', b'R', b'D', b'B']);
+
+/// The header of a slotted page
+#[derive(Debug, Eq, PartialEq, Clone)]
+struct SlottedPageHeader {
     magic_number: u64,
-    page_id: u32,
-    left_page_id: Option<u32>,
-    right_page_id: Option<u32>,
-    page_type: PageType,
-
-    len: u32,
+    page_id: PageId,
+    left_page_id: Option<PageId>,
+    right_page_id: Option<PageId>,
+    parent_page_id: Option<PageId>,
+    page_type: Option<PageType>,
+    /// The number of cells stored in this page
+    size: u32,
 }
 
-impl Header {
-    const fn len() -> usize {
-        size_of::<Header>()
+impl SlottedPageHeader {
+    pub fn new(page_id: PageId) -> Self {
+        Self {
+            magic_number: MAGIC,
+            page_id,
+            left_page_id: None,
+            right_page_id: None,
+            parent_page_id: None,
+            page_type: None,
+            size: 0,
+        }
+    }
+
+    pub fn magic_number(&self) -> u64 {
+        self.magic_number
+    }
+    pub fn page_id(&self) -> PageId {
+        self.page_id
+    }
+    pub fn left_page_id(&self) -> Option<PageId> {
+        self.left_page_id
+    }
+    pub fn right_page_id(&self) -> Option<PageId> {
+        self.right_page_id
+    }
+    pub fn parent_page_id(&self) -> Option<PageId> {
+        self.parent_page_id
+    }
+    pub fn page_type(&self) -> Option<PageType> {
+        self.page_type
+    }
+
+    pub fn size(&self) -> u32 {
+        self.size
+    }
+    pub fn set_page_id(&mut self, page_id: PageId) {
+        self.page_id = page_id;
+    }
+    pub fn set_left_page_id(&mut self, left_page_id: Option<PageId>) {
+        self.left_page_id = left_page_id;
+    }
+    pub fn set_right_page_id(&mut self, right_page_id: Option<PageId>) {
+        self.right_page_id = right_page_id;
+    }
+    pub fn set_parent_page_id(&mut self, parent_page_id: Option<PageId>) {
+        self.parent_page_id = parent_page_id;
+    }
+    pub fn set_page_type(&mut self, page_type: PageType) {
+        self.page_type = Some(page_type);
+    }
+    pub fn set_size(&mut self, size: u32) {
+        self.size = size;
     }
 }
 
-impl StorageBackedData for Header {
+impl StorageBackedData for SlottedPageHeader {
     type Owned = Self;
-    fn read(buf: & [u8]) -> ReadResult<Self> {
+    fn read(buf: &[u8]) -> ReadResult<Self> {
         let magic = u64::read(buf)?;
-        if magic != HEADER_MAGIC_NUMBER {
+        if magic != MAGIC {
             return Err(ReadDataError::BadMagicNumber);
         }
         const U32_SIZE: usize = size_of::<u32>();
         let buf = &buf[8..];
-        let page_id = u32::read(buf)?;
+        let page_id = u32::read(buf).and_then(|id| NonZeroU32::new(id).ok_or_else(|| {
+            ReadDataError::BadMagicNumber
+        })).map(|u| PageId::new(u))?;
         let buf = buf.get(U32_SIZE..).ok_or(ReadDataError::UnexpectedEof)?;
-        let left_page_id = <Option<u32>>::read(buf)?;
+        let left_page_id = <Option<PageId>>::read(buf)?;
         let buf = buf.get(U32_SIZE..).ok_or(ReadDataError::UnexpectedEof)?;
-        let right_page_id = <Option<u32>>::read(buf)?;
+        let right_page_id = <Option<PageId>>::read(buf)?;
+        let buf = buf.get(U32_SIZE..).ok_or(ReadDataError::UnexpectedEof)?;
+        let parent_page_id = <Option<PageId>>::read(buf)?;
         let buf = buf.get(U32_SIZE..).ok_or(ReadDataError::UnexpectedEof)?;
         let page_type = PageType::read(buf)?;
         let buf = buf.get(1..).ok_or(ReadDataError::UnexpectedEof)?;
-        let len = u32::read(buf)?;
+        let size = u32::read(buf)?;
 
-        Ok(Header {
+        Ok(SlottedPageHeader {
             magic_number: magic,
             page_id,
             left_page_id,
             right_page_id,
-            page_type,
-            len,
+            parent_page_id,
+            page_type: Some(page_type),
+            size,
         })
     }
 
@@ -591,12 +539,14 @@ impl StorageBackedData for Header {
         buf = &mut buf[len..];
         let len = self.right_page_id.write(buf)?;
         buf = &mut buf[len..];
-        let len = self.page_type.write(buf)?;
+        let len = self.parent_page_id.write(buf)?;
         buf = &mut buf[len..];
-        let len = self.len.write(buf)?;
+        let len = self.page_type.unwrap().write(buf)?;
+        buf = &mut buf[len..];
+        let len = self.size.write(buf)?;
         buf = &mut buf[len..];
 
-        Ok(size_of::<Header>())
+        Ok(size_of::<Self>())
     }
 }
 
@@ -624,160 +574,358 @@ impl StorageBackedData for PageType {
     }
 }
 
-/// Invariant over Key slotted pages
-#[derive(Debug, Deref, DerefMut)]
-pub struct KeySlottedPage(SlottedPage);
-impl KeySlottedPage {
-    pub fn unwrap(self) -> SlottedPage {
-        self.0
+/// Provides an allocator for slotted pages
+#[derive(Debug)]
+pub struct SlottedPageAllocator<P: Paged> {
+    paged: P,
+    next_page_id: AtomicU32,
+    free_list: RwLock<VecDeque<usize>>,
+    page_id_to_index:  BTreeMap<PageId, usize>,
+}
+
+impl<P: Paged> SlottedPageAllocator<P> {
+    pub fn new(paged: P) -> Self {
+        let mut paged = if paged.len() * paged.page_size() == paged.reserved() {
+            Self {
+                paged,
+                next_page_id: AtomicU32::new(1),
+                free_list: Default::default(),
+                page_id_to_index: Default::default(),
+            }
+        } else {
+            let mut empty = vec![];
+            let mut max = PageId::new(1.try_into().unwrap());
+            {
+                let mut iter = paged.iter();
+                while let Some(Ok((mut page, index))) = iter.next() {
+                    if !Self::has_magic(&page) {
+                        empty.push(index);
+                    }
+                    let split = make_slotted(&mut page).page_id();
+                    if split > max {
+                        max = split;
+                    }
+                }
+            }
+            Self {
+                paged,
+                next_page_id: Default::default(),
+                free_list: Default::default(),
+                page_id_to_index: Default::default(),
+            }
+        };
+        if let Some(max) = (0..paged.len())
+            .into_iter()
+            .filter_map(|p| Paged::get(&paged, p).ok())
+            .map(|p| p.page_id())
+            .max()
+        {
+            paged.next_page_id = AtomicU32::new(max.as_u32());
+        }
+
+        for (page, index) in (0..paged.len())
+            .into_iter()
+            .filter_map(|p| Paged::get(&paged, p).ok().map(|page| (page.page_id(), p)))
+            .collect::<Vec<_>>(){
+            paged.page_id_to_index.insert(page, index);
+        }
+
+        paged
+    }
+
+    /// Checks if the given page has the magic number
+    fn has_magic(page: &P::Page) -> bool {
+        &page.as_slice()[0..size_of_val(&MAGIC)] == &MAGIC.to_be_bytes()
+    }
+
+    /// Gets the next page id
+    fn next_page_id(&self) -> PageId {
+        PageId::new(NonZeroU32::new(self.next_page_id.fetch_add(1, Ordering::SeqCst)).unwrap())
+    }
+
+    /// Creates a new page of a given type
+    pub fn new_with_type(&mut self, page_type: PageType) -> Result<(SlottedPage<P::Page>, usize), P::Err> {
+        let (mut new, index) = self.new()?;
+        new.header.to_mut().set_page_type(page_type);
+        self.page_id_to_index.insert(new.page_id(), index);
+        Ok((new, index))
+    }
+
+    /// Gets the page by a given page_id
+    pub fn get(&self, id: PageId) -> Option<SlottedPage<P::Page>> {
+        self.page_id_to_index.get(&id)
+            .and_then(|index| {
+                Paged::get(self, *index).ok()
+            })
     }
 }
 
-impl TryFrom<SlottedPage> for KeySlottedPage {
-    type Error = Error;
-
-    fn try_from(value: SlottedPage) -> Result<Self, Self::Error> {
-        if value.page_type() != PageType::Key {
-            Err(Error::CellTypeMismatch {
-                expected: PageType::Key,
-                actual: PageType::KeyValue,
-            })
-        } else {
-            Ok(KeySlottedPage(value))
+fn make_slotted<P: Page>(page: P) -> SlottedPage<P> {
+    let split = SplitPage::<_, SlottedPageHeader>::new(page, size_of::<SlottedPageHeader>());
+    let body_len = split.body_len();
+    let header = split.header()
+                      .expect("could not read header");
+    let len = header.size as usize;
+    let slot_ptr = len * size_of::<u64>();
+    let mut min_offset = split.body_len();
+    for i in 0..len {
+        let slot_offset = i * size_of::<u64>();
+        let ptr = &split.get(slot_offset..).expect("must exist")[..size_of::<u64>()];
+        let offset = u64::from_be_bytes(ptr.try_into().expect("will be exactly 8 bytes")) as usize;
+        if offset < min_offset {
+            min_offset = offset;
         }
     }
-}
 
-/// Invariant over Key Value slotted pages
-#[derive(Debug, Deref, DerefMut)]
-pub struct KeyValueSlottedPage(SlottedPage);
+    let cell_ptr = min_offset;
+    let mut output = SlottedPage {
+        page: split,
+        header: Mad::new(header),
+        slot_ptr,
+        cell_ptr,
+        slots: Default::default(),
+        free_list: Default::default(),
+    };
+    output.sync_slots();
+    let mut cell_offsets = output.cell_offsets().collect::<Vec<_>>();
+    cell_offsets.sort();
+    for cell_index in 0..cell_offsets.len() {
+        let cell_offset = cell_offsets[cell_index];
+        let next_cell_offset = cell_offsets.get(cell_index + 1).copied().unwrap_or(body_len);
+        let available_space = next_cell_offset.abs_diff(cell_offset);
+        let cell_len = output.get_cell_at_offset(cell_offset).unwrap().len();
 
-impl KeyValueSlottedPage {
-    pub fn unwrap(self) -> SlottedPage {
-        self.0
-    }
-}
-
-impl TryFrom<SlottedPage> for KeyValueSlottedPage {
-    type Error = Error;
-
-    fn try_from(value: SlottedPage) -> Result<Self, Self::Error> {
-        if value.page_type() != PageType::KeyValue {
-            Err(Error::CellTypeMismatch {
-                expected: PageType::KeyValue,
-                actual: PageType::Key,
-            })
-        } else {
-            Ok(KeyValueSlottedPage(value))
+        if available_space > cell_len {
+            let free_len = available_space - cell_len;
+            let free_offset = cell_offset + cell_len;
+            output.free_list.push_back(FreeCell { offset: free_offset, len: free_len })
         }
     }
+
+    output
 }
+
+impl<P: Paged> Paged for SlottedPageAllocator<P> {
+    type Page = SlottedPage<P::Page>;
+    type Err = P::Err;
+
+    fn page_size(&self) -> usize {
+        self.paged.page_size()
+    }
+
+    fn get(&self, index: usize) -> Result<Self::Page, Self::Err> {
+        let page = self.paged.get(index)?;
+        Ok(make_slotted(page))
+    }
+
+    fn new(&self) -> Result<(Self::Page, usize), Self::Err> {
+        let id = self.next_page_id();
+        let (zeroed_page, index) = if let Some(index) = self.free_list.write().pop_front() {
+            (self.paged.get(index)?, index)
+        } else {
+            self.paged.new()?
+        };
+        let header = SlottedPageHeader::new(id);
+        let page = SplitPage::new(zeroed_page, size_of_val(&header));
+        let cell_ptr = page.body_len();
+        Ok((
+            SlottedPage {
+                page,
+                header: Mad::new(header),
+                slot_ptr: 0,
+                cell_ptr,
+                slots: Default::default(),
+                free_list: Default::default(),
+            },
+            index,
+        ))
+    }
+
+    fn free(&self, index: usize) -> Result<(), Self::Err> {
+        self.paged.free(index)?;
+        self.free_list.write().push_back(index);
+        Ok(())
+    }
+
+    fn len(&self) -> usize {
+        (0..self.paged.len())
+            .filter_map(|index| {
+                let page = self.paged.get(index).ok();
+                dbg!(page.as_ref().map(|p| p.as_slice()));
+                page
+            })
+            .filter(|s| Self::has_magic(s))
+            .count()
+    }
+
+    fn reserved(&self) -> usize {
+        self.paged.reserved()
+    }
+}
+
+impl<P: Paged> SlottedPageAllocator<P> {}
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU32;
+    use std::mem::size_of;
 
-    use crate::data::row::Row;
+    use tempfile::tempfile;
+
+    use crate::data::values::Value;
     use crate::error::Error;
     use crate::key::KeyData;
-    use crate::storage::cells::KeyValueCell;
-    use crate::storage::slotted_page::{PageType, SlottedPage, PAGE_SIZE};
-    use crate::storage::ReadDataError;
+    use crate::storage::abstraction::{Page, Paged, VecPaged};
+    use crate::storage::cells::{KeyCell, PageId};
+    use crate::storage::ram_file::{PagedFile, RandomAccessFile};
+    use crate::storage::slotted_page::{PageType, SlottedPageAllocator, SlottedPageHeader};
+    use crate::storage::WriteDataError;
 
     #[test]
-    fn can_not_read_uninit_page() {
-        let file = tempfile::tempfile().unwrap();
-        file.set_len(PAGE_SIZE as u64).unwrap();
-        let error = SlottedPage::open(file.try_into().unwrap(), 0).expect_err("should be error");
-        assert!(
-            matches!(error, Error::ReadDataError(ReadDataError::BadMagicNumber)),
-            "error was {:?}",
-            error
-        );
+    fn slotted_page() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        {
+            let slotted_page = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
+            let slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
+        }
+        assert!(slotted_pager.reserved() > 0);
+        assert_eq!(slotted_pager.len(), 2);
     }
 
     #[test]
-    fn can_init_page() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("temp.idb");
-        let mut page =
-            SlottedPage::create(&file, NonZeroU32::new(1).unwrap(), PageType::KeyValue, 0)
-                .expect("should create file");
-        page.insert(KeyValueCell::new(
-            KeyData::from(Row::from([1])),
-            Row::from([1, 2]).to_owned(),
-        ))
-        .unwrap();
-        drop(page);
-        let page = SlottedPage::open_path(file, 0).unwrap();
-        assert_eq!(page.header.page_id, 1);
-        assert_eq!(page.len(), 1);
+    fn reuse_slotted_page_after_free() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        {
+            let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
+            let slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
+            slotted_pager.free(index).expect("could not free");
+        }
+        assert_eq!(slotted_pager.reserved(), 2 * 1028);
+        assert_eq!(slotted_pager.len(), 1);
+        let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
+        assert_eq!(index, 0, "should re-use 0 index");
     }
 
     #[test]
-    fn can_delete() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("temp.idb");
-        let mut page =
-            SlottedPage::create(&file, NonZeroU32::new(1).unwrap(), PageType::KeyValue, 0)
-                .expect("should create file");
-        let key_data = KeyData::from(Row::from([1]));
-        page.insert(KeyValueCell::new(
-            key_data.clone(),
-            Row::from([1, 2]).to_owned(),
-        ))
-        .unwrap();
-        assert_eq!(page.len(), 1);
-        page.delete(&key_data).unwrap();
-        assert_eq!(page.len(), 0);
-    }
-
-    #[test]
-    fn can_init_2nd_page() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("temp.idb");
-        let mut page =
-            SlottedPage::create(&file, NonZeroU32::new(1).unwrap(), PageType::KeyValue, 0)
-                .expect("should create file");
-        let cell_1_key = KeyData::from(Row::from([1]));
-        page.insert(KeyValueCell::new(
-            cell_1_key.clone(),
-            Row::from([1, 2]).to_owned(),
-        ))
-        .unwrap();
-        drop(page);
-        let page = SlottedPage::open_path(file.clone(), 0).unwrap();
-        let mut page2 =
-            SlottedPage::create(&file, NonZeroU32::new(2).unwrap(), PageType::KeyValue, 1).unwrap();
-        let cell_2_key = KeyData::from(Row::from([4]));
-        page2
-            .insert(KeyValueCell::new(
-                cell_2_key.clone(),
-                Row::from([5, 7]).to_owned(),
-            ))
-            .unwrap();
-        assert_eq!(page2.header.page_id, 2);
-        assert_eq!(page2.len(), 1);
-        assert!(page.get_cell(&cell_1_key).is_some());
-        assert!(page.get_cell(&cell_2_key).is_none());
-        assert!(page2.get_cell(&cell_2_key).is_some());
-    }
-
-    #[test]
-    fn insert_page() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("temp.idb");
-        let mut page =
-            SlottedPage::create(&file, NonZeroU32::new(1).unwrap(), PageType::KeyValue, 0)
-                .expect("should create file");
-        let key_data = KeyData::from(Row::from([0]));
+    fn reuse_slotted_page_after_free_file() {
+        let temp = tempfile().expect("could not create file");
+        let file = RandomAccessFile::with_file(temp).expect("could not create RAFile");
+        let mut slotted_pager = SlottedPageAllocator::new(PagedFile::new(file, 1028));
+        {
+            let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
+            let slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
+            drop(slotted_page);
+            slotted_pager.free(index).expect("could not free");
+        }
+        assert_eq!(slotted_pager.reserved(), 2 * 1028);
+        assert_eq!(slotted_pager.len(), 1);
+        let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
+        assert_eq!(index, 0, "should re-use 0 index");
     }
 
     #[test]
     fn insert_cell() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("temp.idb");
-        let mut page = SlottedPage::create(&file, NonZeroU32::new(1).unwrap(), PageType::Key, 0)
-            .expect("should create file");
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
+        let key_data = KeyData::from([Value::from(1_i64)]);
+        page.insert(KeyCell::new(15, key_data.clone()).into()).expect("could not insert into page");
+        assert_eq!(page.count(), 1);
+        let cell = page.get(&key_data).expect("error occurred").expect("cell not found");
+        assert_eq!(&cell.key_data(), &key_data);
+    }
+
+    #[test]
+    fn insert_cell_same_value() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
+        let key_data = KeyData::from([Value::from(1_i64)]);
+        page.insert(KeyCell::new(15, key_data.clone()).into()).expect("could not insert into page");
+        page.insert(KeyCell::new(16, key_data.clone()).into()).expect("could not insert into page");
+        assert_eq!(page.count(), 1);
+        let cell = page.get(&key_data).expect("error occurred").expect("cell not found");
+        assert_eq!(&cell.key_data(), &key_data);
+    }
+
+    #[test]
+    fn insert_cell_into_full() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(size_of::<SlottedPageHeader>()));
+        let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
+        let key_data = KeyData::from([Value::from(1_i64)]);
+        let err = page.insert(KeyCell::new(15, key_data.clone()).into()).expect_err("shouldn't be able to insert into page");
+        assert!(matches!(err, Error::WriteDataError(WriteDataError::AllocationFailed { .. })), "should be an allocation failed error");
+    }
+
+    #[test]
+    fn reuse_cell() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
+        let key_data1 = KeyData::from([Value::from(1_i64)]);
+        let key_data2 = KeyData::from([Value::from(2_i64)]);
+        page.insert(KeyCell::new(15, key_data1.clone()).into()).expect("could not insert into page");
+        page.insert(KeyCell::new(16, key_data2.clone()).into()).expect("could not insert into page");
+        page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into()).expect("could not insert into page");
+        assert_eq!(page.count(), 3);
+        page.delete(&key_data1).expect("could not delete");
+        let removed = page.delete(&key_data2).expect("could not delete").unwrap();
+        println!("free list: {:#?}", page.free_list);
+        page.insert(KeyCell::new(15, key_data1.clone()).into()).expect("could not insert into page");
+        println!("free list: {:#?}", page.free_list);
+        assert!(!page.free_list.is_empty());
+        assert_eq!(page.free_list.front().unwrap().len, removed.len());
+    }
+
+    #[test]
+    fn merge_free_cells() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
+        let key_data1 = KeyData::from([Value::from(1_i64)]);
+        let key_data2 = KeyData::from([Value::from(2_i64)]);
+        page.insert(KeyCell::new(15, key_data1.clone()).into()).expect("could not insert into page");
+        page.insert(KeyCell::new(16, key_data2.clone()).into()).expect("could not insert into page");
+        page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into()).expect("could not insert into page");
+        assert_eq!(page.count(), 3);
+        page.delete(&key_data2).expect("could not delete");
+        println!("free list: {:#?}", page.free_list);
+        let cell_ptr = page.cell_ptr;
+        assert_eq!(page.free_list.len(), 1);
+        let cell = page.free_list.front().unwrap().clone();
+        page.delete(&key_data1).expect("could not delete");
+        println!("free list: {:#?}", page.free_list);
+        assert_eq!(page.free_list.len(), 1, "free list cells should've combined: {:?}", page.free_list);
+        let after_cell = page.free_list.front().unwrap().clone();
+        assert_eq!(cell.offset, after_cell.offset, "offset should've stayed the same");
+        assert_ne!(cell.len, after_cell.len, "length should've changed");
+        assert_eq!(page.cell_ptr, cell_ptr, "cell ptr should not have moved");
+    }
+
+    #[test]
+    fn rebuild_free_cells() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        {
+            let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
+            let key_data1 = KeyData::from([Value::from(1_i64)]);
+            let key_data2 = KeyData::from([Value::from(2_i64)]);
+            page.insert(KeyCell::new(15, key_data1.clone()).into()).expect("could not insert into page");
+            page.insert(KeyCell::new(16, key_data2.clone()).into()).expect("could not insert into page");
+            page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into()).expect("could not insert into page");
+            page.delete(&key_data2).expect("could not delete");
+            page.delete(&key_data1).expect("could not delete");
+        }
+        let page = slotted_pager.get(PageId::new(1.try_into().unwrap())).unwrap();
+        assert!(!page.free_list.is_empty(), "free list should not be empty");
+    }
+
+    #[test]
+    fn rebuild_has_no_free_cells_if_no_deletions() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        {
+            let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
+            let key_data1 = KeyData::from([Value::from(1_i64)]);
+            let key_data2 = KeyData::from([Value::from(2_i64)]);
+            page.insert(KeyCell::new(15, key_data1.clone()).into()).expect("could not insert into page");
+            page.insert(KeyCell::new(16, key_data2.clone()).into()).expect("could not insert into page");
+            page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into()).expect("could not insert into page");
+        }
+        let page = slotted_pager.get(PageId::new(1.try_into().unwrap())).unwrap();
+        assert!(page.free_list.is_empty(), "free list should not be empty");
     }
 }
