@@ -67,7 +67,7 @@ fn transactions_in_memory() -> Result<(), Error> {
                     Ok(DbResp::Ok)
                 }
             })()
-                .into_db_resp())
+            .into_db_resp())
         }))
         .join()
         .unwrap()

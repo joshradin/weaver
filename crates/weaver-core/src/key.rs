@@ -4,6 +4,7 @@ use derive_more::From;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
 use std::ops::{Bound, Deref, RangeBounds};
+use tracing::trace;
 
 /// Keys are always order-able
 #[derive(Clone, PartialEq, Eq, PartialOrd, Hash)]
@@ -15,7 +16,7 @@ impl Debug for KeyData {
             0 => panic!("key data can not be 0 length"),
             1 => self.0[0].fmt(f),
             2..=3 => self.0.fmt(f),
-            _ =>  write!(f, "{:?}", self.0)
+            _ => write!(f, "{:?}", self.0),
         }
     }
 }
@@ -112,36 +113,28 @@ impl KeyDataRange {
     /// Checks if the given key is greater than the range given
     pub fn is_greater(&self, key_data: &KeyData) -> bool {
         match &self.0 {
-            Bound::Included(included) if key_data > included => {
-                true
-            }
-            Bound::Excluded(excluded) if key_data >= excluded  => {
-                true
-            }
-           _ => false
+            Bound::Included(included) if key_data > included => true,
+            Bound::Excluded(excluded) if key_data >= excluded => true,
+            _ => false,
         }
     }
 
     /// Checks if the given key is less than the range given
     pub fn is_less(&self, key_data: &KeyData) -> bool {
         match &self.1 {
-            Bound::Included(included) if key_data < included => {
-                true
-            }
-            Bound::Excluded(excluded) if key_data <= excluded  => {
-                true
-            }
-            _ => false
+            Bound::Included(included) if key_data < included => true,
+            Bound::Excluded(excluded) if key_data <= excluded => true,
+            _ => false,
         }
     }
 
     /// Checks if two ranges overlap
     pub fn overlaps(&self, other: &Self) -> bool {
         partial_compare_bounds(&self.0, &other.1)
-            .map(|ordering| ordering.is_le())
+            .map(|ordering| (ordering.is_le()))
             .unwrap_or(false)
-            && partial_compare_bounds(&other.0, &self.1)
-                .map(|ordering| ordering.is_le())
+            || partial_compare_bounds(&other.0, &self.1)
+                .map(|ordering| (ordering.is_le()))
                 .unwrap_or(false)
     }
 
@@ -153,40 +146,49 @@ impl KeyDataRange {
 
         let min = [&self.0, &other.0]
             .into_iter()
-            .min_by(|&a, &b| compare_bounds(a, b));
+            .min_by(|&a, &b| compare_bounds(a, b))
+            .unwrap();
+        let max = [&self.1, &other.1]
+            .into_iter()
+            .max_by(|&a, &b| compare_bounds(a, b))
+            .unwrap();
 
-        todo!()
+        let range = Self(min.clone(), max.clone());
+        trace!(
+            "combining {:15?} with {:15?} into {:15?}",
+            self,
+            other,
+            range
+        );
+        Some(range)
+    }
+
+    pub fn start_bound(&self) -> Bound<&KeyData> {
+        self.0.as_ref()
+    }
+
+    pub fn end_bound(&self) -> Bound<&KeyData> {
+        self.1.as_ref()
     }
 }
 
 impl Debug for KeyDataRange {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
-            Bound::Included(i) => {
-                write!(f, "[{i:?}")?
-            }
-            Bound::Excluded(i) => {
-                write!(f, "({i:?}")?
-            }
-            Bound::Unbounded => {
-                write!(f, "(")?
-            }
+            Bound::Included(i) => write!(f, "[{i:?}")?,
+            Bound::Excluded(i) => write!(f, "({i:?}")?,
+            Bound::Unbounded => write!(f, "(")?,
         }
         write!(f, ",")?;
         match &self.1 {
-            Bound::Included(i) => {
-                write!(f, "{i:?}]")?
-            }
-            Bound::Excluded(i) => {
-                write!(f, "{i:?})")?
-            }
-            Bound::Unbounded => {
-                write!(f, ")")?
-            }
+            Bound::Included(i) => write!(f, "{i:?}]")?,
+            Bound::Excluded(i) => write!(f, "{i:?})")?,
+            Bound::Unbounded => write!(f, ")")?,
         }
         Ok(())
     }
 }
+
 
 fn partial_compare_bounds<T: PartialOrd>(b1: &Bound<T>, b2: &Bound<T>) -> Option<Ordering> {
     match (b1, b2) {

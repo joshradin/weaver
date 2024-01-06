@@ -9,7 +9,7 @@ use weaver_client::write_rows::write_rows;
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::LoginContext;
 use weaver_core::cnxn::MessageStream;
-use weaver_core::queries::ast::Query;
+use weaver_core::queries::ast::{Query, Select};
 
 use crate::cli::App;
 
@@ -43,13 +43,13 @@ fn main() -> eyre::Result<()> {
         }
     };
 
-    let query = Query::Select {
+    let query = Query::Select(Select {
         columns: vec!["*".to_string()],
-        table_ref: ("system".to_string(), "processes".to_string()),
+        table_ref: "system.process".to_string(),
         condition: None,
         limit: None,
         offset: None,
-    };
+    });
 
     let (rows, duration) = connection.query(&query)?;
     write_rows(stdout(), rows, duration)?;

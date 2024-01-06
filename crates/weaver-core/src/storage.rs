@@ -1,21 +1,25 @@
 //! Storage primitives
 
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::io::Write;
 use std::string::FromUtf8Error;
 use thiserror::Error;
-pub mod b_tree;
-pub mod cells;
-pub mod slotted_page;
 mod abstraction;
+pub mod b_plus_tree_2;
+pub mod cells;
+pub mod indexed_file_page;
 pub mod ram_file;
+pub mod slotted_page;
+pub mod slotted_page_2;
 
 pub type ReadResult<T> = Result<T, ReadDataError>;
 pub type WriteResult<T> = Result<T, WriteDataError>;
 
 #[derive(Debug, Error)]
 pub enum ReadDataError {
-    #[error("Could not read all the data required for this cell")]
+    #[error("No enough space to read data")]
+    NotEnoughSpace,
+    #[error("Could not read all the data required for this cell because EOF reach unexpectedly")]
     UnexpectedEof,
     #[error("Magic number did not exist")]
     BadMagicNumber,
@@ -35,25 +39,30 @@ pub enum WriteDataError {
     AllocationFailed { page_id: u32, size: usize },
 }
 
-pub trait StorageBackedData<'a>: Sized {
+pub trait StorageBackedData
+{
+    type Owned : Borrow<Self>;
+
     /// Try to read a keycell
-    fn read(buf: &'a [u8]) -> ReadResult<Self>;
+    fn read(buf: &[u8]) -> ReadResult<Self::Owned>;
     /// Write a key cell, returns the number of bytes written if successful
 
-    fn write(&'a self, buf: &mut [u8]) -> WriteResult<usize>;
+    fn write(&self, buf: &mut [u8]) -> WriteResult<usize>;
 }
 
 macro_rules! integer {
     ($int:ty) => {
-        impl<'a> StorageBackedData<'a> for $int {
-            fn read(buf: &'a [u8]) -> ReadResult<Self> {
+        impl StorageBackedData for $int {
+            type Owned = Self;
+
+            fn read(buf: &[u8]) -> ReadResult<Self> {
                 const size: usize = std::mem::size_of::<$int>();
                 let mut int_buf = [0u8; size];
                 int_buf.clone_from_slice(buf.get(..size).ok_or(ReadDataError::UnexpectedEof)?);
                 Ok(<$int>::from_be_bytes(int_buf))
             }
 
-            fn write(&'a self, mut buf: &mut [u8]) -> WriteResult<usize> {
+            fn write(&self, mut buf: &mut [u8]) -> WriteResult<usize> {
                 use std::io::Write;
                 buf.write_all(&self.to_be_bytes())
                     .map_err(|e| WriteDataError::InsufficientSpace)?;
@@ -75,9 +84,11 @@ integer!(i64);
 macro_rules! optional_integer {
     ($int:ty) => {
         #[doc("treats 0 value as None")]
-        impl<'a> StorageBackedData<'a> for Option<$int> {
-            fn read(buf: &'a [u8]) -> ReadResult<Self> {
-                let r: $int = <$int as StorageBackedData<'a>>::read(buf)?;
+        impl StorageBackedData for Option<$int> {
+            type Owned = Self;
+
+            fn read(buf: &[u8]) -> ReadResult<Self> {
+                let r: $int = <$int as StorageBackedData>::read(buf)?;
                 if r == 0 {
                     Ok(None)
                 } else {
@@ -85,7 +96,7 @@ macro_rules! optional_integer {
                 }
             }
 
-            fn write(&'a self, buf: &mut [u8]) -> WriteResult<usize> {
+            fn write(&self, buf: &mut [u8]) -> WriteResult<usize> {
                 self.unwrap_or(0).write(buf)
             }
         }
@@ -101,16 +112,19 @@ optional_integer!(i16);
 optional_integer!(i32);
 optional_integer!(i64);
 
-impl<'a> StorageBackedData<'a> for &'a [u8] {
-    fn read(buf: &'a [u8]) -> ReadResult<Self> {
+impl StorageBackedData for [u8] {
+    type Owned = Box<[u8]>;
+
+    fn read(buf: &[u8]) -> ReadResult<Self::Owned> {
         let len = u64::read(buf)?;
         buf.get(8..)
             .ok_or(ReadDataError::UnexpectedEof)?
             .get(..len as usize)
             .ok_or(ReadDataError::UnexpectedEof)
+            .map(Box::from)
     }
 
-    fn write(&'a self, mut buf: &mut [u8]) -> WriteResult<usize> {
+    fn write(&self, mut buf: &mut [u8]) -> WriteResult<usize> {
         let len_a = (self.len() as u64).write(buf)?;
         buf.write_all(self)
             .map_err(|_| WriteDataError::InsufficientSpace)?;
@@ -118,24 +132,16 @@ impl<'a> StorageBackedData<'a> for &'a [u8] {
     }
 }
 
-impl<'a> StorageBackedData<'a> for Cow<'a, str> {
-    fn read(buf: &'a [u8]) -> ReadResult<Self> {
-        let s = String::from_utf8_lossy(<&'a [u8]>::read(buf)?);
-        Ok(s)
+impl StorageBackedData for str {
+    type Owned = String;
+
+    fn read(buf: &[u8]) -> ReadResult<String> {
+        let read: Box<[u8]> = <[u8]>::read(buf)?;
+        let bytes = String::from_utf8_lossy(&*read);
+        Ok(bytes.to_string())
     }
 
-    fn write(&'a self, buf: &mut [u8]) -> WriteResult<usize> {
-        self.as_bytes().write(buf)
-    }
-}
-
-impl<'a> StorageBackedData<'a> for String {
-    fn read(buf: &'a [u8]) -> ReadResult<Self> {
-        let s = Cow::read(buf)?;
-        Ok(s.to_string())
-    }
-
-    fn write(&'a self, buf: &mut [u8]) -> WriteResult<usize> {
+    fn write(&self, buf: &mut [u8]) -> WriteResult<usize> {
         self.as_bytes().write(buf)
     }
 }

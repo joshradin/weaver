@@ -111,10 +111,11 @@ pub enum Error {
     ChildNotFound(u32),
     #[error("Out of range")]
     OutOfRange,
+    #[error("Failed to allocate {0} bytes")]
+    AllocationFailed(usize),
 
     #[error("{0}")]
     Custom(String),
-
 }
 
 impl Error {

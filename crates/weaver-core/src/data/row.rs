@@ -10,6 +10,7 @@ use std::fmt;
 use std::fmt::{Debug, Formatter, Write};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::slice::SliceIndex;
+use crate::key::KeyData;
 
 /// A row of data
 #[derive(PartialEq, Eq, PartialOrd, Hash)]
@@ -137,9 +138,11 @@ impl From<Vec<Value>> for Row<'_> {
     }
 }
 
-impl<const N: usize> From<[Value; N]> for Row<'_> {
-    fn from(value: [Value; N]) -> Self {
-        Self::from(value.into_iter().collect::<Vec<_>>())
+impl<V : Into<Value>, const N: usize> From<[V; N]> for Row<'_>
+
+{
+    fn from(value: [V; N]) -> Self {
+        Self::from(value.into_iter().map(|value| value.into()).collect::<Vec<_>>())
     }
 }
 
@@ -273,6 +276,22 @@ impl<'a> From<Row<'a>> for OwnedRow {
             .into_boxed_slice()))
     }
 }
+impl<V : Into<Value>, const N: usize> From<[V; N]> for OwnedRow
+
+{
+    fn from(value: [V; N]) -> Self {
+        Row::from(value.into_iter().map(|value| value.into()).collect::<Vec<_>>()).into()
+    }
+}
+impl<'a> From<&Row<'a>> for OwnedRow {
+    fn from(value: &Row<'a>) -> Self {
+        Self(Row(value
+            .iter()
+            .map(|c| Cow::Owned(c.to_owned().into_owned()))
+            .collect::<Vec<_>>()
+            .into_boxed_slice()))
+    }
+}
 
 impl Clone for OwnedRow {
     fn clone(&self) -> Self {
@@ -292,15 +311,7 @@ impl<'a> AsRef<Row<'a>> for OwnedRow {
     }
 }
 
-impl<'a> From<&Row<'a>> for OwnedRow {
-    fn from(value: &Row<'a>) -> Self {
-        Self(Row(value
-            .iter()
-            .map(|c| Cow::Owned(c.to_owned().into_owned()))
-            .collect::<Vec<_>>()
-            .into_boxed_slice()))
-    }
-}
+
 
 impl Deref for OwnedRow {
     type Target = Row<'static>;

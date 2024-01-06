@@ -178,6 +178,6 @@ mod tests {
     #[test]
     fn serialize_data() {
         let mut serializer = DataSerializer::new(SerdeMode::Untyped);
-        serializer.serialize_row(KeyData::from(Row::from([])))
+        serializer.serialize_row(KeyData::from(Row::from([1])))
     }
 }

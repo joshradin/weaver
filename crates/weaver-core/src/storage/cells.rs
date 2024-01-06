@@ -6,11 +6,11 @@ use std::mem::size_of;
 
 use bitfield::bitfield;
 use derive_more::From;
+use std::num::NonZeroU32;
 
 use crate::data::row::OwnedRow;
 use crate::data::serde::{deserialize_data_typed, serialize_data_typed, serialize_data_untyped};
 use crate::key::{KeyData, KeyDataRange};
-use crate::rows::{KeyIndex, KeyIndexKind};
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
 
 /// A cell can either just store a key, or a key-value
@@ -66,14 +66,17 @@ impl KeyCell {
     pub fn len(&self) -> usize {
         2 * size_of::<u32>() + self.bytes.len()
     }
-    pub fn page_id(&self) -> u32 {
-        self.page_id
+
+    /// Gets the id of the page this cell points to.
+    pub fn page_id(&self) -> PageId {
+        PageId::new(self.page_id.try_into().expect("must always be > 0"))
     }
 }
 
-impl<'a> StorageBackedData<'a> for KeyCell {
+impl StorageBackedData for KeyCell {
+    type Owned = Self;
     /// Try to read a keycell
-    fn read(buf: &'a [u8]) -> ReadResult<Self> {
+    fn read(buf: &[u8]) -> ReadResult<Self> {
         let mut u32_buf = [0u8; 4];
         u32_buf.clone_from_slice(buf.get(..4).ok_or(ReadDataError::UnexpectedEof)?);
         let key_size = u32::from_be_bytes(u32_buf);
@@ -93,7 +96,7 @@ impl<'a> StorageBackedData<'a> for KeyCell {
     }
     /// Write a key cell, returns the number of bytes written if successful
 
-    fn write(&'a self, mut buf: &mut [u8]) -> WriteResult<usize> {
+    fn write(&self, mut buf: &mut [u8]) -> WriteResult<usize> {
         buf.write_all(&self.key_size.to_be_bytes())
             .map_err(|e| WriteDataError::InsufficientSpace)?;
         buf.write_all(&self.page_id.to_be_bytes())
@@ -151,8 +154,9 @@ bitfield! {
     impl Debug;
 }
 
-impl<'a> StorageBackedData<'a> for KeyValueCell {
-    fn read(buf: &'a [u8]) -> ReadResult<Self> {
+impl StorageBackedData for KeyValueCell {
+    type Owned = Self;
+    fn read(buf: & [u8]) -> ReadResult<Self> {
         let flags = Flags(*buf.get(0).ok_or(ReadDataError::UnexpectedEof)?);
         let mut u32_buf = [0u8; 4];
         u32_buf.clone_from_slice(buf.get(1..5).ok_or(ReadDataError::UnexpectedEof)?);
@@ -178,7 +182,7 @@ impl<'a> StorageBackedData<'a> for KeyValueCell {
         })
     }
 
-    fn write(&'a self, mut buf: &mut [u8]) -> WriteResult<usize> {
+    fn write(&self, mut buf: &mut [u8]) -> WriteResult<usize> {
         buf.write_all(&[self.flags.0])
             .map_err(|e| WriteDataError::InsufficientSpace)?;
         buf.write_all(&self.key_size.to_be_bytes())
@@ -232,5 +236,31 @@ mod tests {
         assert!(buffer.iter().any(|b| *b > 0));
         let read_key_cell = KeyValueCell::read(&buffer).expect("could not read key cell");
         assert_eq!(read_key_cell, key_cell);
+    }
+}
+
+/// A page id
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct PageId(u32);
+
+impl PageId {
+    pub fn new(id: NonZeroU32) -> Self {
+        Self(id.get())
+    }
+
+    pub fn as_u32(&self) -> u32 {
+        self.0
+    }
+}
+
+impl StorageBackedData for PageId {
+    type Owned = Self;
+    fn read(buf: &[u8]) -> ReadResult<Self> {
+        let inner: u32 = u32::read(buf)?;
+        Ok(Self(inner))
+    }
+
+    fn write(&self, buf: &mut [u8]) -> WriteResult<usize> {
+        self.0.write(buf)
     }
 }

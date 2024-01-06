@@ -5,7 +5,8 @@
 //! - Reclaim space occupied by the removal of records
 //! - Reference records in the page without regard to their exact location
 
-use std::collections::{Bound, BTreeMap};
+use std::borrow::Cow;
+use std::collections::{BTreeMap, Bound};
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::mem::{size_of, size_of_val};
@@ -20,9 +21,9 @@ use tracing::trace;
 
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
-use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell};
 use crate::storage::ram_file::RandomAccessFile;
+use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
 
 /// PAGE size is 16Kb
 pub const PAGE_SIZE: usize = 1024 * 16;
@@ -43,7 +44,7 @@ pub struct SlottedPage {
 impl SlottedPage {
     /// Opens a page at a given path
     pub fn open_path<P: AsRef<Path>>(path: P, page_index: usize) -> Result<SlottedPage, Error> {
-        let file = RandomAccessFile::with_file(File::open(path)?, false)?;
+        let file = RandomAccessFile::with_file(File::open(path)?)?;
         Self::open(file, page_index)
     }
 
@@ -210,6 +211,10 @@ impl SlottedPage {
         self.header.page_type
     }
 
+    pub fn cells(&self) -> impl Iterator<Item = Cell> + '_ {
+        self.slots.iter().flat_map(|(key, slot)| self.get_cell(key))
+    }
+
     pub fn free_space(&self) -> u64 {
         (self.cells_start - self.slots_end)
             + self
@@ -276,20 +281,13 @@ impl SlottedPage {
 
     /// Gets the max key value. This should always be the maximum key value and its associated cell
     pub fn last_key_value(&self) -> Option<(KeyData, Cell)> {
-        self.slots.last_key_value()
-            .and_then(|(key, &offset)|
-                self.get_cell(key)
-                    .map(|cell| (key.clone(), cell))
-            )
+        self.slots
+            .last_key_value()
+            .and_then(|(key, &offset)| self.get_cell(key).map(|cell| (key.clone(), cell)))
     }
 
     /// Checks if adding new entry with a given size is feasible
     fn can_alloc(&self, len: usize) -> bool {
-        trace!(
-            "checking if can fit len {len} when cell_start: {} and slot_end: {}",
-            self.cells_start,
-            self.slots_end
-        );
         let new_cells_start = self.cells_start.checked_sub(len as u64);
         let new_slot_end = self.slots_end.checked_add(len as u64);
         new_slot_end
@@ -500,13 +498,20 @@ impl SlottedPage {
 
     pub fn key_data_range(&self) -> KeyDataRange {
         KeyDataRange(
-            self.slots.first_key_value()
+            self.slots
+                .first_key_value()
                 .map(|(k, v)| Bound::Included(k.clone()))
                 .unwrap_or(Bound::Unbounded),
-            self.slots.last_key_value()
+            self.slots
+                .last_key_value()
                 .map(|(k, v)| Bound::Included(k.clone()))
-                .unwrap_or(Bound::Unbounded)
+                .unwrap_or(Bound::Unbounded),
         )
+    }
+
+    pub fn swap(left: &mut Self, right: &mut Self) -> Result<(), Error> {
+        std::mem::swap(&mut left.index, &mut right.index);
+        left.flush().and(right.flush())
     }
 }
 
@@ -548,8 +553,9 @@ impl Header {
     }
 }
 
-impl<'a> StorageBackedData<'a> for Header {
-    fn read(buf: &'a [u8]) -> ReadResult<Self> {
+impl StorageBackedData for Header {
+    type Owned = Self;
+    fn read(buf: & [u8]) -> ReadResult<Self> {
         let magic = u64::read(buf)?;
         if magic != HEADER_MAGIC_NUMBER {
             return Err(ReadDataError::BadMagicNumber);
@@ -576,7 +582,7 @@ impl<'a> StorageBackedData<'a> for Header {
         })
     }
 
-    fn write(&'a self, mut buf: &mut [u8]) -> WriteResult<usize> {
+    fn write(&self, mut buf: &mut [u8]) -> WriteResult<usize> {
         let len = self.magic_number.write(buf)?;
         buf = &mut buf[len..];
         let len = self.page_id.write(buf)?;
@@ -601,8 +607,9 @@ pub enum PageType {
     KeyValue = 2,
 }
 
-impl<'a> StorageBackedData<'a> for PageType {
-    fn read(buf: &'a [u8]) -> ReadResult<Self> {
+impl StorageBackedData for PageType {
+    type Owned = Self;
+    fn read(buf: &[u8]) -> ReadResult<Self> {
         match buf.get(0) {
             Some(1) => Ok(PageType::Key),
             Some(2) => Ok(PageType::KeyValue),
@@ -611,7 +618,7 @@ impl<'a> StorageBackedData<'a> for PageType {
         }
     }
 
-    fn write(&'a self, buf: &mut [u8]) -> WriteResult<usize> {
+    fn write(&self, buf: &mut [u8]) -> WriteResult<usize> {
         let b = *self as u8;
         b.write(buf)
     }
@@ -620,6 +627,11 @@ impl<'a> StorageBackedData<'a> for PageType {
 /// Invariant over Key slotted pages
 #[derive(Debug, Deref, DerefMut)]
 pub struct KeySlottedPage(SlottedPage);
+impl KeySlottedPage {
+    pub fn unwrap(self) -> SlottedPage {
+        self.0
+    }
+}
 
 impl TryFrom<SlottedPage> for KeySlottedPage {
     type Error = Error;
@@ -639,6 +651,12 @@ impl TryFrom<SlottedPage> for KeySlottedPage {
 /// Invariant over Key Value slotted pages
 #[derive(Debug, Deref, DerefMut)]
 pub struct KeyValueSlottedPage(SlottedPage);
+
+impl KeyValueSlottedPage {
+    pub fn unwrap(self) -> SlottedPage {
+        self.0
+    }
+}
 
 impl TryFrom<SlottedPage> for KeyValueSlottedPage {
     type Error = Error;
@@ -663,8 +681,8 @@ mod tests {
     use crate::error::Error;
     use crate::key::KeyData;
     use crate::storage::cells::KeyValueCell;
+    use crate::storage::slotted_page::{PageType, SlottedPage, PAGE_SIZE};
     use crate::storage::ReadDataError;
-    use crate::storage::slotted_page::{PAGE_SIZE, PageType, SlottedPage};
 
     #[test]
     fn can_not_read_uninit_page() {
@@ -686,8 +704,8 @@ mod tests {
             SlottedPage::create(&file, NonZeroU32::new(1).unwrap(), PageType::KeyValue, 0)
                 .expect("should create file");
         page.insert(KeyValueCell::new(
-            KeyData::from(Row::from([1.into()])),
-            Row::from([1.into(), 2.into()]).to_owned(),
+            KeyData::from(Row::from([1])),
+            Row::from([1, 2]).to_owned(),
         ))
         .unwrap();
         drop(page);
@@ -703,10 +721,10 @@ mod tests {
         let mut page =
             SlottedPage::create(&file, NonZeroU32::new(1).unwrap(), PageType::KeyValue, 0)
                 .expect("should create file");
-        let key_data = KeyData::from(Row::from([1.into()]));
+        let key_data = KeyData::from(Row::from([1]));
         page.insert(KeyValueCell::new(
             key_data.clone(),
-            Row::from([1.into(), 2.into()]).to_owned(),
+            Row::from([1, 2]).to_owned(),
         ))
         .unwrap();
         assert_eq!(page.len(), 1);
@@ -721,21 +739,21 @@ mod tests {
         let mut page =
             SlottedPage::create(&file, NonZeroU32::new(1).unwrap(), PageType::KeyValue, 0)
                 .expect("should create file");
-        let cell_1_key = KeyData::from(Row::from([1.into()]));
+        let cell_1_key = KeyData::from(Row::from([1]));
         page.insert(KeyValueCell::new(
             cell_1_key.clone(),
-            Row::from([1.into(), 2.into()]).to_owned(),
+            Row::from([1, 2]).to_owned(),
         ))
         .unwrap();
         drop(page);
         let page = SlottedPage::open_path(file.clone(), 0).unwrap();
         let mut page2 =
             SlottedPage::create(&file, NonZeroU32::new(2).unwrap(), PageType::KeyValue, 1).unwrap();
-        let cell_2_key = KeyData::from(Row::from([4.into()]));
+        let cell_2_key = KeyData::from(Row::from([4]));
         page2
             .insert(KeyValueCell::new(
                 cell_2_key.clone(),
-                Row::from([5.into(), 7.into()]).to_owned(),
+                Row::from([5, 7]).to_owned(),
             ))
             .unwrap();
         assert_eq!(page2.header.page_id, 2);
@@ -752,7 +770,7 @@ mod tests {
         let mut page =
             SlottedPage::create(&file, NonZeroU32::new(1).unwrap(), PageType::KeyValue, 0)
                 .expect("should create file");
-        let key_data = KeyData::from(Row::from([]));
+        let key_data = KeyData::from(Row::from([0]));
     }
 
     #[test]
