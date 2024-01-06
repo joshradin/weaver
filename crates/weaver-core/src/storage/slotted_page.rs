@@ -58,8 +58,6 @@ pub struct SlottedPage<P: Page> {
     slot_ptr: usize,
     /// points to the beginning of the cells
     cell_ptr: usize,
-    /// key to offset
-    slots: BTreeMap<KeyData, usize>,
     /// A list of free space
     free_list: LinkedList<FreeCell>,
 }
@@ -95,20 +93,45 @@ impl<P: Page> SlottedPage<P> {
         Ok(())
     }
 
+    /// Works similarly to how the binary search method works in the [`slice`][<\[_\]>::binary_search] primitive.
+    ///
+    /// If present, `Ok(index)` is returned, and if not present `Err(index)` is returned, where the index
+    /// is where the key data could be inserted to maintain sort order.
+    pub fn binary_search(&self, key_data: &KeyData) -> Result<Result<usize, usize>, Error> {
+        let mut l: usize = 0;
+        let mut r: usize = self.count().checked_sub(1).unwrap_or(0);
+
+        while l <= r {
+            let m = (l + r) / 2;
+            let kd_search = self.get_key_data(m)?;
+            if &kd_search < key_data {
+                l = m + 1;
+            } else if &kd_search > key_data {
+                r = m - 1;
+            } else {
+                return Ok(Ok(m));
+            }
+        }
+        Ok(Err((l + r) / 2))
+    }
+
     /// Checks if this page contains
     pub fn contains(&self, key_data: &KeyData) -> bool {
-        self.slots.contains_key(key_data)
+        match self.binary_search(key_data) {
+            Ok(Ok(_)) => true,
+            _ => false
+        }
     }
 
     /// Get a cell by key value
     pub fn get(&self, key_data: &KeyData) -> Result<Option<Cell>, Error> {
-        match self.slots.get(key_data)
-                  .map(|&index| {
-                      self.get_cell_at_offset(index)
-                  }) {
-            None => { Ok(None) }
-            Some(result) => {
-                result.map(Some)
+        let index = self.binary_search(key_data)?;
+        match index {
+            Ok(index) => {
+                self.get_cell(index).map(Some)
+            }
+            Err(_) => {
+                Ok(None)
             }
         }
     }
@@ -116,13 +139,7 @@ impl<P: Page> SlottedPage<P> {
     /// Get cells within a range
     pub fn get_range<I: Into<KeyDataRange>>(&self, key_data: I) -> Result<Vec<Cell>, Error> {
         let range = key_data.into();
-        self.slots
-            .range((range.start_bound(), range.end_bound()))
-            .fuse()
-            .map(|(_, &c_offset)| {
-                self.get_cell_at_offset(c_offset)
-            })
-            .collect::<Result<_, _>>()
+        todo!("get cells within a range")
     }
 
     /// Gets all the cells within this page
@@ -136,8 +153,8 @@ impl<P: Page> SlottedPage<P> {
         if !self.contains(key_data) {
             return Ok(None);
         }
-
-        let &cell_offset = self.slots.get(key_data).unwrap();
+        let slot = self.binary_search(key_data)?.unwrap();
+        let cell_offset = self.get_cell_offset(slot)?;
         let slot_offset = self.get_slot_offset_from_cell_offset(cell_offset)?.expect("slot offset should exist");
 
         let read = self.get_cell_at_offset(cell_offset)?;
@@ -250,13 +267,6 @@ impl<P: Page> SlottedPage<P> {
                 .try_for_each(|(cell_offset, slot_offset)| -> Result<_, _> {
                     self.write_ptr(slot_offset, cell_offset)
                 }).expect("failed to sync slots in data");
-
-        self.slots.clear();
-        for slot_index in 0..self.count() {
-            let offset = self.get_cell_offset(slot_index).expect("could not get slot index");
-            let cell = self.get_cell_at_offset(offset).expect("could not get cell");
-            self.slots.insert(cell.key_data(), offset);
-        }
     }
 
     fn merge_free_cells(&mut self) {
@@ -320,6 +330,11 @@ impl<P: Page> SlottedPage<P> {
     fn get_cell(&self, slot: usize) -> Result<Cell, Error> {
         let cell_ptr = self.get_cell_offset(slot)?;
         self.get_cell_at_offset(cell_ptr)
+    }
+
+    /// Gets the key data at the slot index
+    fn get_key_data(&self, slot: usize) -> Result<KeyData, Error> {
+        self.get_cell(slot).map(|cell| cell.key_data())
     }
 
     /// Gets the cell offset of a slot
@@ -683,7 +698,6 @@ fn make_slotted<P: Page>(page: P) -> SlottedPage<P> {
         header: Mad::new(header),
         slot_ptr,
         cell_ptr,
-        slots: Default::default(),
         free_list: Default::default(),
     };
     output.sync_slots();
@@ -734,7 +748,6 @@ impl<P: Paged> Paged for SlottedPageAllocator<P> {
                 header: Mad::new(header),
                 slot_ptr: 0,
                 cell_ptr,
-                slots: Default::default(),
                 free_list: Default::default(),
             },
             index,
@@ -852,6 +865,21 @@ mod tests {
         let key_data = KeyData::from([Value::from(1_i64)]);
         let err = page.insert(KeyCell::new(15, key_data.clone()).into()).expect_err("shouldn't be able to insert into page");
         assert!(matches!(err, Error::WriteDataError(WriteDataError::AllocationFailed { .. })), "should be an allocation failed error");
+    }
+
+    #[test]
+    fn binary_search() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
+
+        for i in 0..32 {
+            let key_data = KeyData::from([Value::from(i)]);
+            page.insert(KeyCell::new(15, key_data.clone()).into()).unwrap();
+        }
+
+        let page = page.binary_search(&KeyData::from([18])).expect("should not fail");
+        assert!(matches!(page, Ok(_)));
+        assert_eq!(page.unwrap(), 18);
     }
 
     #[test]
