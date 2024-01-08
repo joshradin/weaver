@@ -1,19 +1,20 @@
 //! Second version of slotted pages, built over page abstractions
 
-use std::collections::{BTreeMap, LinkedList, VecDeque};
+use std::collections::{BTreeMap, Bound, LinkedList, VecDeque};
 use std::iter::FusedIterator;
 use std::mem::{size_of, size_of_val};
 use std::num::NonZeroU32;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Arc, OnceLock};
 
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
-use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
-use crate::storage::abstraction::{Page, Paged, PageWithHeader, SplitPage};
+use crate::storage::abstraction::{Page, PageWithHeader, Paged, SplitPage};
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
+use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
 
 impl StorageBackedData for Option<PageId> {
     type Owned = Self;
@@ -28,8 +29,8 @@ impl StorageBackedData for Option<PageId> {
 
     fn write(&self, buf: &mut [u8]) -> WriteResult<usize> {
         match self {
-            None => { 0_u32.write(buf) }
-            Some(i) => { i.write(buf) }
+            None => 0_u32.write(buf),
+            Some(i) => i.write(buf),
         }
     }
 }
@@ -60,21 +61,27 @@ pub struct SlottedPage<P: Page> {
     cell_ptr: usize,
     /// A list of free space
     free_list: LinkedList<FreeCell>,
+    lock: OnceLock<Arc<AtomicBool>>,
+    my_lock: bool,
 }
 
 impl<P: Page> SlottedPage<P> {
-    /// Insert a cell into a slotted page
+    /// Insert a cell into a slotted page. Must lock the cell
     pub fn insert(&mut self, cell: Cell) -> Result<(), Error> {
         self.assert_cell_type(&cell)?;
+        self.lock()?;
         let ref key_data = cell.key_data();
         let cell_len = cell.len();
         if self.contains(key_data) {
             self.delete(key_data)?;
         }
-        let Some(CellPtr { slot: _, cell: cell_ptr }) = self.alloc(cell_len) else {
+        let Some(CellPtr {
+            slot: _,
+            cell: cell_ptr,
+        }) = self.alloc(cell_len)
+        else {
             return Err(WriteDataError::InsufficientSpace.into());
         };
-        println!("inserting cell at {}", cell_ptr);
 
         let mut data = &mut self.page.as_mut_slice()[cell_ptr..][..cell_len];
 
@@ -87,10 +94,46 @@ impl<P: Page> SlottedPage<P> {
             }
         }
 
-
         self.sync_slots();
 
         Ok(())
+    }
+
+    /// Locks this page, granting exclusive access to it. Required when performing insertions or deletions.
+    /// Repeatedly locking the page has no effect once successful. Unlocked upon dropping
+    pub fn lock(&mut self) -> Result<(), Error> {
+        if !self.my_lock {
+            match self.lock.get() {
+                None => {}
+                Some(lock) => {
+                    if lock
+                        .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
+                        .is_err()
+                    {
+                        return Err(Error::ReadDataError(ReadDataError::PageLocked(
+                            self.page_id(),
+                        )));
+                    }
+                    self.my_lock = true;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Unlocks this page if this page has exclusive ownership over the backing data.
+    ///
+    /// Has no effect if page is not locked
+    pub fn unlock(&mut self) {
+        if self.my_lock {
+            match self.lock.get() {
+                None => {}
+                Some(lock) => {
+                    let _ = lock.compare_exchange(true, false, Ordering::SeqCst, Ordering::Relaxed);
+                    self.my_lock = false;
+                }
+            }
+        }
     }
 
     /// Works similarly to how the binary search method works in the [`slice`][<\[_\]>::binary_search] primitive.
@@ -107,7 +150,11 @@ impl<P: Page> SlottedPage<P> {
             if &kd_search < key_data {
                 l = m + 1;
             } else if &kd_search > key_data {
-                r = m - 1;
+                if m > 0 {
+                    r = m - 1;
+                } else {
+                    break;
+                }
             } else {
                 return Ok(Ok(m));
             }
@@ -119,7 +166,7 @@ impl<P: Page> SlottedPage<P> {
     pub fn contains(&self, key_data: &KeyData) -> bool {
         match self.binary_search(key_data) {
             Ok(Ok(_)) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -127,19 +174,45 @@ impl<P: Page> SlottedPage<P> {
     pub fn get(&self, key_data: &KeyData) -> Result<Option<Cell>, Error> {
         let index = self.binary_search(key_data)?;
         match index {
-            Ok(index) => {
-                self.get_cell(index).map(Some)
-            }
-            Err(_) => {
-                Ok(None)
-            }
+            Ok(index) => self.get_cell(index).map(Some),
+            Err(_) => Ok(None),
         }
+    }
+
+    /// Gets the cell at the given index, where indexes are relative to slots
+    pub fn index(&self, index: usize) -> Option<Cell> {
+        self.get_cell(index).ok()
     }
 
     /// Get cells within a range
     pub fn get_range<I: Into<KeyDataRange>>(&self, key_data: I) -> Result<Vec<Cell>, Error> {
         let range = key_data.into();
-        todo!("get cells within a range")
+        let l = match range.start_bound() {
+            Bound::Included(i) => match self.binary_search(i)? {
+                Ok(ok) => ok,
+                Err(err) => err,
+            },
+            Bound::Excluded(e) => match self.binary_search(e)? {
+                Ok(ok) => ok + 1,
+                Err(err) => err,
+            },
+            Bound::Unbounded => 0,
+        };
+        let r = match range.end_bound() {
+            Bound::Included(i) => match self.binary_search(i)? {
+                Ok(ok) => ok,
+                Err(err) => err,
+            },
+            Bound::Excluded(e) => match self.binary_search(e)? {
+                Ok(ok) => ok - 1,
+                Err(err) => err,
+            },
+            Bound::Unbounded => self.count() - 1,
+        };
+        (l..=r)
+            .into_iter()
+            .map(|index| self.get_cell(index))
+            .collect()
     }
 
     /// Gets all the cells within this page
@@ -153,14 +226,50 @@ impl<P: Page> SlottedPage<P> {
         if !self.contains(key_data) {
             return Ok(None);
         }
+        self.lock()?;
         let slot = self.binary_search(key_data)?.unwrap();
         let cell_offset = self.get_cell_offset(slot)?;
-        let slot_offset = self.get_slot_offset_from_cell_offset(cell_offset)?.expect("slot offset should exist");
+        let slot_offset = self
+            .get_slot_offset_from_cell_offset(cell_offset)?
+            .expect("slot offset should exist");
 
         let read = self.get_cell_at_offset(cell_offset)?;
         self.free_slot(slot_offset)?;
         self.sync_slots();
         Ok(Some(read))
+    }
+
+    /// Drains the cells from this page that are within a given key data range
+    pub fn drain<I: Into<KeyDataRange>>(&mut self, key_data: I) -> Result<Vec<Cell>, Error> {
+        let range = key_data.into();
+        let kds = self
+            .get_range(range)?
+            .into_iter()
+            .map(|cell| cell.key_data());
+        kds.map(|kd| self.delete(&kd))
+            .flat_map(|res| match res {
+                Ok(Some(cell)) => Some(Ok(cell)),
+                Ok(None) => None,
+                Err(e) => Some(Err(e)),
+            })
+            .collect()
+    }
+
+    /// Gets the max key in this cell
+    pub fn max_key(&self) -> Result<Option<KeyData>, Error> {
+        if self.count() == 0 {
+            return Ok(None);
+        }
+        self.get_cell(self.count() - 1)
+            .map(|cell| Some(cell.key_data()))
+    }
+
+    /// Gets the min key in this cell
+    pub fn min_key(&self) -> Result<Option<KeyData>, Error> {
+        if self.count() == 0 {
+            return Ok(None);
+        }
+        self.get_cell(0).map(|cell| Some(cell.key_data()))
     }
 
     /// allocate a given length within the slotted page
@@ -173,12 +282,13 @@ impl<P: Page> SlottedPage<P> {
     /// `size + sizeof::<u64>`
     fn alloc(&mut self, size: usize) -> Option<CellPtr> {
         let total_len = size + size_of::<u64>();
-        let existing = self.free_list
-                           .iter()
-                           .enumerate()
-                           .filter(|(_, free_cell)| free_cell.len >= size)
-                           .min_by_key(|(_, free_cell)| free_cell.len)
-                           .map(|tuple| tuple.0);
+        let existing = self
+            .free_list
+            .iter()
+            .enumerate()
+            .filter(|(_, free_cell)| free_cell.len >= size)
+            .min_by_key(|(_, free_cell)| free_cell.len)
+            .map(|tuple| tuple.0);
 
         if self.slot_ptr + size_of::<u64>() >= self.cell_ptr {
             return None;
@@ -209,9 +319,11 @@ impl<P: Page> SlottedPage<P> {
         self.page.as_mut_slice()[slot_ptr..][..size_of::<u64>()]
             .copy_from_slice(&(cell_ptr as u64).to_be_bytes());
 
-        Some(CellPtr { slot: slot_ptr, cell: cell_ptr })
+        Some(CellPtr {
+            slot: slot_ptr,
+            cell: cell_ptr,
+        })
     }
-
 
     /// Frees the slot at the given offset
     fn free_slot(&mut self, slot_offset: usize) -> Result<(), Error> {
@@ -240,7 +352,10 @@ impl<P: Page> SlottedPage<P> {
             self.cell_ptr += cell_len;
         } else {
             // add to free list
-            let free_cell = FreeCell { offset: cell_ptr, len: cell_len };
+            let free_cell = FreeCell {
+                offset: cell_ptr,
+                len: cell_len,
+            };
             self.free_list.push_back(free_cell);
             self.merge_free_cells();
         }
@@ -251,44 +366,51 @@ impl<P: Page> SlottedPage<P> {
     fn sync_slots(&mut self) {
         let key_to_cell_offset = (0..self.count())
             .into_iter()
-            .map(|i| (self.get_cell(i).expect("could not get slot").key_data(), self.get_cell_offset(i).unwrap()))
+            .map(|i| {
+                (
+                    self.get_cell(i).expect("could not get slot").key_data(),
+                    self.get_cell_offset(i).unwrap(),
+                )
+            })
             .collect::<BTreeMap<_, _>>();
 
         let in_order = key_to_cell_offset
             .values()
-            .map(|&index| {
-                index
-            })
+            .map(|&index| index)
             .collect::<Vec<_>>();
 
-        in_order.into_iter().zip(self.slots_offsets())
-                .collect::<Vec<_>>()
-                .into_iter()
-                .try_for_each(|(cell_offset, slot_offset)| -> Result<_, _> {
-                    self.write_ptr(slot_offset, cell_offset)
-                }).expect("failed to sync slots in data");
+        in_order
+            .into_iter()
+            .zip(self.slots_offsets())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .try_for_each(|(cell_offset, slot_offset)| -> Result<_, _> {
+                self.write_ptr(slot_offset, cell_offset)
+            })
+            .expect("failed to sync slots in data");
     }
 
     fn merge_free_cells(&mut self) {
         let mut cells = Vec::from_iter(self.free_list.split_off(0));
         cells.sort_by_key(|cell| cell.offset);
-        self.free_list.append(&mut cells.into_iter()
-                                        .fold(LinkedList::new(), |mut list, next| {
-                                            let merged = if let Some(last) = list.back_mut() {
-                                                if last.offset + last.len == next.offset {
-                                                    last.len += next.len;
-                                                    true
-                                                } else {
-                                                    false
-                                                }
-                                            } else {
-                                                false
-                                            };
-                                            if !merged {
-                                                list.push_back(next);
-                                            }
-                                            list
-                                        }))
+        self.free_list.append(
+            &mut cells.into_iter().fold(LinkedList::new(), |mut list, next| {
+                let merged = if let Some(last) = list.back_mut() {
+                    if last.offset + last.len == next.offset {
+                        last.len += next.len;
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                if !merged {
+                    list.push_back(next);
+                }
+                list
+            }),
+        )
     }
 
     fn get_slot_offset_from_cell_offset(&self, cell_offset: usize) -> Result<Option<usize>, Error> {
@@ -300,14 +422,14 @@ impl<P: Page> SlottedPage<P> {
         }
         Ok(None)
     }
-    fn slots_offsets(&self) -> impl FusedIterator<Item=usize> + '_ {
+    fn slots_offsets(&self) -> impl FusedIterator<Item = usize> + '_ {
         (0..self.count())
             .into_iter()
             .map(|i| self.get_slot_offset(i).expect("could not get slot"))
             .fuse()
     }
 
-    fn cell_offsets(&self) -> impl FusedIterator<Item=usize> + '_ {
+    fn cell_offsets(&self) -> impl FusedIterator<Item = usize> + '_ {
         (0..self.count())
             .into_iter()
             .map(|i| self.get_cell_offset(i).expect("could not get slot"))
@@ -317,12 +439,8 @@ impl<P: Page> SlottedPage<P> {
     /// Gets the given cell at a known offset
     fn get_cell_at_offset(&self, offset: usize) -> Result<Cell, Error> {
         match self.page_type() {
-            PageType::Key => {
-                Ok(KeyCell::read(&self.page.as_slice()[offset..])?.into())
-            }
-            PageType::KeyValue => {
-                Ok(KeyValueCell::read(&self.page.as_slice()[offset..])?.into())
-            }
+            PageType::Key => Ok(KeyCell::read(&self.page.as_slice()[offset..])?.into()),
+            PageType::KeyValue => Ok(KeyValueCell::read(&self.page.as_slice()[offset..])?.into()),
         }
     }
 
@@ -356,7 +474,11 @@ impl<P: Page> SlottedPage<P> {
         if offset > self.page.body_len() - size_of::<u64>() {
             return Err(ReadDataError::NotEnoughSpace.into());
         }
-        Ok(u64::from_be_bytes(self.page.as_slice()[offset..][..size_of::<u64>()].try_into().expect("should be correct number of bytes")) as usize)
+        Ok(u64::from_be_bytes(
+            self.page.as_slice()[offset..][..size_of::<u64>()]
+                .try_into()
+                .expect("should be correct number of bytes"),
+        ) as usize)
     }
 
     /// Writes a pointer (offset from page) at a given offset
@@ -366,9 +488,7 @@ impl<P: Page> SlottedPage<P> {
         }
 
         let buffer = &mut self.page.as_mut_slice()[offset..][..size_of::<u64>()];
-        buffer.copy_from_slice(
-            &(ptr as u64).to_be_bytes()
-        );
+        buffer.copy_from_slice(&(ptr as u64).to_be_bytes());
 
         Ok(())
     }
@@ -391,18 +511,22 @@ impl<P: Page> SlottedPage<P> {
         }
     }
 
-
     pub fn page_id(&self) -> PageId {
         self.header.page_id
     }
 
     pub fn page_type(&self) -> PageType {
-        self.header.page_type.expect("page type should be set at initialization")
+        self.header
+            .page_type
+            .expect("page type should be set at initialization")
     }
 
     /// Gets the page id of the right sibling of this page
     pub fn right_sibling(&self) -> Option<PageId> {
         self.header.right_page_id
+    }
+    pub fn set_right_sibling(&mut self, page_id: impl Into<Option<PageId>>) {
+        self.header.to_mut().right_page_id = page_id.into()
     }
 
     /// Gets the page id of the left sibling of this page
@@ -410,8 +534,16 @@ impl<P: Page> SlottedPage<P> {
         self.header.left_page_id
     }
 
+    pub fn set_left_sibling(&mut self, page_id: impl Into<Option<PageId>>) {
+        self.header.to_mut().left_page_id = page_id.into()
+    }
+
     pub fn parent(&self) -> Option<PageId> {
         self.header.parent_page_id
+    }
+
+    pub fn set_parent(&mut self, parent: impl Into<Option<PageId>>) {
+        self.header.to_mut().parent_page_id = parent.into();
     }
 
     pub fn count(&self) -> usize {
@@ -423,6 +555,9 @@ impl<P: Page> Drop for SlottedPage<P> {
     fn drop(&mut self) {
         if self.header.is_dirty() {
             let _ = self.page.set_header(self.header.as_ref().clone());
+        }
+        if let Some(lock) = self.lock.get() {
+            let _ = lock.compare_exchange(true, false, Ordering::SeqCst, Ordering::Relaxed);
         }
     }
 }
@@ -520,9 +655,9 @@ impl StorageBackedData for SlottedPageHeader {
         }
         const U32_SIZE: usize = size_of::<u32>();
         let buf = &buf[8..];
-        let page_id = u32::read(buf).and_then(|id| NonZeroU32::new(id).ok_or_else(|| {
-            ReadDataError::BadMagicNumber
-        })).map(|u| PageId::new(u))?;
+        let page_id = u32::read(buf)
+            .and_then(|id| NonZeroU32::new(id).ok_or_else(|| ReadDataError::BadMagicNumber))
+            .map(|u| PageId::new(u))?;
         let buf = buf.get(U32_SIZE..).ok_or(ReadDataError::UnexpectedEof)?;
         let left_page_id = <Option<PageId>>::read(buf)?;
         let buf = buf.get(U32_SIZE..).ok_or(ReadDataError::UnexpectedEof)?;
@@ -595,7 +730,8 @@ pub struct SlottedPageAllocator<P: Paged> {
     paged: P,
     next_page_id: AtomicU32,
     free_list: RwLock<VecDeque<usize>>,
-    page_id_to_index:  BTreeMap<PageId, usize>,
+    page_id_to_index: BTreeMap<PageId, usize>,
+    usage: Mutex<BTreeMap<PageId, Arc<AtomicBool>>>,
 }
 
 impl<P: Paged> SlottedPageAllocator<P> {
@@ -606,6 +742,7 @@ impl<P: Paged> SlottedPageAllocator<P> {
                 next_page_id: AtomicU32::new(1),
                 free_list: Default::default(),
                 page_id_to_index: Default::default(),
+                usage: Default::default(),
             }
         } else {
             let mut empty = vec![];
@@ -627,6 +764,7 @@ impl<P: Paged> SlottedPageAllocator<P> {
                 next_page_id: Default::default(),
                 free_list: Default::default(),
                 page_id_to_index: Default::default(),
+                usage: Default::default(),
             }
         };
         if let Some(max) = (0..paged.len())
@@ -641,7 +779,8 @@ impl<P: Paged> SlottedPageAllocator<P> {
         for (page, index) in (0..paged.len())
             .into_iter()
             .filter_map(|p| Paged::get(&paged, p).ok().map(|page| (page.page_id(), p)))
-            .collect::<Vec<_>>(){
+            .collect::<Vec<_>>()
+        {
             paged.page_id_to_index.insert(page, index);
         }
 
@@ -659,7 +798,10 @@ impl<P: Paged> SlottedPageAllocator<P> {
     }
 
     /// Creates a new page of a given type
-    pub fn new_with_type(&mut self, page_type: PageType) -> Result<(SlottedPage<P::Page>, usize), P::Err> {
+    pub fn new_with_type(
+        &mut self,
+        page_type: PageType,
+    ) -> Result<(SlottedPage<P::Page>, usize), P::Err> {
         let (mut new, index) = self.new()?;
         new.header.to_mut().set_page_type(page_type);
         self.page_id_to_index.insert(new.page_id(), index);
@@ -667,10 +809,19 @@ impl<P: Paged> SlottedPageAllocator<P> {
     }
 
     /// Gets the page by a given page_id
-    pub fn get(&self, id: PageId) -> Option<SlottedPage<P::Page>> {
-        self.page_id_to_index.get(&id)
+    pub fn get(&self, id: PageId) -> Result<SlottedPage<P::Page>, Error> {
+        let lock = self.usage.lock().entry(id).or_default().clone();
+
+        self.page_id_to_index
+            .get(&id)
+            .ok_or_else(|| Error::ReadDataError(ReadDataError::PageNotFound(id)))
             .and_then(|index| {
-                Paged::get(self, *index).ok()
+                Paged::get(self, *index)
+                    .map_err(|e| Error::custom(format!("could not read page {}: {e}", index)))
+            })
+            .map(|page| {
+                page.lock.set(lock).expect("lock should be empty");
+                page
             })
     }
 }
@@ -678,8 +829,7 @@ impl<P: Paged> SlottedPageAllocator<P> {
 fn make_slotted<P: Page>(page: P) -> SlottedPage<P> {
     let split = SplitPage::<_, SlottedPageHeader>::new(page, size_of::<SlottedPageHeader>());
     let body_len = split.body_len();
-    let header = split.header()
-                      .expect("could not read header");
+    let header = split.header().expect("could not read header");
     let len = header.size as usize;
     let slot_ptr = len * size_of::<u64>();
     let mut min_offset = split.body_len();
@@ -699,20 +849,28 @@ fn make_slotted<P: Page>(page: P) -> SlottedPage<P> {
         slot_ptr,
         cell_ptr,
         free_list: Default::default(),
+        lock: Default::default(),
+        my_lock: false,
     };
     output.sync_slots();
     let mut cell_offsets = output.cell_offsets().collect::<Vec<_>>();
     cell_offsets.sort();
     for cell_index in 0..cell_offsets.len() {
         let cell_offset = cell_offsets[cell_index];
-        let next_cell_offset = cell_offsets.get(cell_index + 1).copied().unwrap_or(body_len);
+        let next_cell_offset = cell_offsets
+            .get(cell_index + 1)
+            .copied()
+            .unwrap_or(body_len);
         let available_space = next_cell_offset.abs_diff(cell_offset);
         let cell_len = output.get_cell_at_offset(cell_offset).unwrap().len();
 
         if available_space > cell_len {
             let free_len = available_space - cell_len;
             let free_offset = cell_offset + cell_len;
-            output.free_list.push_back(FreeCell { offset: free_offset, len: free_len })
+            output.free_list.push_back(FreeCell {
+                offset: free_offset,
+                len: free_len,
+            })
         }
     }
 
@@ -749,6 +907,8 @@ impl<P: Paged> Paged for SlottedPageAllocator<P> {
                 slot_ptr: 0,
                 cell_ptr,
                 free_list: Default::default(),
+                lock: Default::default(),
+                my_lock: false,
             },
             index,
         ))
@@ -764,7 +924,6 @@ impl<P: Paged> Paged for SlottedPageAllocator<P> {
         (0..self.paged.len())
             .filter_map(|index| {
                 let page = self.paged.get(index).ok();
-                dbg!(page.as_ref().map(|p| p.as_slice()));
                 page
             })
             .filter(|s| Self::has_magic(s))
@@ -788,7 +947,7 @@ mod tests {
     use crate::error::Error;
     use crate::key::KeyData;
     use crate::storage::abstraction::{Page, Paged, VecPaged};
-    use crate::storage::cells::{KeyCell, PageId};
+    use crate::storage::cells::{Cell, KeyCell, PageId};
     use crate::storage::ram_file::{PagedFile, RandomAccessFile};
     use crate::storage::slotted_page::{PageType, SlottedPageAllocator, SlottedPageHeader};
     use crate::storage::WriteDataError;
@@ -840,9 +999,13 @@ mod tests {
         let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data = KeyData::from([Value::from(1_i64)]);
-        page.insert(KeyCell::new(15, key_data.clone()).into()).expect("could not insert into page");
+        page.insert(KeyCell::new(15, key_data.clone()).into())
+            .expect("could not insert into page");
         assert_eq!(page.count(), 1);
-        let cell = page.get(&key_data).expect("error occurred").expect("cell not found");
+        let cell = page
+            .get(&key_data)
+            .expect("error occurred")
+            .expect("cell not found");
         assert_eq!(&cell.key_data(), &key_data);
     }
 
@@ -851,20 +1014,34 @@ mod tests {
         let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data = KeyData::from([Value::from(1_i64)]);
-        page.insert(KeyCell::new(15, key_data.clone()).into()).expect("could not insert into page");
-        page.insert(KeyCell::new(16, key_data.clone()).into()).expect("could not insert into page");
+        page.insert(KeyCell::new(15, key_data.clone()).into())
+            .expect("could not insert into page");
+        page.insert(KeyCell::new(16, key_data.clone()).into())
+            .expect("could not insert into page");
         assert_eq!(page.count(), 1);
-        let cell = page.get(&key_data).expect("error occurred").expect("cell not found");
+        let cell = page
+            .get(&key_data)
+            .expect("error occurred")
+            .expect("cell not found");
         assert_eq!(&cell.key_data(), &key_data);
     }
 
     #[test]
     fn insert_cell_into_full() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(size_of::<SlottedPageHeader>()));
+        let mut slotted_pager =
+            SlottedPageAllocator::new(VecPaged::new(size_of::<SlottedPageHeader>()));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data = KeyData::from([Value::from(1_i64)]);
-        let err = page.insert(KeyCell::new(15, key_data.clone()).into()).expect_err("shouldn't be able to insert into page");
-        assert!(matches!(err, Error::WriteDataError(WriteDataError::AllocationFailed { .. })), "should be an allocation failed error");
+        let err = page
+            .insert(KeyCell::new(15, key_data.clone()).into())
+            .expect_err("shouldn't be able to insert into page");
+        assert!(
+            matches!(
+                err,
+                Error::WriteDataError(WriteDataError::AllocationFailed { .. })
+            ),
+            "should be an allocation failed error"
+        );
     }
 
     #[test]
@@ -874,12 +1051,44 @@ mod tests {
 
         for i in 0..32 {
             let key_data = KeyData::from([Value::from(i)]);
-            page.insert(KeyCell::new(15, key_data.clone()).into()).unwrap();
+            page.insert(KeyCell::new(15, key_data.clone()).into())
+                .unwrap();
         }
 
-        let page = page.binary_search(&KeyData::from([18])).expect("should not fail");
+        let page = page
+            .binary_search(&KeyData::from([18]))
+            .expect("should not fail");
         assert!(matches!(page, Ok(_)));
         assert_eq!(page.unwrap(), 18);
+    }
+
+    #[test]
+    fn get_range() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
+
+        for i in 0..32 {
+            let key_data = KeyData::from([Value::from(i)]);
+            page.insert(KeyCell::new(15, key_data.clone()).into())
+                .unwrap();
+        }
+
+        assert_eq!(page.get_range(..).unwrap().len(), 32);
+        assert_eq!(page.get_range(KeyData::from([16])..).unwrap().len(), 16);
+        assert_eq!(
+            page.get_range(KeyData::from([8])..KeyData::from([24]))
+                .unwrap()
+                .len(),
+            16
+        );
+        let cells = page
+            .get_range(KeyData::from([8])..=KeyData::from([24]))
+            .unwrap();
+        assert_eq!(cells.len(), 17);
+        println!(
+            "cells: {:#?}",
+            cells.iter().map(Cell::key_data).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -888,14 +1097,18 @@ mod tests {
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data1 = KeyData::from([Value::from(1_i64)]);
         let key_data2 = KeyData::from([Value::from(2_i64)]);
-        page.insert(KeyCell::new(15, key_data1.clone()).into()).expect("could not insert into page");
-        page.insert(KeyCell::new(16, key_data2.clone()).into()).expect("could not insert into page");
-        page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into()).expect("could not insert into page");
+        page.insert(KeyCell::new(15, key_data1.clone()).into())
+            .expect("could not insert into page");
+        page.insert(KeyCell::new(16, key_data2.clone()).into())
+            .expect("could not insert into page");
+        page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into())
+            .expect("could not insert into page");
         assert_eq!(page.count(), 3);
         page.delete(&key_data1).expect("could not delete");
         let removed = page.delete(&key_data2).expect("could not delete").unwrap();
         println!("free list: {:#?}", page.free_list);
-        page.insert(KeyCell::new(15, key_data1.clone()).into()).expect("could not insert into page");
+        page.insert(KeyCell::new(15, key_data1.clone()).into())
+            .expect("could not insert into page");
         println!("free list: {:#?}", page.free_list);
         assert!(!page.free_list.is_empty());
         assert_eq!(page.free_list.front().unwrap().len, removed.len());
@@ -907,9 +1120,12 @@ mod tests {
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data1 = KeyData::from([Value::from(1_i64)]);
         let key_data2 = KeyData::from([Value::from(2_i64)]);
-        page.insert(KeyCell::new(15, key_data1.clone()).into()).expect("could not insert into page");
-        page.insert(KeyCell::new(16, key_data2.clone()).into()).expect("could not insert into page");
-        page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into()).expect("could not insert into page");
+        page.insert(KeyCell::new(15, key_data1.clone()).into())
+            .expect("could not insert into page");
+        page.insert(KeyCell::new(16, key_data2.clone()).into())
+            .expect("could not insert into page");
+        page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into())
+            .expect("could not insert into page");
         assert_eq!(page.count(), 3);
         page.delete(&key_data2).expect("could not delete");
         println!("free list: {:#?}", page.free_list);
@@ -918,9 +1134,17 @@ mod tests {
         let cell = page.free_list.front().unwrap().clone();
         page.delete(&key_data1).expect("could not delete");
         println!("free list: {:#?}", page.free_list);
-        assert_eq!(page.free_list.len(), 1, "free list cells should've combined: {:?}", page.free_list);
+        assert_eq!(
+            page.free_list.len(),
+            1,
+            "free list cells should've combined: {:?}",
+            page.free_list
+        );
         let after_cell = page.free_list.front().unwrap().clone();
-        assert_eq!(cell.offset, after_cell.offset, "offset should've stayed the same");
+        assert_eq!(
+            cell.offset, after_cell.offset,
+            "offset should've stayed the same"
+        );
         assert_ne!(cell.len, after_cell.len, "length should've changed");
         assert_eq!(page.cell_ptr, cell_ptr, "cell ptr should not have moved");
     }
@@ -932,13 +1156,18 @@ mod tests {
             let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
             let key_data1 = KeyData::from([Value::from(1_i64)]);
             let key_data2 = KeyData::from([Value::from(2_i64)]);
-            page.insert(KeyCell::new(15, key_data1.clone()).into()).expect("could not insert into page");
-            page.insert(KeyCell::new(16, key_data2.clone()).into()).expect("could not insert into page");
-            page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into()).expect("could not insert into page");
+            page.insert(KeyCell::new(15, key_data1.clone()).into())
+                .expect("could not insert into page");
+            page.insert(KeyCell::new(16, key_data2.clone()).into())
+                .expect("could not insert into page");
+            page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into())
+                .expect("could not insert into page");
             page.delete(&key_data2).expect("could not delete");
             page.delete(&key_data1).expect("could not delete");
         }
-        let page = slotted_pager.get(PageId::new(1.try_into().unwrap())).unwrap();
+        let page = slotted_pager
+            .get(PageId::new(1.try_into().unwrap()))
+            .unwrap();
         assert!(!page.free_list.is_empty(), "free list should not be empty");
     }
 
@@ -949,11 +1178,16 @@ mod tests {
             let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
             let key_data1 = KeyData::from([Value::from(1_i64)]);
             let key_data2 = KeyData::from([Value::from(2_i64)]);
-            page.insert(KeyCell::new(15, key_data1.clone()).into()).expect("could not insert into page");
-            page.insert(KeyCell::new(16, key_data2.clone()).into()).expect("could not insert into page");
-            page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into()).expect("could not insert into page");
+            page.insert(KeyCell::new(15, key_data1.clone()).into())
+                .expect("could not insert into page");
+            page.insert(KeyCell::new(16, key_data2.clone()).into())
+                .expect("could not insert into page");
+            page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into())
+                .expect("could not insert into page");
         }
-        let page = slotted_pager.get(PageId::new(1.try_into().unwrap())).unwrap();
+        let page = slotted_pager
+            .get(PageId::new(1.try_into().unwrap()))
+            .unwrap();
         assert!(page.free_list.is_empty(), "free list should not be empty");
     }
 }

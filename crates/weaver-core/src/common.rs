@@ -4,6 +4,6 @@ pub mod dual_result;
 pub mod opaque;
 pub mod pretty_bytes;
 pub mod read_only;
-pub mod track_dirty;
 pub mod stream_support;
+pub mod track_dirty;
 pub mod window;

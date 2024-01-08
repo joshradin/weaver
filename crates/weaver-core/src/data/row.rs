@@ -1,6 +1,7 @@
 //! A row of data
 
 use crate::data::values::Value;
+use crate::key::KeyData;
 use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -10,7 +11,6 @@ use std::fmt;
 use std::fmt::{Debug, Formatter, Write};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::slice::SliceIndex;
-use crate::key::KeyData;
 
 /// A row of data
 #[derive(PartialEq, Eq, PartialOrd, Hash)]
@@ -138,11 +138,14 @@ impl From<Vec<Value>> for Row<'_> {
     }
 }
 
-impl<V : Into<Value>, const N: usize> From<[V; N]> for Row<'_>
-
-{
+impl<V: Into<Value>, const N: usize> From<[V; N]> for Row<'_> {
     fn from(value: [V; N]) -> Self {
-        Self::from(value.into_iter().map(|value| value.into()).collect::<Vec<_>>())
+        Self::from(
+            value
+                .into_iter()
+                .map(|value| value.into())
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
@@ -242,7 +245,7 @@ impl<'a> IntoIterator for Row<'a> {
     }
 }
 
-pub type RowRefIter<'a, 'b: 'a> = <&'b [Cow<'a, Value>] as IntoIterator>::IntoIter;
+pub type RowRefIter<'a, 'b> = <&'b [Cow<'a, Value>] as IntoIterator>::IntoIter;
 
 impl<'a, 'b: 'a> IntoIterator for &'b Row<'a> {
     type Item = &'b Cow<'a, Value>;
@@ -276,11 +279,15 @@ impl<'a> From<Row<'a>> for OwnedRow {
             .into_boxed_slice()))
     }
 }
-impl<V : Into<Value>, const N: usize> From<[V; N]> for OwnedRow
-
-{
+impl<V: Into<Value>, const N: usize> From<[V; N]> for OwnedRow {
     fn from(value: [V; N]) -> Self {
-        Row::from(value.into_iter().map(|value| value.into()).collect::<Vec<_>>()).into()
+        Row::from(
+            value
+                .into_iter()
+                .map(|value| value.into())
+                .collect::<Vec<_>>(),
+        )
+        .into()
     }
 }
 impl<'a> From<&Row<'a>> for OwnedRow {
@@ -310,8 +317,6 @@ impl<'a> AsRef<Row<'a>> for OwnedRow {
         &self.0
     }
 }
-
-
 
 impl Deref for OwnedRow {
     type Target = Row<'static>;

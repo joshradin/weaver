@@ -1,6 +1,7 @@
 //! Cells are parts of slotted pages, and are used to store data that we know can be variable in size
 //! and shape.
 
+use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::mem::size_of;
 
@@ -28,10 +29,38 @@ impl Cell {
         }
     }
 
+    /// Gets the key of this cell. Always present
     pub fn key_data(&self) -> KeyData {
         match self {
             Cell::Key(k) => k.key_data(),
             Cell::KeyValue(kv) => kv.key_data(),
+        }
+    }
+
+    /// Gets this cell as a key cell
+    pub fn as_key_cell(&self) -> Option<&KeyCell> {
+        if let Cell::Key(key) = &self {
+            Some(key)
+        } else {
+            None
+        }
+    }
+
+    /// converts this cell as a key cell
+    pub fn into_key_cell(self) -> Option<KeyCell> {
+        if let Cell::Key(key) = self {
+            Some(key)
+        } else {
+            None
+        }
+    }
+
+    /// Gets this cell as a key value cell
+    pub fn as_key_value_cell(&self) -> Option<&KeyValueCell> {
+        if let Cell::KeyValue(kv) = &self {
+            Some(kv)
+        } else {
+            None
         }
     }
 }
@@ -44,6 +73,12 @@ pub struct KeyCell {
     page_id: u32,
     /// The key bytes
     bytes: Box<[u8]>,
+}
+
+impl Display for KeyCell {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} -> {}", self.key_data(), self.page_id)
+    }
 }
 
 impl KeyCell {
@@ -163,7 +198,7 @@ bitfield! {
 
 impl StorageBackedData for KeyValueCell {
     type Owned = Self;
-    fn read(buf: & [u8]) -> ReadResult<Self> {
+    fn read(buf: &[u8]) -> ReadResult<Self> {
         let flags = Flags(*buf.get(0).ok_or(ReadDataError::UnexpectedEof)?);
         let mut u32_buf = [0u8; 4];
         u32_buf.clone_from_slice(buf.get(1..5).ok_or(ReadDataError::UnexpectedEof)?);

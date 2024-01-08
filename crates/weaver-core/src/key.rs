@@ -189,7 +189,6 @@ impl Debug for KeyDataRange {
     }
 }
 
-
 fn partial_compare_bounds<T: PartialOrd>(b1: &Bound<T>, b2: &Bound<T>) -> Option<Ordering> {
     match (b1, b2) {
         (Bound::Unbounded, Bound::Unbounded) => Some(Ordering::Equal),

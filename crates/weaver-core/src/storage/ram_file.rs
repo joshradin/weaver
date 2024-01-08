@@ -1,5 +1,7 @@
+use crate::error::Error;
 use crate::storage::abstraction::{Page, PageWithHeader, Paged};
 use parking_lot::{Mutex, MutexGuard, RwLock};
+use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::{File, Metadata};
@@ -170,7 +172,7 @@ impl PagedFile {
 
 impl Paged for PagedFile {
     type Page = FilePage;
-    type Err = io::Error;
+    type Err = Error;
 
     fn page_size(&self) -> usize {
         self.page_len
@@ -191,13 +193,21 @@ impl Paged for PagedFile {
                 .len() as usize
                 + self.page_len
         {
-            return Err(io::Error::new(ErrorKind::InvalidInput, "out of bounds"));
+            return Err(io::Error::new(ErrorKind::InvalidInput, "out of bounds").into());
         }
         let mut usage_map = self.usage_map.write();
         let token = usage_map.entry(offset).or_default().clone();
         token
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
-            .map_err(|_| io::Error::new(ErrorKind::WouldBlock, ""))?;
+            .map_err(|_| {
+                Error::wrap(
+                    "Failed to get page",
+                    io::Error::new(
+                        ErrorKind::WouldBlock,
+                        format!("Would block, page at offset {} already in use", offset),
+                    ),
+                )
+            })?;
 
         let buf = self
             .raf

@@ -1,10 +1,10 @@
 //! Storage primitives
 
+use crate::storage::cells::PageId;
 use std::borrow::{Borrow, Cow};
 use std::io::Write;
 use std::string::FromUtf8Error;
 use thiserror::Error;
-use crate::storage::cells::PageId;
 
 mod abstraction;
 pub mod b_plus_tree;
@@ -32,6 +32,8 @@ pub enum ReadDataError {
     NoTypeGiven,
     #[error(transparent)]
     FromUtf8Error(#[from] FromUtf8Error),
+    #[error("Page {0} already locked")]
+    PageLocked(PageId),
 }
 
 #[derive(Debug, Error)]
@@ -42,9 +44,8 @@ pub enum WriteDataError {
     AllocationFailed { page_id: u32, size: usize },
 }
 
-pub trait StorageBackedData
-{
-    type Owned : Borrow<Self>;
+pub trait StorageBackedData {
+    type Owned: Borrow<Self>;
 
     /// Try to read a keycell
     fn read(buf: &[u8]) -> ReadResult<Self::Owned>;

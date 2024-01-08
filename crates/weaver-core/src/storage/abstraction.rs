@@ -1,9 +1,15 @@
 //! Creates abstractions that are used to build better storage-backed data structures
 
-use parking_lot::{Mutex, MutexGuard, RwLock};
+use crate::common::track_dirty::Mad;
+use parking_lot::{Mutex, MutexGuard, RwLock, RwLockUpgradableReadGuard};
+use std::collections::HashMap;
 use std::convert::Infallible;
+use std::error::Error;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
+use std::ops::DerefMut;
 use std::slice::SliceIndex;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use crate::storage::{ReadResult, StorageBackedData, WriteResult};
@@ -11,7 +17,7 @@ use crate::storage::{ReadResult, StorageBackedData, WriteResult};
 /// Allows for getting pages of a fix size
 pub trait Paged {
     type Page: Page;
-    type Err;
+    type Err: Error + 'static;
 
     /// Gets the size of pages that are allocated by this paged type
     fn page_size(&self) -> usize;
@@ -37,7 +43,7 @@ pub trait Paged {
     /// Gets the total length of the memory reserved space, in bytes, of the paged object
     fn reserved(&self) -> usize;
 
-    fn iter(&self) -> impl Iterator<Item=Result<(Self::Page, usize), Self::Err>> + '_ {
+    fn iter(&self) -> impl Iterator<Item = Result<(Self::Page, usize), Self::Err>> + '_ {
         (0..self.len())
             .into_iter()
             .map(|index| self.get(index).map(|page| (page, index)))
@@ -89,7 +95,7 @@ where
     }
 }
 
-impl <'a, P : Page> Page for &'a mut P {
+impl<'a, P: Page> Page for &'a mut P {
     fn len(&self) -> usize {
         (**self).len()
     }
@@ -117,7 +123,6 @@ pub trait PageWithHeader: Page {
     fn body_len(&self) -> usize {
         self.len() - self.header_len()
     }
-
 }
 
 /// Provides a simple implementation of a split page with a header
@@ -149,7 +154,7 @@ where
 impl<P, Header> PageWithHeader for SplitPage<P, Header>
 where
     P: Page,
-    Header: Clone + PartialEq + StorageBackedData<Owned=Header>,
+    Header: Clone + PartialEq + StorageBackedData<Owned = Header>,
 {
     type Header = Header;
 
@@ -191,6 +196,7 @@ where
 #[derive(Debug)]
 pub struct VecPaged {
     pages: RwLock<Vec<Arc<RwLock<Box<[u8]>>>>>,
+    usage: RwLock<HashMap<usize, AtomicBool>>,
     page_len: usize,
 }
 
@@ -199,6 +205,7 @@ impl VecPaged {
     pub fn new(page_len: usize) -> Self {
         Self {
             pages: Default::default(),
+            usage: Default::default(),
             page_len,
         }
     }
@@ -216,7 +223,7 @@ impl Paged for VecPaged {
         let binding = self.pages.read();
         let page = &binding[index];
         let guard = (*page).clone();
-        let buffer = guard.read().clone();
+        let buffer = Mad::new(guard.read().clone());
         Ok(SharedPage {
             lock: guard,
             buffer,
@@ -225,8 +232,9 @@ impl Paged for VecPaged {
 
     fn new(&self) -> Result<(Self::Page, usize), Self::Err> {
         let index = self.pages.read().len();
-        self.pages.write().push(
-            RwLock::new(vec![0; self.page_len].into_boxed_slice()).into(), );
+        self.pages
+            .write()
+            .push(RwLock::new(vec![0; self.page_len].into_boxed_slice()).into());
         let emit = self.get(index)?;
         Ok((emit, index))
     }
@@ -235,18 +243,14 @@ impl Paged for VecPaged {
         let mut pages = self.pages.write();
         let new = RwLock::new(vec![0; self.page_len].into_boxed_slice()).into();
         let old = std::mem::replace(&mut pages[index], new);
-        let mut buff =old.write();
+        let mut buff = old.write();
         buff.fill(0);
         dbg!(&buff);
         Ok(())
     }
 
     fn len(&self) -> usize {
-        self.pages
-            .read()
-            .iter()
-            .fuse()
-            .count()
+        self.pages.read().iter().fuse().count()
     }
 
     fn reserved(&self) -> usize {
@@ -258,7 +262,7 @@ impl Paged for VecPaged {
 #[derive(Debug)]
 pub struct SharedPage {
     lock: Arc<RwLock<Box<[u8]>>>,
-    buffer: Box<[u8]>,
+    buffer: Mad<Box<[u8]>>,
 }
 
 impl AsRef<[u8]> for SharedPage {
@@ -269,7 +273,7 @@ impl AsRef<[u8]> for SharedPage {
 
 impl AsMut<[u8]> for SharedPage {
     fn as_mut(&mut self) -> &mut [u8] {
-        self.buffer.as_mut()
+        self.buffer.to_mut().as_mut()
     }
 }
 
@@ -289,6 +293,9 @@ impl Page for SharedPage {
 
 impl Drop for SharedPage {
     fn drop(&mut self) {
-        *self.lock.write() = self.buffer.clone();
+        if self.buffer.is_dirty() {
+            println!("copying {} bytes", self.buffer.len());
+            self.lock.write().copy_from_slice(self.buffer.as_ref());
+        }
     }
 }

@@ -3,19 +3,26 @@
 use std::ops::RangeBounds;
 
 #[derive(Debug)]
-pub struct ConstWindow<I : Iterator, const N: usize>
-    where I::Item : Clone
+pub struct ConstWindow<I: Iterator, const N: usize>
+where
+    I::Item: Clone,
 {
     iter: I,
-    window: Option<[I::Item; N]>
+    window: Option<[I::Item; N]>,
 }
 
-impl<I: Iterator, const N: usize> Iterator for ConstWindow<I, N> where I::Item: Clone {
+impl<I: Iterator, const N: usize> Iterator for ConstWindow<I, N>
+where
+    I::Item: Clone,
+{
     type Item = [I::Item; N];
 
     fn next(&mut self) -> Option<Self::Item> {
         if N == 1 {
-            return self.iter.next().and_then(|item| [item].to_vec().try_into().ok())
+            return self
+                .iter
+                .next()
+                .and_then(|item| [item].to_vec().try_into().ok());
         }
 
         match &mut self.window {
@@ -27,7 +34,7 @@ impl<I: Iterator, const N: usize> Iterator for ConstWindow<I, N> where I::Item: 
                 let emit: [I::Item; N] = vec.try_into().ok()?;
                 self.window = Some(emit.clone());
                 Some(emit)
-            },
+            }
             Some(prev_window) => {
                 let next = self.iter.next()?;
                 clone_within(prev_window, 1.., 0);
@@ -39,21 +46,23 @@ impl<I: Iterator, const N: usize> Iterator for ConstWindow<I, N> where I::Item: 
 }
 
 /// Creates a windowed iterator over iter
-pub fn windowed<I: IntoIterator, const N : usize>(iter: I) -> ConstWindow<I::IntoIter, N>
-    where I::Item : Clone
+pub fn windowed<I: IntoIterator, const N: usize>(iter: I) -> ConstWindow<I::IntoIter, N>
+where
+    I::Item: Clone,
 {
     ConstWindow::new(iter.into_iter())
 }
 
 /// Works identically as a normal slices [copy_within](primitive.slice.copy_within) but using clone.
-pub fn clone_within<T : Clone, R : RangeBounds<usize>>(slice: &mut [T], range: R, dest: usize) {
+pub fn clone_within<T: Clone, R: RangeBounds<usize>>(slice: &mut [T], range: R, dest: usize) {
     let cloned = slice[(range.start_bound().cloned(), range.end_bound().cloned())].to_vec();
     slice[dest..][..cloned.len()].clone_from_slice(&cloned[..]);
 }
 
 impl<I: Iterator, const N: usize> ConstWindow<I, N>
-    where I::Item: Clone{
-
+where
+    I::Item: Clone,
+{
     /// Creates a new const window iterator.
     ///
     /// # Panic
@@ -62,10 +71,7 @@ impl<I: Iterator, const N: usize> ConstWindow<I, N>
         if N == 0 {
             panic!("can not have windows of 0-length")
         }
-        Self {
-            iter,
-            window: None,
-        }
+        Self { iter, window: None }
     }
 }
 

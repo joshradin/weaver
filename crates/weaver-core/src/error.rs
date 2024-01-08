@@ -12,11 +12,11 @@ use crossbeam::channel::{RecvError, SendError, Sender};
 use openssl::error::ErrorStack;
 use openssl::ssl::HandshakeError;
 use serde::ser::StdError;
+use std::backtrace::Backtrace;
 use std::convert::Infallible;
 use std::io;
-use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Illegal auto increment: {reason}")]
     IllegalAutoIncrement { reason: String },
@@ -113,7 +113,14 @@ pub enum Error {
     OutOfRange,
     #[error("Failed to allocate {0} bytes")]
     AllocationFailed(usize),
-
+    #[error("Error: {msg}")]
+    WrappedException {
+        msg: String,
+        #[source]
+        source: Box<Error>,
+        #[backtrace]
+        backtrace: Backtrace,
+    },
     #[error("{0}")]
     Custom(String),
 }
@@ -126,6 +133,16 @@ impl Error {
 
     pub fn custom<T: ToString + 'static>(error: T) -> Self {
         Self::Custom(error.to_string())
+    }
+
+    #[inline]
+    #[track_caller]
+    pub fn wrap<T: ToString + 'static, E: Into<Self>>(msg: T, error: E) -> Self {
+        Self::WrappedException {
+            msg: msg.to_string(),
+            source: Box::new(error.into()),
+            backtrace: Backtrace::capture(),
+        }
     }
 }
 

@@ -10,11 +10,10 @@ use std::ops::Deref;
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Hash, Default)]
 pub struct Mad<T> {
     value: T,
-    dirty: bool
+    dirty: bool,
 }
 
 impl<T> Mad<T> {
-
     /// Creates a new mark-as-dirty with a given value
     pub fn new(value: T) -> Self {
         Self {
@@ -60,24 +59,24 @@ impl<T> Deref for Mad<T> {
 }
 
 impl<T> Borrow<T> for Mad<T>
-    where T : ToOwned
+where
+    T: ToOwned,
 {
     fn borrow(&self) -> &T {
         self.as_ref()
     }
 }
 
-impl<T : Display> Display for Mad<T> {
+impl<T: Display> Display for Mad<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.value.fmt(f)
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap};
     use crate::common::track_dirty::Mad;
+    use std::collections::HashMap;
 
     #[test]
     fn mad_in_hashmap() {
