@@ -9,7 +9,6 @@ use thiserror::Error;
 mod abstraction;
 pub mod b_plus_tree;
 pub mod cells;
-pub mod indexed_file_page;
 pub mod ram_file;
 pub mod slotted_page;
 

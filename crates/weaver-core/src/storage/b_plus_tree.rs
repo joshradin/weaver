@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Formatter};
 use std::ops::Bound;
+use std::sync::Arc;
 
 use parking_lot::RwLock;
 use ptree::{write_tree, TreeBuilder};
@@ -18,7 +19,7 @@ use crate::storage::{ReadDataError, WriteDataError};
 
 /// A BPlusTree that uses a given pager
 pub struct BPlusTree<P: Paged> {
-    allocator: RwLock<SlottedPageAllocator<P>>,
+    allocator: Arc<SlottedPageAllocator<P>>,
     /// determined initially by scanning up parents
     root: RwLock<Option<PageId>>,
 }
@@ -26,9 +27,9 @@ pub struct BPlusTree<P: Paged> {
 impl<P: Paged> Debug for BPlusTree<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut mapping = BTreeMap::new();
-        let guard = self.allocator.read();
+        let guard = &self.allocator;
         for i in 0..guard.len() {
-            if let Ok(page) = Paged::get(&*guard, i) {
+            if let Ok(page) = Paged::get(&**guard, i) {
                 mapping.insert(
                     page.page_id(),
                     (page.page_type(), page.parent(), page.all()),
@@ -63,7 +64,7 @@ where
         };
 
         Self {
-            allocator: RwLock::new(allocator),
+            allocator: Arc::new(allocator),
             root: RwLock::new(root),
         }
     }
@@ -77,15 +78,16 @@ where
         let value = v.into();
 
         if self.root.read().is_none() {
-            let (page, _) = self.allocator.write().new_with_type(PageType::KeyValue)?;
+            let guard = &self.allocator;
+            let (page, _) = guard.new_with_type(PageType::KeyValue)?;
             *self.root.write() = Some(page.page_id());
         }
 
-        let leaf = self.find_leaf(&key)?;
+        let leaf = self.find_leaf(&key, true)?;
         let cell: Cell = KeyValueCell::new(key.clone(), value).into();
         if self.insert_cell(cell.clone(), leaf)? {
             // split occurred, retry
-            let leaf = self.find_leaf(&key)?;
+            let leaf = self.find_leaf(&key, true)?;
             self.insert_cell(cell, leaf).map(|_| ())
         } else {
             Ok(())
@@ -93,7 +95,7 @@ where
     }
 
     fn insert_cell(&self, cell: Cell, leaf: PageId) -> Result<bool, Error> {
-        let mut leaf_page = self.allocator.read().get(leaf).expect("no page found");
+        let mut leaf_page = self.allocator.get_mut(leaf).expect("no page found");
         match leaf_page.insert(cell.clone()) {
             Ok(()) => Ok(false),
             Err(Error::WriteDataError(WriteDataError::InsufficientSpace)) => {
@@ -111,10 +113,12 @@ where
 
     /// splits the page given by a specified ID
     fn split(&self, page_id: PageId) -> Result<(), Error> {
-        let mut page = self.allocator.read().get(page_id)?;
+        let mut allocator = &self.allocator;
+        let mut page = allocator.get_mut(page_id)?;
+        println!("splitting {:?}. Type: {:?}", page_id, page.page_type());
         page.lock()?;
         let page_type = page.page_type();
-        let (mut split_page, _) = self.allocator.write().new_with_type(page_type)?;
+        let (mut split_page, _) = allocator.new_with_type(page_type)?;
         split_page.set_right_sibling(page_id);
         split_page.set_left_sibling(page.left_sibling());
         page.set_left_sibling(split_page.page_id());
@@ -147,7 +151,8 @@ where
 
         let parent = match page.parent() {
             None => {
-                let (mut new_root, _) = self.allocator.write().new_with_type(PageType::Key)?;
+                println!("creating new root");
+                let (mut new_root, _) = allocator.new_with_type(PageType::Key)?;
                 let root_id = new_root.page_id();
                 let _ = self.root.write().insert(root_id);
                 page.set_parent(root_id);
@@ -171,13 +176,15 @@ where
     /// Only returns an error if something went wrong trying to find the data, and returns `Ok(None` if no
     /// problems occurred but an associated record was not present.
     pub fn get(&self, key_data: &KeyData) -> Result<Option<Box<[u8]>>, Error> {
-        let leaf = self.find_leaf(key_data)?;
-        let leaf = self.allocator.read().get(leaf)?;
+        let leaf = self.find_leaf(key_data, false)?;
+        let allocator = &self.allocator;
+        let leaf = allocator.get(leaf)?;
         let cell = leaf.get(key_data)?;
         match cell {
             None => Ok(None),
             Some(Cell::Key(_)) => {
                 return Err(Error::CellTypeMismatch {
+                    page_id: leaf.page_id(),
                     expected: PageType::KeyValue,
                     actual: PageType::Key,
                 });
@@ -187,10 +194,10 @@ where
     }
 
     /// Finds the leaf node that can contain the given key
-    fn find_leaf(&self, key_data: &KeyData) -> Result<PageId, Error> {
+    fn find_leaf(&self, key_data: &KeyData, expand: bool) -> Result<PageId, Error> {
         let mut ptr = self.root.read().expect("no root set");
         loop {
-            let page = self.allocator.read().get(ptr).unwrap();
+            let page = self.allocator.get(ptr).unwrap();
             match page.page_type() {
                 PageType::Key => {
                     let cells = to_ranges(page.all()?);
@@ -200,7 +207,13 @@ where
                             Ordering::Equal
                         } else {
                             match kdr.start_bound() {
-                                Bound::Included(i) | Bound::Excluded(i) => i.cmp(key_data),
+                                Bound::Included(i) => i.cmp(key_data),
+                                Bound::Excluded(i) => match i.cmp(key_data) {
+                                    Ordering::Equal => {
+                                        Ordering::Greater
+                                    },
+                                    v => v
+                                }
                                 Bound::Unbounded => Ordering::Greater,
                             }
                         }
@@ -214,10 +227,11 @@ where
                             ptr = key.page_id()
                         }
                         Err(close) => {
-                            if close == cells.len() {
+                            if expand && close == cells.len() {
                                 match page.right_sibling() {
                                     None => {
                                         let last = cells.last().unwrap().1.as_key_cell().unwrap();
+                                        drop(page);
                                         self.increase_max(last.page_id(), key_data)?;
                                         return Ok(last.page_id());
                                     }
@@ -225,8 +239,10 @@ where
                                         panic!("got wrong leaf. This leaf {ptr:?} was found but it has right sibling {right:?} but key data is not within range")
                                     }
                                 }
-                            } else {
+                            } else if !expand {
                                 panic!("no good index found, but could insert a new key cell at index {close}.")
+                            } else {
+                                return Err(Error::NotFound(key_data.clone()))
                             }
                         }
                     }
@@ -242,9 +258,9 @@ where
     /// Increases the max
     fn increase_max(&self, leaf: PageId, new_max: &KeyData) -> Result<(), Error> {
         let mut prev = leaf;
-        let mut ptr = self.allocator.read().get(leaf)?.parent();
+        let mut ptr = self.allocator.get(leaf)?.parent();
         while let Some(parent) = ptr {
-            let mut parent_page = self.allocator.read().get(parent)?;
+            let mut parent_page = self.allocator.get_mut(parent)?;
             parent_page.lock()?;
             let old_cell = parent_page
                 .all()?
@@ -285,7 +301,7 @@ where
     }
 
     pub fn print_(&self, page: PageId, builder: &mut TreeBuilder) -> Result<(), Error> {
-        let page = self.allocator.read().get(page)?;
+        let page = self.allocator.get(page)?;
         builder.begin_child(format!("({:?}) {:?}", page.page_type(), page.page_id()));
         match page.page_type() {
             PageType::Key => {
@@ -348,11 +364,13 @@ mod tests {
 
     #[test]
     fn insert_into_b_plus_tree_many() {
-        let paged = RandomAccessFile::with_file(tempfile().expect("could not open")).unwrap();
-        let btree = BPlusTree::new(PagedFile::new(paged, 512));
+        let btree = BPlusTree::new(VecPaged::new(512));
 
-        for i in 1..=100 {
-            btree.insert([i], [1 + i, 2 * i]).expect("could not insert");
+        for i in 1..=512 {
+            if let Err(e) =btree.insert([i], [1 + i, 2 * i]) {
+                btree.print().expect("could not print");
+                panic!("error occurred: {e}");
+            }
         }
 
         let raw = btree.get(&[1].into()).unwrap().unwrap();
@@ -360,7 +378,7 @@ mod tests {
         assert_eq!(raw.len(), 16);
         btree.print().expect("could not print");
 
-        for i in 1..=100 {
+        for i in 256..=512 {
             let gotten = btree
                 .get(&[i].into())
                 .unwrap()

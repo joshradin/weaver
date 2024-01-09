@@ -1,26 +1,29 @@
+use std::backtrace::Backtrace as Bt; // using alias to prevent obnoxious `Backtrace` auto-detection
+use std::convert::Infallible;
+use std::io;
+
+use crossbeam::channel::{RecvError, SendError};
+use openssl::error::ErrorStack;
+use openssl::ssl::HandshakeError;
+use serde::ser::StdError;
+
 use crate::access_control::auth::error::AuthInitError;
 use crate::cancellable_task::Cancelled;
 use crate::data::types::Type;
 use crate::data::values::Value;
-use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp, IntoDbResponse};
+use crate::db::server::layers::packets::{DbResp, IntoDbResponse};
 use crate::db::server::processes::WeaverPid;
 use crate::db::server::socket::MainQueueItem;
 use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError, TableCol};
+use crate::key::KeyData;
 use crate::storage::slotted_page::PageType;
 use crate::storage::{ReadDataError, WriteDataError};
-use crossbeam::channel::{RecvError, SendError, Sender};
-use openssl::error::ErrorStack;
-use openssl::ssl::HandshakeError;
-use serde::ser::StdError;
-use std::backtrace::Backtrace;
-use std::convert::Infallible;
-use std::io;
+use crate::storage::cells::PageId;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Illegal auto increment: {reason}")]
     IllegalAutoIncrement { reason: String },
-
     #[error("Unexpected value of type found. (expected {expected:?}, received: {actual:?})")]
     TypeError { expected: Type, actual: Value },
     #[error("Illegal definition for column {col:?}: {reason}")]
@@ -101,9 +104,10 @@ pub enum Error {
     #[error("encountered an error trying to write a cell: {0}")]
     WriteDataError(#[from] WriteDataError),
     #[error(
-        "Given cell can not be written on this page (expected: {expected:?}, actual: {actual:?})"
+        "Given cell can not be written on this page ({page_id:?}) (expected: {expected:?}, actual: {actual:?})"
     )]
     CellTypeMismatch {
+        page_id: PageId,
         expected: PageType,
         actual: PageType,
     },
@@ -113,16 +117,17 @@ pub enum Error {
     OutOfRange,
     #[error("Failed to allocate {0} bytes")]
     AllocationFailed(usize),
-    #[error("Error: {msg}")]
-    WrappedException {
+    #[error("Could not find {0:?}")]
+    NotFound(KeyData),
+    #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
+    CausedBy {
         msg: String,
-        #[source]
-        source: Box<Error>,
-        #[backtrace]
-        backtrace: Backtrace,
+        cause: Box<Error>,
+        backtrace: Bt,
     },
     #[error("{0}")]
     Custom(String),
+
 }
 
 impl Error {
@@ -131,17 +136,19 @@ impl Error {
         Self::ServerError(error.to_string())
     }
 
+    /// Custom error created with a string
     pub fn custom<T: ToString + 'static>(error: T) -> Self {
         Self::Custom(error.to_string())
     }
 
-    #[inline]
+    /// A new error that was caused by some other error. Captures a backtrace at
+    /// this given moment.
     #[track_caller]
-    pub fn wrap<T: ToString + 'static, E: Into<Self>>(msg: T, error: E) -> Self {
-        Self::WrappedException {
-            msg: msg.to_string(),
-            source: Box::new(error.into()),
-            backtrace: Backtrace::capture(),
+    pub fn caused_by<E: Into<Self>>(msg: impl AsRef<str>, error: E) -> Self {
+        Self::CausedBy {
+            msg: msg.as_ref().to_string(),
+            cause: Box::new(error.into()),
+            backtrace: Bt::capture(),
         }
     }
 }

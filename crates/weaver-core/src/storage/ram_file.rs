@@ -1,17 +1,17 @@
-use crate::error::Error;
-use crate::storage::abstraction::{Page, PageWithHeader, Paged};
-use parking_lot::{Mutex, MutexGuard, RwLock};
-use std::backtrace::Backtrace;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::{File, Metadata};
-use std::io::{repeat, ErrorKind, Read, Seek, SeekFrom, Write};
-use std::marker::PhantomData;
+use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::ops::Index;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
 use std::{io, iter};
+
+use parking_lot::RwLock;
+
+use crate::common::track_dirty::Mad;
+use crate::error::Error;
+use crate::storage::abstraction::{Page, PageMut, PageMutWithHeader, Paged};
 
 #[derive(Debug)]
 pub struct RandomAccessFile {
@@ -155,7 +155,7 @@ impl TryFrom<File> for RandomAccessFile {
 #[derive(Debug)]
 pub struct PagedFile {
     raf: Arc<RwLock<RandomAccessFile>>,
-    usage_map: Arc<RwLock<HashMap<usize, Arc<AtomicBool>>>>,
+    usage_map: Arc<RwLock<HashMap<usize, Arc<AtomicI32>>>>,
     page_len: usize,
 }
 
@@ -171,14 +171,15 @@ impl PagedFile {
 }
 
 impl Paged for PagedFile {
-    type Page = FilePage;
+    type Page<'a> = FilePage;
+    type PageMut<'a> = FilePageMut;
     type Err = Error;
 
     fn page_size(&self) -> usize {
         self.page_len
     }
 
-    fn get(&self, index: usize) -> Result<Self::Page, Self::Err> {
+    fn get(&self, index: usize) -> Result<Self::Page<'_>, Self::Err> {
         let offset = index * self.page_len;
         if offset + self.page_len
             > self
@@ -198,9 +199,15 @@ impl Paged for PagedFile {
         let mut usage_map = self.usage_map.write();
         let token = usage_map.entry(offset).or_default().clone();
         token
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |old| {
+                if old >= 0 {
+                    Some(old + 1)
+                } else {
+                    None
+                }
+            })
             .map_err(|_| {
-                Error::wrap(
+                Error::caused_by(
                     "Failed to get page",
                     io::Error::new(
                         ErrorKind::WouldBlock,
@@ -218,17 +225,66 @@ impl Paged for PagedFile {
                     "would block because already borrowed mutably",
                 )
             })?
-            .read_exact(offset as u64, self.page_len as u64)?;
+            .read_exact(offset as u64, self.page_len as u64)?
+            .into_boxed_slice();
         Ok(FilePage {
+            buf,
+            usage_token: token,
+        })
+    }
+
+    fn get_mut(&self, index: usize) -> Result<Self::PageMut<'_>, Self::Err> {
+        let offset = index * self.page_len;
+        if offset + self.page_len
+            > self
+                .raf
+                .try_read()
+                .ok_or_else(|| {
+                    io::Error::new(
+                        ErrorKind::WouldBlock,
+                        "would block because already borrowed mutably",
+                    )
+                })?
+                .len() as usize
+                + self.page_len
+        {
+            return Err(io::Error::new(ErrorKind::InvalidInput, "out of bounds").into());
+        }
+        let mut usage_map = self.usage_map.write();
+        let token = usage_map.entry(offset).or_default().clone();
+        token
+            .compare_exchange(0, -1, Ordering::SeqCst, Ordering::Relaxed)
+            .map_err(|_| {
+                Error::caused_by(
+                    "Failed to get page",
+                    io::Error::new(
+                        ErrorKind::WouldBlock,
+                        format!("Would block, page at offset {} already in use", offset),
+                    ),
+                )
+            })?;
+
+        let buf = self
+            .raf
+            .try_read()
+            .ok_or_else(|| {
+                io::Error::new(
+                    ErrorKind::WouldBlock,
+                    "would block because already borrowed mutably",
+                )
+            })?
+            .read_exact(offset as u64, self.page_len as u64)?
+            .into_boxed_slice();
+        Ok(FilePageMut {
             file: self.raf.clone(),
             usage_token: token,
-            buffer: buf,
+            buffer: Mad::new(buf),
             offset: offset as u64,
             len: self.page_len as u64,
         })
     }
 
-    fn new(&self) -> Result<(Self::Page, usize), Self::Err> {
+    fn new(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
         let new_index = {
             let mut guard = self.raf.try_write().ok_or_else(|| {
                 io::Error::new(
@@ -241,11 +297,11 @@ impl Paged for PagedFile {
             guard.set_len(new_len)?;
             new_index
         };
-        self.get(new_index).map(|page| (page, new_index))
+        self.get_mut(new_index).map(|page| (page, new_index))
     }
 
     fn free(&self, index: usize) -> Result<(), Self::Err> {
-        let mut old = self.get(index)?;
+        let mut old = self.get_mut(index)?;
         old.as_mut_slice().fill(0);
         dbg!(&old);
         Ok(())
@@ -260,43 +316,65 @@ impl Paged for PagedFile {
     }
 }
 
-/// A page from a random access fille
 #[derive(Debug)]
 pub struct FilePage {
+    buf: Box<[u8]>,
+    usage_token: Arc<AtomicI32>,
+}
+impl<'a> Page<'a> for FilePage {
+    fn len(&self) -> usize {
+        self.buf.len()
+    }
+    fn as_slice(&self) -> &[u8] {
+        &*self.buf
+    }
+}
+
+/// A page from a random access fille
+#[derive(Debug)]
+pub struct FilePageMut {
     file: Arc<RwLock<RandomAccessFile>>,
-    usage_token: Arc<AtomicBool>,
-    buffer: Vec<u8>,
+    usage_token: Arc<AtomicI32>,
+    buffer: Mad<Box<[u8]>>,
     offset: u64,
     len: u64,
 }
 
-impl Page for FilePage {
-    fn len(&self) -> usize {
-        self.len as usize
-    }
-
-    fn as_slice(&self) -> &[u8] {
-        self.buffer.as_slice()
-    }
-
+impl<'a> PageMut<'a> for FilePageMut {
     fn as_mut_slice(&mut self) -> &mut [u8] {
-        self.buffer.as_mut_slice()
+        self.buffer.to_mut().as_mut()
     }
 }
 
-impl Drop for FilePage {
+impl<'a> Page<'a> for FilePageMut {
+    fn len(&self) -> usize {
+        self.len as usize
+    }
+    fn as_slice(&self) -> &[u8] {
+        &*self.buffer
+    }
+}
+
+impl Drop for FilePageMut {
     fn drop(&mut self) {
         let _ = self.file.write().write(self.offset, &self.buffer[..]);
-        self.usage_token.store(false, Ordering::SeqCst);
+        if self
+            .usage_token
+            .compare_exchange(-1, 0, Ordering::SeqCst, Ordering::Relaxed)
+            .is_err()
+        {
+            panic!("atomic usage token should be -1")
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::abstraction::Page;
     use tempfile::tempfile;
 
-    use super::{FilePage, Paged, PagedFile, RandomAccessFile};
+    use crate::storage::abstraction::{Page, PageMut};
+
+    use super::{FilePageMut, Paged, PagedFile, RandomAccessFile};
 
     #[test]
     fn write_to_ram_file() {
@@ -314,7 +392,7 @@ mod tests {
         let temp = tempfile().expect("could not create tempfile");
         let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
         let mut paged = PagedFile::new(ram, 4096);
-        let (mut page, index): (FilePage, _) = paged.new().unwrap();
+        let (mut page, index): (FilePageMut, _) = paged.new().unwrap();
         let slice = page.get_mut(..128).unwrap();
         slice[..6].copy_from_slice(&[0, 1, 2, 3, 4, 5]);
         drop(page);
