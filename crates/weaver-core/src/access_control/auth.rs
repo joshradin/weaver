@@ -33,7 +33,7 @@ pub mod handshake {
     use crate::db::server::socket::DbSocket;
     use crate::error::Error;
     use crate::queries::ast::{Op, Query, Where};
-    use crate::rows::OwnedRows;
+    use crate::rows::Rows;
 
     /// Server side authentication. On success, provides a user struct.
     pub fn server_auth<T: Stream + Debug>(

@@ -14,7 +14,7 @@ use crate::db::server::socket::DbSocket;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::{EngineKey, SYSTEM_TABLE_KEY};
 use crate::error::Error;
-use crate::rows::{DefaultOwnedRows, OwnedRowsExt};
+use crate::rows::OwnedRows;
 use crate::tables::system_tables::SystemTable;
 use crate::tables::table_schema::TableSchema;
 
@@ -78,11 +78,11 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                         .to_owned()
                     },
                 );
-                Ok(DbResp::rows(DefaultOwnedRows::new(schema.clone(), rows)))
+                Ok(DbResp::rows(OwnedRows::new(schema.clone(), rows)))
             }))
             .join()??;
         match resp {
-            DbResp::Rows(rows) => Ok(rows.to_rows()),
+            DbResp::Rows(rows) => Ok(Box::new(rows)),
             _ => unreachable!(),
         }
     });

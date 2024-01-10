@@ -4,7 +4,7 @@ use crate::db::server::processes::WeaverPid;
 use crate::dynamic_table::Table;
 use crate::error::Error;
 use crate::tables::TableRef;
-use crate::tx::Tx;
+use crate::tx::{Tx, TxId};
 use crossbeam::channel::{unbounded, Receiver, RecvError, SendError, Sender, TryRecvError};
 use parking_lot::{Mutex, RwLock};
 use std::cell::RefCell;

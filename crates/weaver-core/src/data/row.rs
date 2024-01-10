@@ -1,5 +1,6 @@
 //! A row of data
 
+use crate::data::types::Type;
 use crate::data::values::Value;
 use crate::key::KeyData;
 use serde::de::{SeqAccess, Visitor};
@@ -52,6 +53,11 @@ impl<'a> Row<'a> {
     /// Gets the length of the row
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    /// Gets the types of the values
+    pub fn types(&self) -> Vec<Option<Type>> {
+        self.iter().map(|val| val.value_type()).collect()
     }
 }
 
@@ -221,6 +227,12 @@ impl<'a> ToOwned for Row<'a> {
     }
 }
 
+impl<'a> PartialEq<OwnedRow> for Row<'a> {
+    fn eq(&self, other: &OwnedRow) -> bool {
+        self == other.as_ref()
+    }
+}
+
 #[derive(Debug)]
 pub struct RowIter {
     values: VecDeque<Value>,
@@ -258,6 +270,12 @@ impl<'a, 'b: 'a> IntoIterator for &'b Row<'a> {
 
 #[derive(PartialEq, Eq, PartialOrd, Hash, Serialize)]
 pub struct OwnedRow(Row<'static>);
+
+impl<'a> PartialEq<Row<'a>> for OwnedRow {
+    fn eq(&self, other: &Row<'a>) -> bool {
+        self.as_ref() == other
+    }
+}
 
 impl<'de> Deserialize<'de> for OwnedRow {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

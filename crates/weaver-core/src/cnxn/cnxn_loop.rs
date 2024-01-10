@@ -13,7 +13,7 @@ use crate::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use crate::db::server::layers::packets::{DbReqBody, DbResp};
 use crate::db::server::processes::{ProcessState, WeaverProcessChild};
 use crate::error::Error;
-use crate::rows::OwnedRows;
+use crate::rows::Rows;
 use crate::tx::Tx;
 
 /// The main method to use when connecting to a client
@@ -24,7 +24,7 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
 ) -> Result<(), Error> {
     let socket = child.db().upgrade().unwrap().connect();
     let mut tx = Option::<Tx>::None;
-    let mut rows = Option::<Box<dyn OwnedRows>>::None;
+    let mut rows = Option::<Box<dyn Rows>>::None;
 
     loop {
         let message = stream.read()?;
@@ -93,7 +93,7 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
                             }
                             DbResp::TxRows(ret_tx, ret_rows) => {
                                 tx = Some(ret_tx);
-                                rows = Some(ret_rows);
+                                rows = Some(Box::new(ret_rows));
                                 RemoteDbResp::Ok
                             }
                             DbResp::TxTable(ret_tx, ret_table) => {
@@ -102,7 +102,7 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
                                 RemoteDbResp::Ok
                             }
                             DbResp::Rows(ret_rows) => {
-                                rows = Some(ret_rows);
+                                rows = Some(Box::new(ret_rows));
                                 debug!("received rows from remote");
                                 RemoteDbResp::Ok
                             }

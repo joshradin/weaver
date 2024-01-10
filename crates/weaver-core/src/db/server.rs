@@ -1,6 +1,6 @@
 use crate::cnxn::MessageStream;
 use crate::modules::Module;
-use crate::rows::{OwnedRows, OwnedRowsExt, Rows, RowsExt};
+use crate::rows::{Rows, RowsExt};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::net::ToSocketAddrs;

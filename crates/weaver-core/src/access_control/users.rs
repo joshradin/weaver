@@ -6,6 +6,7 @@ use crate::db::WEAVER_SCHEMA;
 use crate::dynamic_table::{Col, DynamicTable, EngineKey};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
+use crate::storage::VecPaged;
 use crate::tables::table_schema::TableSchema;
 use crate::tables::InMemoryTable;
 use crate::tx::Tx;

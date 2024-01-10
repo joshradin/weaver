@@ -73,7 +73,7 @@ pub trait Rows<'t> {
 }
 
 pub trait RowsExt<'t>: Rows<'t> {
-    fn to_owned(mut self) -> Box<dyn OwnedRows + Send + Sync>
+    fn to_owned(mut self) -> OwnedRows
     where
         Self: Sized,
     {
@@ -82,10 +82,10 @@ pub trait RowsExt<'t>: Rows<'t> {
             rows.push_back(row.to_owned());
         }
 
-        Box::new(DefaultOwnedRows {
+        OwnedRows {
             schema: self.schema().clone(),
             rows,
-        })
+        }
     }
 }
 
@@ -106,19 +106,13 @@ impl<'t> Rows<'t> for Box<dyn Rows<'t> + Send + 't> {
         (**self).next()
     }
 }
-
-pub trait OwnedRows {
-    fn schema(&self) -> &TableSchema;
-    fn next(&mut self) -> Option<OwnedRow>;
-}
-
 #[derive(Debug)]
-pub struct DefaultOwnedRows {
+pub struct OwnedRows {
     schema: TableSchema,
     rows: VecDeque<OwnedRow>,
 }
 
-impl DefaultOwnedRows {
+impl OwnedRows {
     pub fn new<I>(schema: TableSchema, rows: I) -> Self
     where
         I: IntoIterator<Item = OwnedRow>,
@@ -130,17 +124,7 @@ impl DefaultOwnedRows {
     }
 }
 
-impl OwnedRows for DefaultOwnedRows {
-    fn schema(&self) -> &TableSchema {
-        &self.schema
-    }
-
-    fn next(&mut self) -> Option<OwnedRow> {
-        self.rows.pop_front()
-    }
-}
-
-impl<'t> Rows<'t> for DefaultOwnedRows {
+impl<'t> Rows<'t> for OwnedRows {
     fn schema(&self) -> &TableSchema {
         &self.schema
     }
@@ -149,40 +133,6 @@ impl<'t> Rows<'t> for DefaultOwnedRows {
         self.rows.pop_front().map(|owned| owned.into())
     }
 }
-
-impl Debug for Box<dyn OwnedRows + Send + Sync> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OwnedRows").finish_non_exhaustive()
-    }
-}
-
-impl OwnedRows for Box<dyn OwnedRows + Send + Sync> {
-    fn schema(&self) -> &TableSchema {
-        (**self).schema()
-    }
-
-    fn next(&mut self) -> Option<OwnedRow> {
-        (**self).next()
-    }
-}
-
-pub trait OwnedRowsExt: OwnedRows {
-    fn to_rows<'a>(mut self) -> Box<dyn Rows<'a> + Send + 'a>
-    where
-        Self: Sized,
-    {
-        let mut rows = VecDeque::new();
-        while let Some(row) = self.next() {
-            rows.push_back(Row::from(row));
-        }
-
-        Box::new(DefaultRows {
-            schema: self.schema().clone(),
-            rows,
-        })
-    }
-}
-impl<R: OwnedRows> OwnedRowsExt for R {}
 
 #[derive(Debug)]
 pub struct DefaultRows<'a> {

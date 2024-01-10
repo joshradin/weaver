@@ -9,7 +9,6 @@ use service::Service;
 use crate::cancellable_task::{CancelRecv, Cancelled};
 use crate::db::server::layers::packets::{DbReq, DbResp, IntoDbResponse};
 use crate::db::server::layers::service::FromFnService;
-use crate::rows::OwnedRows;
 
 mod layer_impl;
 pub mod packets;

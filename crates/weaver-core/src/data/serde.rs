@@ -37,7 +37,10 @@ impl DataSerializer {
                     self.bytes.push(r#type as u8);
                 }
             }
+        } else {
+            self.bytes.push(if value == &Value::Null { 0 } else { 1 })
         }
+
         match value {
             Value::String(string) => {
                 self.bytes.extend((string.len() as u32).to_be_bytes());
@@ -50,15 +53,13 @@ impl DataSerializer {
             Value::Integer(integer) => {
                 self.bytes.extend(integer.to_be_bytes());
             }
-            Value::Boolean(_) => {}
+            Value::Boolean(b) => {
+                self.bytes.push(*b as u8);
+            }
             Value::Float(float) => {
                 self.bytes.extend(float.to_be_bytes());
             }
-            Value::Null => {
-                if self.mode == SerdeMode::Untyped {
-                    self.bytes.push(0);
-                }
-            }
+            Value::Null => {}
         }
     }
 
@@ -97,16 +98,32 @@ impl DataDeserializer {
         let mut output = vec![];
         let mut type_iter = iter.into_iter();
         while !buffer.is_empty() {
-            let ty: Type = match self.mode {
+            let ty: Option<Type> = match self.mode {
                 SerdeMode::Typed => buffer
                     .pop_front()
                     .ok_or(ReadDataError::UnexpectedEof)
-                    .and_then(|disc| Type::try_from(disc))?,
-                SerdeMode::Untyped => type_iter.next().ok_or(ReadDataError::NoTypeGiven)?,
+                    .and_then(|disc| {
+                        if disc == 0 {
+                            Ok(None)
+                        } else {
+                            Type::try_from(disc).map(Some)
+                        }
+                    })?,
+                SerdeMode::Untyped => type_iter
+                    .next()
+                    .zip(buffer.pop_front())
+                    .map(|(t, non_null): (Type, u8)| if non_null == 0 { None } else { Some(t) })
+                    .ok_or_else(|| {
+                        eprintln!(
+                            "no type given but {buffer:?} bytes left (decoded {:?})",
+                            output
+                        );
+                        ReadDataError::NoTypeGiven
+                    })?,
             };
 
             match ty {
-                Type::String => {
+                Some(Type::String) => {
                     let len = u32::from_be_bytes(
                         buffer.drain(..4).collect::<Vec<_>>().try_into().unwrap(),
                     ) as usize;
@@ -114,28 +131,31 @@ impl DataDeserializer {
                     let s = String::from_utf8(bytes)?;
                     output.push(Value::String(s));
                 }
-                Type::Blob => {
+                Some(Type::Blob) => {
                     let len = u32::from_be_bytes(
                         buffer.drain(..4).collect::<Vec<_>>().try_into().unwrap(),
                     ) as usize;
                     let bytes = buffer.drain(..len).collect::<Vec<_>>();
                     output.push(Value::Blob(bytes));
                 }
-                Type::Integer => {
+                Some(Type::Integer) => {
                     let v = i64::from_be_bytes(
                         buffer.drain(..8).collect::<Vec<_>>().try_into().unwrap(),
                     );
                     output.push(Value::Integer(v))
                 }
-                Type::Boolean => {
+                Some(Type::Boolean) => {
                     let v = buffer.pop_front().ok_or(ReadDataError::UnexpectedEof)? == 1;
                     output.push(Value::Boolean(v))
                 }
-                Type::Float => {
+                Some(Type::Float) => {
                     let f = f64::from_be_bytes(
                         buffer.drain(..8).collect::<Vec<_>>().try_into().unwrap(),
                     );
                     output.push(Value::Float(f))
+                }
+                None => {
+                    output.push(Value::Null);
                 }
             }
         }
@@ -149,17 +169,17 @@ pub enum SerdeMode {
     Untyped,
 }
 
-pub fn serialize_data_typed<'a, I: IntoIterator<Item = &'a Value>>(data: I) -> Vec<u8> {
+pub fn serialize_data_typed<'a, V: AsRef<Value>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
     let mut serializer = DataSerializer::new(SerdeMode::Typed);
     for value in data {
-        serializer.serialize(value);
+        serializer.serialize(value.as_ref());
     }
     serializer.finish()
 }
-pub fn serialize_data_untyped<'a, I: IntoIterator<Item = &'a Value>>(data: I) -> Vec<u8> {
+pub fn serialize_data_untyped<'a, V: AsRef<Value>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
     let mut serializer = DataSerializer::new(SerdeMode::Untyped);
     for value in data {
-        serializer.serialize(value);
+        serializer.serialize(value.as_ref());
     }
     serializer.finish()
 }
@@ -182,12 +202,39 @@ pub fn deserialize_data_untyped<'a, B: AsRef<[u8]>, I: IntoIterator<Item = Type>
 #[cfg(test)]
 mod tests {
     use crate::data::row::Row;
-    use crate::data::serde::{DataSerializer, SerdeMode};
+    use crate::data::serde::{
+        serialize_data_typed, serialize_data_untyped, DataSerializer, SerdeMode,
+    };
+    use crate::data::types::Type;
+    use crate::data::values::Value;
     use crate::key::KeyData;
 
     #[test]
     fn serialize_data() {
         let mut serializer = DataSerializer::new(SerdeMode::Untyped);
         serializer.serialize_row(KeyData::from(Row::from([1])))
+    }
+
+    #[test]
+    fn deserialize_data_typed() {
+        let row = Row::from([Value::from(15), Value::Null, Value::from("hello, world!")]);
+        let serialized = serialize_data_typed(&row);
+        let read = super::deserialize_data_typed(&serialized).expect("could not deserialize");
+        let row_de = Row::from(read);
+        assert_eq!(row, row_de);
+    }
+
+    #[test]
+    fn deserialize_data_untyped() {
+        let row = Row::from([Value::from(15), Value::Null, Value::from("hello, world!")]);
+        let types = row.types();
+        let serialized = serialize_data_untyped(&row);
+        let read = super::deserialize_data_untyped(
+            &serialized,
+            types.into_iter().map(|t| t.unwrap_or_else(|| Type::Blob)),
+        )
+        .expect("could not deserialize");
+        let row_de = Row::from(read);
+        assert_eq!(row, row_de);
     }
 }

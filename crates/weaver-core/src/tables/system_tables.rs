@@ -8,7 +8,7 @@ use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::socket::DbSocket;
 use crate::dynamic_table::{Col, DynamicTable, StorageEngineFactory, Table};
 use crate::error::Error;
-use crate::rows::{DefaultOwnedRows, KeyIndex, OwnedRowsExt, Rows};
+use crate::rows::{KeyIndex, OwnedRows, Rows};
 use crate::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 use std::fmt::Debug;

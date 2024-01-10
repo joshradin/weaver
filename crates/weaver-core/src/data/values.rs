@@ -41,6 +41,12 @@ impl Value {
     }
 }
 
+impl AsRef<Value> for Value {
+    fn as_ref(&self) -> &Value {
+        self
+    }
+}
+
 impl From<&str> for Value {
     fn from(value: &str) -> Self {
         Self::from(value.to_string())

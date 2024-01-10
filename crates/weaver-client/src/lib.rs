@@ -1,17 +1,18 @@
-use eyre::eyre;
-use interprocess::local_socket::LocalSocketStream;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::time::{Duration, Instant};
+
+use eyre::eyre;
+use interprocess::local_socket::LocalSocketStream;
+
 use weaver_core::access_control::auth::LoginContext;
-use weaver_core::access_control::users::User;
 use weaver_core::cnxn::stream::WeaverStream;
 use weaver_core::cnxn::{MessageStream, RemoteDbReq, RemoteDbResp};
 use weaver_core::common::stream_support::Stream;
 use weaver_core::data::row::Row;
 use weaver_core::db::server::processes::WeaverPid;
 use weaver_core::queries::ast::Query;
-use weaver_core::rows::{DefaultOwnedRows, OwnedRows, OwnedRowsExt, Rows};
+use weaver_core::rows::Rows;
 use weaver_core::tables::table_schema::TableSchema;
 
 pub mod write_rows;

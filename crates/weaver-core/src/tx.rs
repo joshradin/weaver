@@ -1,13 +1,19 @@
 //! Transactions
 
-use crate::common::opaque::Opaque;
+use std::collections::BTreeSet;
+use std::fmt::{Display, Formatter};
+use std::sync::Arc;
+
+use crossbeam::channel::{bounded, Receiver, Sender};
+use derive_more::{Display, From, Into};
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
+use tracing::{debug, info};
+
 use behavior::{TxCompletion, TxDropBehavior};
 use coordinator::TxCompletionToken;
-use crossbeam::channel::Sender;
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
-use tracing::info;
 
+use crate::common::opaque::Opaque;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::Col;
 
@@ -18,14 +24,27 @@ pub static TX_ID_COLUMN: Col<'static> = "@@TX_ID";
 
 /// The id of the a transaction
 #[derive(
-    Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Serialize, Deserialize,
+    Debug,
+    Default,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Copy,
+    Clone,
+    Serialize,
+    Deserialize,
+    From,
+    Into,
+    Display,
 )]
 pub struct TxId(u64);
 
 impl TxId {
     /// Checks if this id would be visible within a transaction
     pub fn is_visible_in(&self, tx: &Tx) -> bool {
-        self.is_visible_within(&tx.id, &tx.look_behind)
+        self.is_visible_within(&tx.id, &tx.look_behind) || tx.visible.contains(self)
     }
 
     /// Checks if this id would be visible within a transaction
@@ -54,10 +73,14 @@ impl From<i64> for TxId {
 pub struct Tx {
     id: TxId,
     look_behind: TxId,
+    /// Tx ids that are ahead of the look behind and are committed
+    visible: BTreeSet<TxId>,
     completed: bool,
     drop_behavior: TxDropBehavior,
     msg_sender: Option<Sender<TxCompletionToken>>,
     _server_ref: Option<Opaque<WeaverDb>>,
+
+    lock: Arc<Mutex<()>>,
 }
 
 impl Tx {
@@ -76,19 +99,23 @@ impl Tx {
     }
 
     fn _rollback(&mut self) {
-        if let Some(ref msg_sender) = self.msg_sender {
-            let _ = msg_sender.send(TxCompletionToken {
-                tx_id: self.id,
-                completion: TxCompletion::Rollback,
-            });
-        }
+        self.send_complete(TxCompletion::Rollback)
     }
     fn _commit(&mut self) {
+        self.send_complete(TxCompletion::Commit);
+    }
+
+    fn send_complete(&mut self, completion: TxCompletion) {
         if let Some(ref msg_sender) = self.msg_sender {
+            let _lock = self.lock.lock();
+            debug!("tx {} locked tx_lock for completion", self);
+            let (ack_send, ack_recv) = bounded(0);
             let _ = msg_sender.send(TxCompletionToken {
                 tx_id: self.id,
-                completion: TxCompletion::Commit,
+                completion,
+                ack: ack_send,
             });
+            let _ = ack_recv.recv();
         }
     }
     pub fn rollback(mut self) {
@@ -107,7 +134,16 @@ impl Tx {
 
 impl Display for Tx {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Tx").field(&self.id).finish()
+        write!(
+            f,
+            "Tx[{}]{{ look_behind: {}, visible: {:?} }}",
+            self.id,
+            self.look_behind,
+            self.visible
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+        )
     }
 }
 

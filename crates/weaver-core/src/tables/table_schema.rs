@@ -113,7 +113,7 @@ impl TableSchema {
 
     /// Decodes a row
     pub fn decode(&self, bytes: &[u8]) -> Result<OwnedRow, Error> {
-        deserialize_data_untyped(bytes, self.columns().iter().map(|col| col.data_type))
+        deserialize_data_untyped(bytes, self.all_columns().iter().map(|col| col.data_type))
             .map(|vals| Row::from(vals).to_owned())
             .map_err(|e| e.into())
     }

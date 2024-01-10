@@ -5,7 +5,7 @@ use crate::db::server::WeaverDb;
 use crate::dynamic_table::Table;
 use crate::error::Error;
 use crate::queries::ast::Query;
-use crate::rows::OwnedRows;
+use crate::rows::{OwnedRows, Rows};
 use crate::tx::{Tx, TxRef};
 use crossbeam::channel::Receiver;
 use serde::{Deserialize, Serialize};
@@ -211,8 +211,8 @@ pub enum DbResp {
     Ok,
     Tx(Tx),
     TxTable(Tx, Arc<Table>),
-    TxRows(Tx, Box<dyn OwnedRows + Send + Sync>),
-    Rows(Box<dyn OwnedRows + Send + Sync>),
+    TxRows(Tx, OwnedRows),
+    Rows(OwnedRows),
     Err(Error),
 }
 
@@ -223,8 +223,8 @@ impl IntoDbResponse for DbResp {
 }
 
 impl DbResp {
-    pub fn rows<T: OwnedRows + Send + Sync + 'static>(rows: T) -> Self {
-        Self::Rows(Box::new(rows))
+    pub fn rows(rows: OwnedRows) -> Self {
+        Self::Rows(rows)
     }
 
     pub fn to_result(self) -> Result<DbResp, Error> {

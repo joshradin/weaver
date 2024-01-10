@@ -1,4 +1,5 @@
 use tracing::info;
+use tracing::level_filters::LevelFilter;
 use weaver_core::data::row::Row;
 use weaver_core::data::types::Type;
 use weaver_core::data::values::Value;
@@ -10,6 +11,11 @@ use weaver_core::tables::table_schema::TableSchema;
 
 #[test]
 fn create_in_memory() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(LevelFilter::TRACE)
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .try_init();
     let mut db = WeaverDbCore::new().unwrap();
     let ref schema = TableSchema::builder("default", "in_mem")
         .column("id", Type::Integer, true, None, 0)

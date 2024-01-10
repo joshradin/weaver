@@ -31,11 +31,7 @@ impl QueryExecutor {
 
 impl QueryExecutor {
     /// Executes a query
-    pub fn execute(
-        &self,
-        tx: &Tx,
-        plan: &QueryPlan,
-    ) -> Result<Box<dyn OwnedRows + Send + Sync>, Error> {
+    pub fn execute(&self, tx: &Tx, plan: &QueryPlan) -> Result<OwnedRows, Error> {
         let root = plan.root();
         let core = self.core.upgrade().ok_or(Error::NoCoreAvailable)?;
         let mut stack = vec![root];

@@ -17,7 +17,6 @@ pub struct App {
     /// Sets the location of the key store
     #[clap(long)]
     pub key_store: Option<PathBuf>,
-
     #[clap(long, action=ArgAction::HelpLong)]
-    help: bool,
+    help: Option<bool>,
 }
