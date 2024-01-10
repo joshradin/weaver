@@ -116,11 +116,10 @@ impl DynamicTable for InMemoryTable {
         if key_def.primary() {
             match key.kind() {
                 KeyIndexKind::All => Ok(Box::new(
-                    self.main_buffer.all()?
+                    self.main_buffer
+                        .all()?
                         .into_iter()
-                        .map(|bytes| {
-                            self.schema.decode(&bytes)
-                        })
+                        .map(|bytes| self.schema.decode(&bytes))
                         .filter(|row| {
                             if let Ok(row) = row {
                                 row[self.schema.col_idx(TX_ID_COLUMN).unwrap()]
@@ -132,9 +131,7 @@ impl DynamicTable for InMemoryTable {
                             }
                         })
                         .collect::<Result<Vec<_>, _>>()
-                        .map(|rows| {
-                            DefaultOwnedRows::new(self.schema.clone(), rows)
-                        })?
+                        .map(|rows| DefaultOwnedRows::new(self.schema.clone(), rows))?,
                 )),
                 KeyIndexKind::Range { .. } => {
                     todo!()

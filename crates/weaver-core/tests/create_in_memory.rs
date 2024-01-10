@@ -9,16 +9,19 @@ use weaver_core::rows::Rows;
 use weaver_core::tables::table_schema::TableSchema;
 
 #[test]
-fn create_in_memory() -> Result<(), Error> {
+fn create_in_memory() {
     let mut db = WeaverDbCore::new().unwrap();
     let ref schema = TableSchema::builder("default", "in_mem")
-        .column("id", Type::Integer, true, None, 0)?
-        .column("name", Type::String, true, None, None)?
-        .build()?;
+        .column("id", Type::Integer, true, None, 0)
+        .unwrap()
+        .column("name", Type::String, true, None, None)
+        .unwrap()
+        .build()
+        .expect("could not build schema");
 
     info!("schema: {:#?}", schema);
 
-    db.open_table(schema)?;
+    db.open_table(schema).unwrap();
     let table = db.get_table("default", "in_mem").unwrap();
     {
         let tx1 = db.start_transaction();
@@ -36,13 +39,13 @@ fn create_in_memory() -> Result<(), Error> {
             )
             .expect("could not insert");
 
-        let mut x = table.read(&tx1, &schema.primary_key()?.all())?;
+        let mut x = table
+            .read(&tx1, &schema.primary_key().unwrap().all())
+            .expect("failed to get row");
         while let Some(row) = x.next() {
             info!("row: {:?}", row);
         }
 
         // info!("table: {:#?}", x.into_iter().collect::<Vec<_>>());
     }
-
-    Ok(())
 }

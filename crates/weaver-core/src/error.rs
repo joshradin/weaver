@@ -16,9 +16,9 @@ use crate::db::server::processes::WeaverPid;
 use crate::db::server::socket::MainQueueItem;
 use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError, TableCol};
 use crate::key::KeyData;
+use crate::storage::cells::PageId;
 use crate::storage::slotted_page::PageType;
 use crate::storage::{ReadDataError, WriteDataError};
-use crate::storage::cells::PageId;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -127,7 +127,6 @@ pub enum Error {
     },
     #[error("{0}")]
     Custom(String),
-
 }
 
 impl Error {

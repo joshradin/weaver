@@ -1,5 +1,6 @@
 //! Second version of slotted pages, built over page abstractions
 
+use derive_more::{Deref, DerefMut};
 use std::backtrace::Backtrace;
 use std::collections::{BTreeMap, Bound, LinkedList, VecDeque};
 use std::iter::FusedIterator;
@@ -7,14 +8,15 @@ use std::mem::{size_of, size_of_val};
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
-use derive_more::{Deref, DerefMut};
 
 use parking_lot::{Mutex, RwLock};
 
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
-use crate::storage::abstraction::{PageMut, PageMutWithHeader, Paged, SplitPage, Page, PageWithHeader};
+use crate::storage::abstraction::{
+    Page, PageMut, PageMutWithHeader, PageWithHeader, Paged, SplitPage,
+};
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
 
@@ -152,7 +154,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     pub fn all(&self) -> Result<Vec<Cell>, Error> {
         self.get_range(..)
     }
-    fn get_slot_offset_from_cell_offset(& self, cell_offset: usize) -> Result<Option<usize>, Error> {
+    fn get_slot_offset_from_cell_offset(&self, cell_offset: usize) -> Result<Option<usize>, Error> {
         for slot_offset in self.slots_offsets() {
             let cell_offset_f = self.read_ptr(slot_offset)?;
             if cell_offset == cell_offset_f {
@@ -292,8 +294,14 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
 
     /// Gets the range of the key data
     pub fn key_range(&self) -> Result<KeyDataRange, Error> {
-        let min = self.min_key()?.map(Bound::Included).unwrap_or(Bound::Unbounded);
-        let max = self.min_key()?.map(Bound::Included).unwrap_or(Bound::Unbounded);
+        let min = self
+            .min_key()?
+            .map(Bound::Included)
+            .unwrap_or(Bound::Unbounded);
+        let max = self
+            .min_key()?
+            .map(Bound::Included)
+            .unwrap_or(Bound::Unbounded);
         Ok(KeyDataRange(min, max))
     }
 }
@@ -335,17 +343,13 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     /// Locks this page, granting exclusive access to it. Required when performing insertions or deletions.
     /// Repeatedly locking the page has no effect once successful. Unlocked upon dropping
     pub fn lock(&mut self) -> Result<(), Error> {
-
         Ok(())
     }
 
     /// Unlocks this page if this page has exclusive ownership over the backing data.
     ///
     /// Has no effect if page is not locked
-    pub fn unlock(&mut self) {
-
-    }
-
+    pub fn unlock(&mut self) {}
 
     /// Deletes the cell with a given key if present
     pub fn delete(&mut self, key_data: &KeyData) -> Result<Option<Cell>, Error> {
@@ -385,18 +389,17 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     pub fn used(&self) -> usize {
         self.all()
             .into_iter()
-            .flat_map(|cells| {
-                cells
-            })
+            .flat_map(|cells| cells)
             .map(|cell| cell.len())
-            .sum::<usize>() + self.count() * size_of::<u64>() + size_of::<SlottedPageHeader>()
+            .sum::<usize>()
+            + self.count() * size_of::<u64>()
+            + size_of::<SlottedPageHeader>()
     }
 
     /// Gets the free space left over in this page
     pub fn free_space(&self) -> usize {
         self.len() - self.used()
     }
-
 
     /// allocate a given length within the slotted page
     ///
@@ -539,8 +542,6 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
         )
     }
 
-
-
     /// Writes a pointer (offset from page) at a given offset
     fn write_ptr(&mut self, offset: usize, ptr: usize) -> Result<(), Error> {
         if offset > self.page.body_len() - size_of::<u64>() {
@@ -553,25 +554,18 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
         Ok(())
     }
 
-
     pub fn set_right_sibling(&mut self, page_id: impl Into<Option<PageId>>) {
         self.header.to_mut().right_page_id = page_id.into()
     }
-
 
     pub fn set_left_sibling(&mut self, page_id: impl Into<Option<PageId>>) {
         self.header.to_mut().left_page_id = page_id.into()
     }
 
-
     pub fn set_parent(&mut self, parent: impl Into<Option<PageId>>) {
         self.header.to_mut().parent_page_id = parent.into();
     }
-
-
 }
-
-
 
 impl<'a, P: PageMut<'a>> PageMut<'a> for SlottedPageShared<'a, P> {
     fn as_mut_slice(&mut self) -> &mut [u8] {
@@ -589,7 +583,9 @@ impl<'a, P: Page<'a>> Page<'a> for SlottedPageShared<'a, P> {
 }
 
 #[derive(Debug, Deref, DerefMut)]
-pub struct SlottedPageMut<'a, P : PageMut<'a>> { shared: SlottedPageShared<'a, P>}
+pub struct SlottedPageMut<'a, P: PageMut<'a>> {
+    shared: SlottedPageShared<'a, P>,
+}
 
 impl<'a, P: PageMut<'a>> Drop for SlottedPageMut<'a, P> {
     fn drop(&mut self) {
@@ -599,7 +595,8 @@ impl<'a, P: PageMut<'a>> Drop for SlottedPageMut<'a, P> {
         }
         if let Some(lock) = self.lock.get() {
             // println!("dropping slotted page {:?} with {} access", self.page_id(), if self.is_read { "r" } else { "r/w" });
-            lock.compare_exchange(-1, 0, Ordering::SeqCst, Ordering::SeqCst).expect("should be -1");
+            lock.compare_exchange(-1, 0, Ordering::SeqCst, Ordering::SeqCst)
+                .expect("should be -1");
         }
     }
 }
@@ -620,10 +617,10 @@ impl<'a, P: PageMut<'a>> PageMut<'a> for SlottedPageMut<'a, P> {
     }
 }
 
-
-
 #[derive(Debug, Deref)]
-pub struct SlottedPage<'a, P : Page<'a>> { shared: SlottedPageShared<'a, P>}
+pub struct SlottedPage<'a, P: Page<'a>> {
+    shared: SlottedPageShared<'a, P>,
+}
 
 impl<'a, P: Page<'a>> Drop for SlottedPage<'a, P> {
     fn drop(&mut self) {
@@ -633,7 +630,6 @@ impl<'a, P: Page<'a>> Drop for SlottedPage<'a, P> {
         }
     }
 }
-
 
 impl<'a, P: Page<'a>> Page<'a> for SlottedPage<'a, P> {
     fn len(&self) -> usize {
@@ -857,7 +853,7 @@ impl<P: Paged> SlottedPageAllocator<P> {
     }
 
     /// Checks if the given page has the magic number
-    fn has_magic<'a, Pg : Page<'a>>(page: &Pg) -> bool {
+    fn has_magic<'a, Pg: Page<'a>>(page: &Pg) -> bool {
         &page.as_slice()[0..size_of_val(&MAGIC)] == &MAGIC.to_be_bytes()
     }
 
@@ -886,8 +882,12 @@ impl<P: Paged> SlottedPageAllocator<P> {
             } else {
                 None
             }
-        }).map_err(|v| {
-            eprintln!("could not acquired slotted page {:?} with r access. (reads: {v})", id);
+        })
+        .map_err(|v| {
+            eprintln!(
+                "could not acquired slotted page {:?} with r access. (reads: {v})",
+                id
+            );
             Error::ReadDataError(ReadDataError::PageLocked(id))
         })?;
 
@@ -908,10 +908,14 @@ impl<P: Paged> SlottedPageAllocator<P> {
     /// Gets a mutable version of the page by a given page_id
     pub fn get_mut(&self, id: PageId) -> Result<SlottedPageMut<P::PageMut<'_>>, Error> {
         let lock = self.usage.lock().entry(id).or_default().clone();
-        lock.compare_exchange(0, -1,Ordering::SeqCst, Ordering::SeqCst).map_err(|v| {
-            eprintln!("could not acquired slotted page {:?} with r/w access. (reads: {})", id, v);
-            Error::ReadDataError(ReadDataError::PageLocked(id))
-        })?;
+        lock.compare_exchange(0, -1, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|v| {
+                eprintln!(
+                    "could not acquired slotted page {:?} with r/w access. (reads: {})",
+                    id, v
+                );
+                Error::ReadDataError(ReadDataError::PageLocked(id))
+            })?;
 
         self.page_id_to_index
             .read()
@@ -1066,17 +1070,14 @@ impl<P: Paged> Paged for SlottedPageAllocator<P> {
                 free_list: Default::default(),
                 lock: Default::default(),
                 my_lock: false,
-            }
+            },
         };
         let lock = self.usage.lock().entry(id).or_default().clone();
-        lock.compare_exchange(0, -1,Ordering::SeqCst, Ordering::SeqCst).map_err(|v| {
-            Error::ReadDataError(ReadDataError::PageLocked(id))
-        }).expect("could not secure");
+        lock.compare_exchange(0, -1, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|v| Error::ReadDataError(ReadDataError::PageLocked(id)))
+            .expect("could not secure");
         let _ = page.lock.set(lock);
-        Ok((
-            page,
-            index,
-        ))
+        Ok((page, index))
     }
 
     fn free(&self, index: usize) -> Result<(), Self::Err> {
@@ -1099,8 +1100,6 @@ impl<P: Paged> Paged for SlottedPageAllocator<P> {
         self.paged.reserved()
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -1266,7 +1265,11 @@ mod tests {
                 .unwrap();
         }
 
-        assert_eq!(slotted_pager.paged.len(), 1, "only one page should've been allocated");
+        assert_eq!(
+            slotted_pager.paged.len(),
+            1,
+            "only one page should've been allocated"
+        );
         println!("page free space: {}", page.free_space());
 
         let cells = page
@@ -1278,13 +1281,21 @@ mod tests {
         );
         assert_eq!(cells.len(), 128);
         assert_eq!(page.count(), 512 - 128);
-        assert_eq!(cells.iter().map(|cell| cell.key_data()).min().unwrap(), KeyData::from([128]));
-        assert_eq!(cells.iter().map(|cell| cell.key_data()).max().unwrap(), KeyData::from([255]));
+        assert_eq!(
+            cells.iter().map(|cell| cell.key_data()).min().unwrap(),
+            KeyData::from([128])
+        );
+        assert_eq!(
+            cells.iter().map(|cell| cell.key_data()).max().unwrap(),
+            KeyData::from([255])
+        );
         for cell in cells {
-            assert!(!page.contains(&cell.key_data()), "page should not contain {cell:?} after drain");
+            assert!(
+                !page.contains(&cell.key_data()),
+                "page should not contain {cell:?} after drain"
+            );
         }
     }
-
 
     #[test]
     fn reuse_cell() {

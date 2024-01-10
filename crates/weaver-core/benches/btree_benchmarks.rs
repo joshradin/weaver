@@ -7,24 +7,26 @@ use weaver_core::key::KeyData;
 use weaver_core::storage::b_plus_tree::BPlusTree;
 use weaver_core::storage::VecPaged;
 
-fn insert_rand(count: usize, page_len: usize)  -> BPlusTree<VecPaged> {
+fn insert_rand(count: usize, page_len: usize) -> BPlusTree<VecPaged> {
     insert(
         (0..count)
             .into_iter()
             .map(|_| rand::thread_rng().gen_range(0..count as i64)),
-        page_len
+        page_len,
     )
 }
 
 fn insert<I: IntoIterator<Item = i64>>(iter: I, page_len: usize) -> BPlusTree<VecPaged> {
     let mut btree = BPlusTree::new(VecPaged::new(page_len));
 
-    iter.into_iter().try_for_each(|id: i64| {
-        btree.insert(
-            KeyData::from([Value::from(id)]),
-            Row::from([Value::from(id), Value::from(id)]).to_owned(),
-        )
-    }).unwrap();
+    iter.into_iter()
+        .try_for_each(|id: i64| {
+            btree.insert(
+                KeyData::from([Value::from(id)]),
+                Row::from([Value::from(id), Value::from(id)]).to_owned(),
+            )
+        })
+        .unwrap();
     btree
 }
 
@@ -64,13 +66,13 @@ fn btree_insert_dec(c: &mut Criterion) {
     for count in &[10, 100, 1000, 10000] {
         group.throughput(Throughput::Elements(*count));
         group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
-            b.iter(|| insert((0..count as i64).rev(), 4096),);
+            b.iter(|| insert((0..count as i64).rev(), 4096));
         });
     }
 }
 
 fn btree_read(c: &mut Criterion) {
-    let mut btree = insert_rand(10000, 4096*4);
+    let mut btree = insert_rand(10000, 4096 * 4);
     let mut group = c.benchmark_group("read");
     group.throughput(Throughput::Elements(1));
     group.bench_function("read", |b| {

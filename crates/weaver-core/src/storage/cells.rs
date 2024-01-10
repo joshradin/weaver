@@ -46,7 +46,6 @@ impl Cell {
         }
     }
 
-
     /// Gets this cell as a key value cell
     pub fn as_key_value_cell(&self) -> Option<&KeyValueCell> {
         if let Cell::KeyValue(kv) = &self {
@@ -73,8 +72,6 @@ impl Cell {
             None
         }
     }
-
-
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

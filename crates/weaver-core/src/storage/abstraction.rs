@@ -6,13 +6,13 @@ use std::error::Error;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::slice::SliceIndex;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Arc;
 
 use parking_lot::RwLock;
 
 use crate::common::track_dirty::Mad;
-use crate::storage::{PAGE_SIZE, ReadResult, StorageBackedData, WriteResult};
+use crate::storage::{ReadResult, StorageBackedData, WriteResult, PAGE_SIZE};
 
 /// Allows for getting pages of a fix size
 pub trait Paged {
@@ -265,13 +265,15 @@ impl Paged for VecPaged {
         let binding = self.pages.read();
         let page = binding[index].read().to_vec().into_boxed_slice();
         let usage = self.usage.read().get(&index).unwrap().clone();
-        usage.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
-            if v >= 0 {
-                Some(v + 1)
-            } else {
-                None
-            }
-        }).expect("can not get immutable usage");
+        usage
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+                if v >= 0 {
+                    Some(v + 1)
+                } else {
+                    None
+                }
+            })
+            .expect("can not get immutable usage");
 
         Ok(SharedPage {
             buffer: page,
@@ -285,7 +287,9 @@ impl Paged for VecPaged {
         let arc = &binding[index];
         let page = arc.read().to_vec().into_boxed_slice();
         let usage = self.usage.read().get(&index).unwrap().clone();
-        usage.compare_exchange(0, -1, Ordering::SeqCst, Ordering::Relaxed).expect("can not get mutable usage");
+        usage
+            .compare_exchange(0, -1, Ordering::SeqCst, Ordering::Relaxed)
+            .expect("can not get mutable usage");
         Ok(SharedPageMut {
             lock: arc.clone(),
             buffer: Mad::new(page),
@@ -394,6 +398,8 @@ impl<'a> Drop for SharedPageMut<'a> {
         if self.buffer.is_dirty() {
             guard.copy_from_slice(&*self.buffer);
         }
-        self.usage.compare_exchange(-1, 0, Ordering::SeqCst, Ordering::Relaxed).expect("Usage reset failed");
+        self.usage
+            .compare_exchange(-1, 0, Ordering::SeqCst, Ordering::Relaxed)
+            .expect("Usage reset failed");
     }
 }

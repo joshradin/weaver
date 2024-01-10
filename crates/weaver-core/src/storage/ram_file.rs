@@ -162,7 +162,7 @@ pub struct PagedFile {
 
 impl PagedFile {
     /// Creates a new paged file
-    pub fn open<P : AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let path = path.as_ref();
         let ram = RandomAccessFile::create(path)?;
         Ok(Self::with_page_len(ram, PAGE_SIZE))
