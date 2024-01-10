@@ -12,6 +12,7 @@ use parking_lot::RwLock;
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
 use crate::storage::abstraction::{Page, PageMut, PageMutWithHeader, Paged};
+use crate::storage::PAGE_SIZE;
 
 #[derive(Debug)]
 pub struct RandomAccessFile {
@@ -161,7 +162,13 @@ pub struct PagedFile {
 
 impl PagedFile {
     /// Creates a new paged file
-    pub fn new(file: RandomAccessFile, page_len: usize) -> Self {
+    pub fn open<P : AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let path = path.as_ref();
+        let ram = RandomAccessFile::create(path)?;
+        Ok(Self::with_page_len(ram, PAGE_SIZE))
+    }
+    /// Creates a new paged file
+    pub fn with_page_len(file: RandomAccessFile, page_len: usize) -> Self {
         Self {
             raf: Arc::new(RwLock::new(file)),
             usage_map: Default::default(),
@@ -391,7 +398,7 @@ mod tests {
     fn paged() {
         let temp = tempfile().expect("could not create tempfile");
         let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
-        let mut paged = PagedFile::new(ram, 4096);
+        let mut paged = PagedFile::with_page_len(ram, 4096);
         let (mut page, index): (FilePageMut, _) = paged.new().unwrap();
         let slice = page.get_mut(..128).unwrap();
         slice[..6].copy_from_slice(&[0, 1, 2, 3, 4, 5]);

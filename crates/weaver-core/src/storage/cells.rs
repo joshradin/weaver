@@ -46,14 +46,6 @@ impl Cell {
         }
     }
 
-    /// converts this cell as a key cell
-    pub fn into_key_cell(self) -> Option<KeyCell> {
-        if let Cell::Key(key) = self {
-            Some(key)
-        } else {
-            None
-        }
-    }
 
     /// Gets this cell as a key value cell
     pub fn as_key_value_cell(&self) -> Option<&KeyValueCell> {
@@ -63,6 +55,26 @@ impl Cell {
             None
         }
     }
+
+    /// converts this cell as a key cell
+    pub fn into_key_cell(self) -> Option<KeyCell> {
+        if let Cell::Key(key) = self {
+            Some(key)
+        } else {
+            None
+        }
+    }
+
+    /// converts this cell as a key cell
+    pub fn into_key_value_cell(self) -> Option<KeyValueCell> {
+        if let Cell::KeyValue(key) = self {
+            Some(key)
+        } else {
+            None
+        }
+    }
+
+
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

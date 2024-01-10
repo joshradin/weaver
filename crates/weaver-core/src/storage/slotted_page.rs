@@ -289,6 +289,13 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
         }
         self.get_cell(0).map(|cell| Some(cell.key_data()))
     }
+
+    /// Gets the range of the key data
+    pub fn key_range(&self) -> Result<KeyDataRange, Error> {
+        let min = self.min_key()?.map(Bound::Included).unwrap_or(Bound::Unbounded);
+        let max = self.min_key()?.map(Bound::Included).unwrap_or(Bound::Unbounded);
+        Ok(KeyDataRange(min, max))
+    }
 }
 
 impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
@@ -1139,7 +1146,7 @@ mod tests {
     fn reuse_slotted_page_after_free_file() {
         let temp = tempfile().expect("could not create file");
         let file = RandomAccessFile::with_file(temp).expect("could not create RAFile");
-        let mut slotted_pager = SlottedPageAllocator::new(PagedFile::new(file, 1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedFile::with_page_len(file, 1028));
         {
             let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
             let slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();

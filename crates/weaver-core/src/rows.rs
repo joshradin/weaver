@@ -139,6 +139,17 @@ impl OwnedRows for DefaultOwnedRows {
         self.rows.pop_front()
     }
 }
+
+impl<'t> Rows<'t> for DefaultOwnedRows {
+    fn schema(&self) -> &TableSchema {
+        &self.schema
+    }
+
+    fn next(&mut self) -> Option<Row<'t>> {
+        self.rows.pop_front().map(|owned| owned.into())
+    }
+}
+
 impl Debug for Box<dyn OwnedRows + Send + Sync> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OwnedRows").finish_non_exhaustive()
@@ -174,7 +185,7 @@ pub trait OwnedRowsExt: OwnedRows {
 impl<R: OwnedRows> OwnedRowsExt for R {}
 
 #[derive(Debug)]
-struct DefaultRows<'a> {
+pub struct DefaultRows<'a> {
     schema: TableSchema,
     rows: VecDeque<Row<'a>>,
 }

@@ -163,6 +163,31 @@ impl KeyDataRange {
         Some(range)
     }
 
+    /// If two ranges overlap, creates the intersection of the two
+    pub fn intersection(&self, other: &Self) -> Option<Self> {
+        if !self.overlaps(other) {
+            return None;
+        }
+
+        let lower = [&self.0, &other.0]
+            .into_iter()
+            .max_by(|&a, &b| compare_bounds(a, b))
+            .unwrap();
+        let upper = [&self.1, &other.1]
+            .into_iter()
+            .min_by(|&a, &b| compare_bounds(a, b))
+            .unwrap();
+
+        let range = Self(lower.clone(), upper.clone());
+        trace!(
+            "combining {:15?} with {:15?} into {:15?}",
+            self,
+            other,
+            range
+        );
+        Some(range)
+    }
+
     pub fn start_bound(&self) -> Bound<&KeyData> {
         self.0.as_ref()
     }

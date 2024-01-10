@@ -211,6 +211,84 @@ where
         }
     }
 
+    /// Gets the set of rows from a given range
+    pub fn range<T : Into<KeyDataRange>>(&self, key_data_range: T) -> Result<Vec<Box<[u8]>>, Error> {
+        let range = key_data_range.into();
+        let Some(root) = self.root.read().clone() else {
+            return Ok(vec![])
+        };
+        let start_node = match range.start_bound() {
+            Bound::Included(k) | Bound::Excluded(k)=> {
+                self.find_leaf(k, false)?
+            }
+            Bound::Unbounded => {
+                self.left_most(root)?
+            }
+        };
+        let end_node = match range.end_bound() {
+            Bound::Included(k) | Bound::Excluded(k)=> {
+                self.find_leaf(k, false)?
+            }
+            Bound::Unbounded => {
+                self.right_most(root)?
+            }
+        };
+        let mut pages = vec![];
+        let mut page_ptr = start_node;
+
+        loop {
+            pages.push(page_ptr);
+            if page_ptr == end_node {
+                break;
+            }
+            let page = self.allocator.get(page_ptr)?;
+            let right = page.right_sibling().expect("siblings should always be set");
+            page_ptr = right;
+        }
+
+        pages.into_iter()
+            .try_fold(vec![], |mut vec, page_id| {
+                let page = self.allocator.get(page_id)?;
+                let page_range = page.key_range()?;
+                if let Some(on_page) = page_range.intersection(&range) {
+                    let page_cells = page.get_range(on_page)?
+                        .into_iter()
+                        .flat_map(|cell| cell.into_key_value_cell())
+                        .map(|cell| Box::from(cell.record()));
+                    vec.extend(page_cells);
+                }
+                Ok(vec)
+            })
+    }
+
+    /// Gets all rows
+    #[inline]
+    pub fn all(&self) -> Result<Vec<Box<[u8]>>, Error> {
+        self.range(..)
+    }
+
+    /// Gets the minimum key stored in this btree
+    pub fn min_key(&self) -> Result<Option<KeyData>, Error> {
+        if let Some(root) = self.root.read().as_ref() {
+            let left = self.left_most(*root)?;
+            let page = self.allocator.get(left)?;
+            page.min_key()
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Gets the maximum key stored in this btree
+    pub fn max_key(&self) -> Result<Option<KeyData>, Error> {
+        if let Some(root) = self.root.read().as_ref() {
+            let left = self.right_most(*root)?;
+            let page = self.allocator.get(left)?;
+            page.max_key()
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Finds the leaf node that can contain the given key
     fn find_leaf(&self, key_data: &KeyData, expand: bool) -> Result<PageId, Error> {
         let Some(mut ptr) = self.root.read().clone() else {
@@ -306,7 +384,7 @@ where
         Ok(())
     }
 
-    /// Right most
+    /// Right most (max) page
     fn right_most(&self, node: PageId) -> Result<PageId, Error> {
         let page = self.allocator.get(node)?;
         match page.page_type() {
@@ -314,6 +392,22 @@ where
                 if let Some(ref max) = page.max_key()? {
                     let max = page.get(max)?.expect("max cell").into_key_cell().expect("is always key cell").page_id();
                     self.right_most(max)
+                } else {
+                    return Ok(node)
+                }
+            }
+            PageType::KeyValue => { Ok(node)}
+        }
+    }
+
+    /// left most (min) page
+    fn left_most(&self, node: PageId) -> Result<PageId, Error> {
+        let page = self.allocator.get(node)?;
+        match page.page_type() {
+            PageType::Key => {
+                if let Some(ref min) = page.min_key()? {
+                    let max = page.get(min)?.expect("min cell").into_key_cell().expect("is always key cell").page_id();
+                    self.left_most(max)
                 } else {
                     return Ok(node)
                 }

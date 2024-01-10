@@ -13,6 +13,9 @@ pub mod cells;
 pub mod ram_file;
 pub mod slotted_page;
 
+/// Gets the standard page size of 4096 bytes
+pub static PAGE_SIZE: usize = 2 << 11;
+
 pub type ReadResult<T> = Result<T, ReadDataError>;
 pub type WriteResult<T> = Result<T, WriteDataError>;
 

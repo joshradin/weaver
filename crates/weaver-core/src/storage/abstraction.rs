@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use parking_lot::RwLock;
 
 use crate::common::track_dirty::Mad;
-use crate::storage::{ReadResult, StorageBackedData, WriteResult};
+use crate::storage::{PAGE_SIZE, ReadResult, StorageBackedData, WriteResult};
 
 /// Allows for getting pages of a fix size
 pub trait Paged {
@@ -232,6 +232,12 @@ pub struct VecPaged {
     pages: RwLock<Vec<Arc<RwLock<Box<[u8]>>>>>,
     usage: RwLock<HashMap<usize, Arc<AtomicI32>>>,
     page_len: usize,
+}
+
+impl Default for VecPaged {
+    fn default() -> Self {
+        Self::new(PAGE_SIZE)
+    }
 }
 
 impl VecPaged {

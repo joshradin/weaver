@@ -7,7 +7,8 @@ use std::ops::{Deref, Index};
 use std::rc::Rc;
 use tracing::info;
 
-use crate::data::row::Row;
+use crate::data::row::{OwnedRow, Row};
+use crate::data::serde::{deserialize_data_untyped, serialize_data_untyped};
 use crate::data::types::Type;
 use crate::data::values::Value;
 use crate::dynamic_table::{Col, DynamicTable, EngineKey, IN_MEMORY_KEY, ROW_ID_COLUMN};
@@ -103,6 +104,18 @@ impl TableSchema {
 
     pub fn full_index(&self) -> Result<KeyIndex, Error> {
         self.primary_key().map(|key| KeyIndex::all(key.name()))
+    }
+
+    /// Encodes a row
+    pub fn encode(&self, row: &Row) -> Box<[u8]> {
+        serialize_data_untyped(row.iter().map(|v| v.as_ref())).into_boxed_slice()
+    }
+
+    /// Decodes a row
+    pub fn decode(&self, bytes: &[u8]) -> Result<OwnedRow, Error> {
+        deserialize_data_untyped(bytes, self.columns().iter().map(|col| col.data_type))
+            .map(|vals| Row::from(vals).to_owned())
+            .map_err(|e| e.into())
     }
 
     pub fn validate<'a, T: DynamicTable>(

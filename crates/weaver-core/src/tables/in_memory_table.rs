@@ -14,7 +14,9 @@ use crate::data::types::Type;
 use crate::dynamic_table::{Col, DynamicTable, OwnedCol, Table};
 use crate::error::Error;
 use crate::key::KeyData;
-use crate::rows::{KeyIndex, KeyIndexKind, Rows};
+use crate::rows::{DefaultOwnedRows, KeyIndex, KeyIndexKind, Rows};
+use crate::storage::b_plus_tree::BPlusTree;
+use crate::storage::VecPaged;
 use crate::tables::table_schema::{ColumnDefinition, TableSchema};
 use crate::tx::{Tx, TxId, TX_ID_COLUMN};
 
@@ -25,7 +27,7 @@ struct RowId(u64);
 #[derive(Debug)]
 pub struct InMemoryTable {
     schema: TableSchema,
-    main_buffer: RwLock<BTreeMap<KeyData, OwnedRow>>,
+    main_buffer: BPlusTree<VecPaged>,
     auto_incremented: HashMap<OwnedCol, AtomicI64>,
     row_id: AtomicI64,
 }
@@ -55,7 +57,7 @@ impl InMemoryTable {
             .collect();
         Ok(Self {
             schema,
-            main_buffer: RwLock::new(BTreeMap::new()),
+            main_buffer: BPlusTree::new(VecPaged::default()),
             auto_incremented,
             row_id: Default::default(),
         })
@@ -100,15 +102,8 @@ impl DynamicTable for InMemoryTable {
         let key_data = self.schema.key_data(&row);
         let primary = key_data.primary().clone();
         info!("validated row primary key: {:?}", primary);
-        match self.main_buffer.write().entry(primary) {
-            Entry::Vacant(v) => {
-                v.insert(row.to_owned());
-                Ok(())
-            }
-            Entry::Occupied(_) => {
-                todo!()
-            }
-        }
+        self.main_buffer.insert(primary, row.to_owned())?;
+        Ok(())
     }
 
     fn read<'tx, 'table: 'tx>(
@@ -120,12 +115,27 @@ impl DynamicTable for InMemoryTable {
 
         if key_def.primary() {
             match key.kind() {
-                KeyIndexKind::All => Ok(Box::new(AllRows {
-                    table: self,
-                    tx: tx.id(),
-                    look_behind: tx.look_behind(),
-                    state: RefCell::new(AllRowsState::Start),
-                })),
+                KeyIndexKind::All => Ok(Box::new(
+                    self.main_buffer.all()?
+                        .into_iter()
+                        .map(|bytes| {
+                            self.schema.decode(&bytes)
+                        })
+                        .filter(|row| {
+                            if let Ok(row) = row {
+                                row[self.schema.col_idx(TX_ID_COLUMN).unwrap()]
+                                    .int_value()
+                                    .map(|i| tx.can_see(&TxId::from(i)))
+                                    .unwrap_or(false)
+                            } else {
+                                true
+                            }
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                        .map(|rows| {
+                            DefaultOwnedRows::new(self.schema.clone(), rows)
+                        })?
+                )),
                 KeyIndexKind::Range { .. } => {
                     todo!()
                 }
@@ -142,64 +152,5 @@ impl DynamicTable for InMemoryTable {
 
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
         todo!()
-    }
-}
-
-struct AllRows<'a> {
-    table: &'a InMemoryTable,
-    tx: TxId,
-    look_behind: TxId,
-    state: RefCell<AllRowsState>,
-}
-enum AllRowsState {
-    Start,
-    InProgress { last: KeyData },
-    Finished,
-}
-
-impl<'a> Rows<'a> for AllRows<'a> {
-    fn schema(&self) -> &TableSchema {
-        self.table.schema()
-    }
-
-    fn next(&mut self) -> Option<Row<'a>> {
-        let mut state = self.state.borrow_mut();
-        match &mut *state {
-            state @ AllRowsState::Start => {
-                let read = self.table.main_buffer.read();
-                let (key, row) = read
-                    .iter()
-                    .filter(|(_, row)| {
-                        row[self.table.schema.col_idx(TX_ID_COLUMN).unwrap()]
-                            .int_value()
-                            .map(|i| TxId::from(i).is_visible_within(&self.tx, &self.look_behind))
-                            .unwrap_or(false)
-                    })
-                    .map(|(k, row)| (k.clone(), row.clone()))
-                    .next()?;
-                let emit = Some(Row::from(row));
-                let key = key.clone();
-                *state = AllRowsState::InProgress { last: key };
-                emit
-            }
-            AllRowsState::InProgress { last } => {
-                let read = self.table.main_buffer.read();
-                let (key, row) = read
-                    .range((Excluded(last.clone()), Unbounded))
-                    .filter(|(_, row)| {
-                        row[self.table.schema.col_idx(TX_ID_COLUMN).unwrap()]
-                            .int_value()
-                            .map(|i| TxId::from(i).is_visible_within(&self.tx, &self.look_behind))
-                            .unwrap_or(false)
-                    })
-                    .map(|(k, row)| (k.clone(), row.clone()))
-                    .next()?;
-                let emit = Some(Row::from(row));
-                let key = key.clone();
-                *last = key;
-                emit
-            }
-            AllRowsState::Finished => None,
-        }
     }
 }

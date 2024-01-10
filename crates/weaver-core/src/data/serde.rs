@@ -163,10 +163,18 @@ pub fn serialize_data_untyped<'a, I: IntoIterator<Item = &'a Value>>(data: I) ->
     }
     serializer.finish()
 }
+
+
 pub fn deserialize_data_typed<B: AsRef<[u8]>>(data: B) -> Result<Vec<Value>, ReadDataError> {
     let mut deserializer = DataDeserializer::new(SerdeMode::Typed);
     deserializer.deserialize(data);
     deserializer.finish([])
+}
+
+pub fn deserialize_data_untyped<'a, B: AsRef<[u8]>, I : IntoIterator<Item=Type>>(data: B, types: I) -> Result<Vec<Value>, ReadDataError> {
+    let mut deserializer = DataDeserializer::new(SerdeMode::Untyped);
+    deserializer.deserialize(data);
+    deserializer.finish(types)
 }
 
 #[cfg(test)]
