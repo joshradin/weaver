@@ -3,19 +3,21 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Formatter};
+use std::io::Write;
 use std::ops::Bound;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use ptree::{write_tree, TreeBuilder};
+use ptree::{TreeBuilder, write_tree};
+use tracing::{error, trace};
 
 use crate::data::row::OwnedRow;
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
+use crate::storage::{ReadDataError, WriteDataError};
 use crate::storage::abstraction::Paged;
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
 use crate::storage::slotted_page::{PageType, SlottedPageAllocator};
-use crate::storage::{ReadDataError, WriteDataError};
 
 /// A BPlusTree that uses a given pager
 pub struct BPlusTree<P: Paged> {
@@ -85,10 +87,22 @@ where
 
         let leaf = self.find_leaf(&key, true)?;
         let cell: Cell = KeyValueCell::new(key.clone(), value).into();
-        if self.insert_cell(cell.clone(), leaf)? {
+        let insert_result = self.insert_cell(cell.clone(), leaf);
+        let split = match insert_result {
+            Ok(split) => { split }
+            Err(e) => {
+                error!("error occurred during insert: {e}");
+                return Err(e);
+            }
+        };
+        if split {
             // split occurred, retry
             let leaf = self.find_leaf(&key, true)?;
             self.insert_cell(cell, leaf).map(|_| ())
+                .map_err(|err| {
+                    error!("error occurred during insert after split: {err}");
+                    err
+                })
         } else {
             Ok(())
         }
@@ -113,9 +127,9 @@ where
 
     /// splits the page given by a specified ID
     fn split(&self, page_id: PageId) -> Result<(), Error> {
+
         let mut allocator = &self.allocator;
         let mut page = allocator.get_mut(page_id)?;
-        println!("splitting {:?}. Type: {:?}", page_id, page.page_type());
         page.lock()?;
         let page_type = page.page_type();
         let (mut split_page, _) = allocator.new_with_type(page_type)?;
@@ -131,17 +145,12 @@ where
         let key = page.index(orig_split_page_count).unwrap().key_data();
 
         let cells = page.drain(..=key)?;
+
         let max_key = cells.iter().map(|cell| cell.key_data()).max();
 
         let Some(max_key) = max_key else {
             return Ok(());
         };
-
-        println!(
-            "splitting into pages with maxes of {:?} and {:?}",
-            max_key,
-            page.max_key()
-        );
 
         for cell in cells {
             split_page.insert(cell)?;
@@ -151,7 +160,6 @@ where
 
         let parent = match page.parent() {
             None => {
-                println!("creating new root");
                 let (mut new_root, _) = allocator.new_with_type(PageType::Key)?;
                 let root_id = new_root.page_id();
                 let _ = self.root.write().insert(root_id);
@@ -166,9 +174,19 @@ where
         };
 
         split_page.set_parent(parent);
-        let ptr_cell = Cell::Key(KeyCell::new(split_page_id.as_u32(), max_key));
-        self.insert_cell(ptr_cell, parent)?;
-        Ok(())
+        let key_ptr_cell = KeyCell::new(split_page_id.as_u32(), max_key);
+        let ptr_cell = Cell::Key(key_ptr_cell.clone());
+        drop(page);
+        drop(split_page);
+        let emit = if self.insert_cell(ptr_cell.clone(), parent)? {
+            // panic!("split occurred while inserting ptr cell: {}", key_ptr_cell);
+            self.insert_cell(ptr_cell, parent)
+                .map(|_| ())
+        } else {
+            Ok(())
+        };
+
+        emit
     }
 
     /// Tries to get a matching record based on the given key data.
@@ -195,14 +213,15 @@ where
 
     /// Finds the leaf node that can contain the given key
     fn find_leaf(&self, key_data: &KeyData, expand: bool) -> Result<PageId, Error> {
-        let mut ptr = self.root.read().expect("no root set");
+        let Some(mut ptr) = self.root.read().clone() else {
+            return Err(Error::NotFound(key_data.clone()))
+        };
         loop {
             let page = self.allocator.get(ptr).unwrap();
             match page.page_type() {
                 PageType::Key => {
                     let cells = to_ranges(page.all()?);
                     let found = cells.binary_search_by(|(kdr, _)| {
-                        println!("checking if {:?} contains {:?}", kdr, key_data);
                         if kdr.contains(key_data) {
                             Ordering::Equal
                         } else {
@@ -233,13 +252,13 @@ where
                                         let last = cells.last().unwrap().1.as_key_cell().unwrap();
                                         drop(page);
                                         self.increase_max(last.page_id(), key_data)?;
-                                        return Ok(last.page_id());
+                                        ptr = last.page_id();
                                     }
                                     Some(right) => {
                                         panic!("got wrong leaf. This leaf {ptr:?} was found but it has right sibling {right:?} but key data is not within range")
                                     }
                                 }
-                            } else if !expand {
+                            } else if expand {
                                 panic!("no good index found, but could insert a new key cell at index {close}.")
                             } else {
                                 return Err(Error::NotFound(key_data.clone()))
@@ -257,8 +276,9 @@ where
 
     /// Increases the max
     fn increase_max(&self, leaf: PageId, new_max: &KeyData) -> Result<(), Error> {
-        let mut prev = leaf;
-        let mut ptr = self.allocator.get(leaf)?.parent();
+        let mut prev = self.right_most(leaf)?;
+        let mut ptr = self.allocator.get(prev)?.parent();
+
         while let Some(parent) = ptr {
             let mut parent_page = self.allocator.get_mut(parent)?;
             parent_page.lock()?;
@@ -270,15 +290,13 @@ where
                 .ok_or_else(|| Error::ReadDataError(ReadDataError::PageNotFound(prev)))?;
             let old_key_data = old_cell.key_data();
             if &old_key_data < new_max {
-                println!("setting pointer to page {prev:?} in page {parent:?} to use key {new_max:?} instead of {old_key_data:?}");
                 let removed = parent_page.delete(&old_key_data)?;
                 if let Some(removed) = removed {
-                    println!("removed cell ({})", removed.into_key_cell().unwrap());
+                    // removed cell successfully
                 } else {
                     panic!("should've removed an old cell")
                 }
                 let cell = KeyCell::new(prev.as_u32(), new_max.clone());
-                println!("inserting ({})", cell);
                 parent_page.insert(cell.into())?;
             }
             prev = parent;
@@ -288,43 +306,144 @@ where
         Ok(())
     }
 
+    /// Right most
+    fn right_most(&self, node: PageId) -> Result<PageId, Error> {
+        let page = self.allocator.get(node)?;
+        match page.page_type() {
+            PageType::Key => {
+                if let Some(ref max) = page.max_key()? {
+                    let max = page.get(max)?.expect("max cell").into_key_cell().expect("is always key cell").page_id();
+                    self.right_most(max)
+                } else {
+                    return Ok(node)
+                }
+            }
+            PageType::KeyValue => { Ok(node)}
+        }
+    }
+
+    /// Verifies the integrity of the tree
+    pub fn verify_integrity(&self) -> Result<(), Error>{
+        let root = self.root.read().clone();
+        match root {
+            None => { Ok(())}
+            Some(root) => {
+                self.verify_integrity_(root)
+            }
+        }
+    }
+
+    /// Verifies the integrity of the tree
+    fn verify_integrity_(&self, page_id: PageId) -> Result<(), Error> {
+        let page = self.allocator.get(page_id)?;
+        match page.page_type() {
+            PageType::Key => {
+                let ranges = to_ranges(page.all()?);
+                for (range, node) in ranges {
+                    let key_cell = node.into_key_cell().unwrap();
+                    let child = self.allocator.get(key_cell.page_id())?;
+
+                    if let Some(ref min) = child.min_key()? {
+                        if !range.contains(min) {
+                            panic!("verify failed. range does not contain minimum. range = {:?}, min={:?}", range, min)
+                        }
+                    }
+
+                    if let Some(ref max) = child.max_key()? {
+                        if !range.contains(max) {
+                            panic!("verify failed because max not in range")
+                        }
+                        if range.1.as_ref() != Bound::Included(max) {
+                            panic!("max should always be max key")
+                        }
+                    }
+                    self.verify_integrity_(key_cell.page_id())?;
+                }
+                Ok(())
+            }
+            PageType::KeyValue => { Ok(()) }
+        }
+    }
+
     pub fn print(&self) -> Result<(), Error> {
         let mut builder = TreeBuilder::new("btree".to_string());
         if let Some(root) = self.root.read().clone() {
-            self.print_(root, &mut builder)?;
+            self.print_(root, &mut builder, None)?;
         }
         let built = builder.build();
         let mut vec = vec![];
-        write_tree(&built, &mut vec).expect("could not write");
+        write_tree(&built, &mut vec)?;
         println!("{}", String::from_utf8_lossy(&vec));
         Ok(())
     }
 
-    pub fn print_(&self, page: PageId, builder: &mut TreeBuilder) -> Result<(), Error> {
-        let page = self.allocator.get(page)?;
-        builder.begin_child(format!("({:?}) {:?}", page.page_type(), page.page_id()));
+    pub fn write<W : Write>(&self, writer: W) -> Result<(), Error> {
+        let mut builder = TreeBuilder::new("btree".to_string());
+        if let Some(root) = self.root.read().clone() {
+            self.print_(root, &mut builder, None)?;
+        }
+        let built = builder.build();
+        write_tree(&built, writer)?;
+        Ok(())
+    }
+
+    pub fn print_(&self, page_id: PageId, builder: &mut TreeBuilder, prev: Option<&KeyData>) -> Result<(), Error> {
+        let page = self.allocator.get(page_id)?;
+        builder.begin_child(format!("({:?}) {:?}. nodes {}", page.page_type(), page.page_id(), self.nodes(page_id)?));
         match page.page_type() {
             PageType::Key => {
+                let mut prev = None;
                 for cell in page.all()? {
                     if let Some(key_cell) = cell.into_key_cell() {
-                        builder.begin_child(format!("<={:?}", key_cell.key_data()));
-                        self.print_(key_cell.page_id(), builder)?;
+                        let title = match &prev {
+                            None => {format!("(,{:?}]", key_cell.key_data())}
+                            Some(prev) => {
+                                format!("({prev:?},{:?}]", key_cell.key_data())
+                            }
+                        };
+                        builder.begin_child(title);
+                        self.print_(key_cell.page_id(), builder, prev.as_ref())?;
+                        prev = Some(key_cell.key_data());
                         builder.end_child();
                     }
                 }
             }
             PageType::KeyValue => {
                 builder.add_empty_child(format!(
-                    "min: {:?}, max: {:?}, len: {}",
+                    "min: {:?}, max: {:?}, len: {}, keys: {:?}",
                     page.min_key(),
                     page.max_key(),
-                    page.count()
+                    page.count(),
+                    page.all()?
+                        .into_iter()
+                        .map(|cell| cell.key_data())
+                        .collect::<Vec<_>>()
                 ));
             }
         }
         builder.end_child();
         Ok(())
     }
+
+    /// Gets the number of nodes
+    pub fn nodes(&self, page_id: PageId) -> Result<usize, Error> {
+        let page = self.allocator.get(page_id)?;
+        match page.page_type() {
+            PageType::Key => {
+                Ok(page.all()?
+                    .into_iter()
+                    .filter_map(Cell::into_key_cell)
+                    .map(|cell| {
+                        self.nodes(cell.page_id())
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter()
+                    .sum::<usize>() + 1)
+            }
+            PageType::KeyValue => { Ok(1) }
+        }
+    }
+
 }
 
 fn to_ranges(cells: Vec<Cell>) -> Vec<(KeyDataRange, Cell)> {
@@ -342,9 +461,11 @@ fn to_ranges(cells: Vec<Cell>) -> Vec<(KeyDataRange, Cell)> {
 
 #[cfg(test)]
 mod tests {
+    use rand::distributions::Alphanumeric;
+    use rand::Rng;
+    use crate::data::values::Value;
+
     use crate::storage::abstraction::VecPaged;
-    use crate::storage::ram_file::{PagedFile, RandomAccessFile};
-    use tempfile::tempfile;
 
     use super::*;
 
@@ -358,27 +479,29 @@ mod tests {
         let btree = BPlusTree::new(VecPaged::new(128));
         btree.insert([1], [1, 2, 3]).expect("could not insert");
         let raw = btree.get(&[1].into()).unwrap().unwrap();
-        println!("raw: {:x?}", raw);
+        trace!("raw: {:x?}", raw);
         assert_eq!(raw.len(), 24);
     }
 
     #[test]
     fn insert_into_b_plus_tree_many() {
-        let btree = BPlusTree::new(VecPaged::new(512));
+        let btree = BPlusTree::new(VecPaged::new(180));
 
-        for i in 1..=512 {
+        const MAX: i64 = 256;
+        for i in 0..MAX {
             if let Err(e) =btree.insert([i], [1 + i, 2 * i]) {
                 btree.print().expect("could not print");
                 panic!("error occurred: {e}");
             }
         }
-
-        let raw = btree.get(&[1].into()).unwrap().unwrap();
-        println!("raw: {:x?}", raw);
-        assert_eq!(raw.len(), 16);
         btree.print().expect("could not print");
+        btree.verify_integrity().expect("verify failed");
+        let raw = btree.get(&[1].into()).unwrap().unwrap();
+        trace!("raw: {:x?}", raw);
+        assert_eq!(raw.len(), 16);
 
-        for i in 256..=512 {
+
+        for i in 0..MAX {
             let gotten = btree
                 .get(&[i].into())
                 .unwrap()
@@ -386,4 +509,52 @@ mod tests {
             assert_eq!(gotten.len(), 16);
         }
     }
+
+    #[test]
+    fn insert_into_b_plus_tree_many_string() {
+        let btree = BPlusTree::new(VecPaged::new(1028));
+
+        const MAX: i64 = 512;
+        let mut strings = vec![];
+        for i in 0..MAX {
+            let s: String = rand::thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(rand::thread_rng().gen_range(5..=15))
+                .map(char::from)
+                .collect();
+            strings.push(s.clone());
+
+            if let Err(e) =btree.insert([s.clone()], [Value::from(s), (2 * i).into()]) {
+                btree.print().expect("could not print");
+                panic!("error occurred: {e}");
+            }
+        }
+        btree.print().expect("could not print");
+        // btree.verify_integrity().expect("verify failed");
+
+
+        for i in &strings {
+            let gotten = btree
+                .get(&[i].into())
+                .unwrap()
+                .unwrap_or_else(|| panic!("could not get record for key {i}"));
+            println!("gotten: {:x?}", gotten);
+        }
+
+
+    }
+
+    #[test]
+    fn insert_into_b_plus_tree_many_rand() {
+        let btree = BPlusTree::new(VecPaged::new(2048));
+        for i in 1..=(1024) {
+            if let Err(e) =btree.insert([rand::thread_rng().gen_range(-256000..=256000)], [1 + i, 2 * i]) {
+                btree.print().expect("could not print");
+                panic!("error occurred: {e}");
+            }
+        }
+
+        btree.print().expect("could not print");
+    }
+
 }

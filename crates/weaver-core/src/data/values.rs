@@ -41,6 +41,17 @@ impl Value {
     }
 }
 
+impl From<&str> for Value {
+    fn from(value: &str) -> Self {
+        Self::from(value.to_string())
+    }
+}
+
+impl From<&String> for Value {
+    fn from(value: &String) -> Self {
+        Self::from(value.to_string())
+    }
+}
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {

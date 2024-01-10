@@ -1,20 +1,19 @@
 //! Creates abstractions that are used to build better storage-backed data structures
 
-use crate::common::track_dirty::Mad;
-use parking_lot::{
-    Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockUpgradableReadGuard, RwLockWriteGuard,
-};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::ops::DerefMut;
 use std::slice::SliceIndex;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, Ordering};
 
+use parking_lot::RwLock;
+
+use crate::common::track_dirty::Mad;
 use crate::storage::{ReadResult, StorageBackedData, WriteResult};
+
 /// Allows for getting pages of a fix size
 pub trait Paged {
     type Page<'a>: Page<'a>

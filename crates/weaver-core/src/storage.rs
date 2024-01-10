@@ -7,6 +7,7 @@ use std::string::FromUtf8Error;
 use thiserror::Error;
 
 mod abstraction;
+pub use abstraction::VecPaged;
 pub mod b_plus_tree;
 pub mod cells;
 pub mod ram_file;

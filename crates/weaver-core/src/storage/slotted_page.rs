@@ -374,6 +374,21 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
             .collect()
     }
 
+    /// Gets the space used by the header, the slots, and the cells
+    pub fn used(&self) -> usize {
+        self.all()
+            .into_iter()
+            .flat_map(|cells| {
+                cells
+            })
+            .map(|cell| cell.len())
+            .sum::<usize>() + self.count() * size_of::<u64>() + size_of::<SlottedPageHeader>()
+    }
+
+    /// Gets the free space left over in this page
+    pub fn free_space(&self) -> usize {
+        self.len() - self.used()
+    }
 
 
     /// allocate a given length within the slotted page
@@ -1089,7 +1104,7 @@ mod tests {
     use crate::data::values::Value;
     use crate::error::Error;
     use crate::key::KeyData;
-    use crate::storage::abstraction::{PageMut, Paged, VecPaged};
+    use crate::storage::abstraction::{Paged, VecPaged};
     use crate::storage::cells::{Cell, KeyCell, PageId};
     use crate::storage::ram_file::{PagedFile, RandomAccessFile};
     use crate::storage::slotted_page::{PageType, SlottedPageAllocator, SlottedPageHeader};
@@ -1233,6 +1248,36 @@ mod tests {
             cells.iter().map(Cell::key_data).collect::<Vec<_>>()
         );
     }
+    #[test]
+    fn drain_one_page() {
+        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(12848));
+        let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
+
+        for i in 0..512 {
+            let key_data = KeyData::from([Value::from(i)]);
+            page.insert(KeyCell::new(15, key_data.clone()).into())
+                .unwrap();
+        }
+
+        assert_eq!(slotted_pager.paged.len(), 1, "only one page should've been allocated");
+        println!("page free space: {}", page.free_space());
+
+        let cells = page
+            .drain(KeyData::from([128])..KeyData::from([256]))
+            .unwrap();
+        println!(
+            "cells: {:#?}",
+            cells.iter().map(Cell::key_data).collect::<Vec<_>>()
+        );
+        assert_eq!(cells.len(), 128);
+        assert_eq!(page.count(), 512 - 128);
+        assert_eq!(cells.iter().map(|cell| cell.key_data()).min().unwrap(), KeyData::from([128]));
+        assert_eq!(cells.iter().map(|cell| cell.key_data()).max().unwrap(), KeyData::from([255]));
+        for cell in cells {
+            assert!(!page.contains(&cell.key_data()), "page should not contain {cell:?} after drain");
+        }
+    }
+
 
     #[test]
     fn reuse_cell() {
