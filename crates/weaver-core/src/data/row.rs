@@ -10,7 +10,10 @@ use std::borrow::{Borrow, Cow};
 use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::{Debug, Formatter, Write};
-use std::ops::{Deref, DerefMut, Index, IndexMut, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
+use std::ops::{
+    Deref, DerefMut, Index, IndexMut, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo,
+    RangeToInclusive,
+};
 use std::slice::SliceIndex;
 
 /// A row of data
@@ -39,14 +42,10 @@ impl<'a> Row<'a> {
 
     /// Gets a slice of the data if all values are within range
     pub fn try_slice<I>(&self, range: I) -> Option<Row<'a>>
-        where
-            I: SliceIndex<[Cow<'a, Value>], Output = [Cow<'a, Value>]>,
+    where
+        I: SliceIndex<[Cow<'a, Value>], Output = [Cow<'a, Value>]>,
     {
-        self.0
-            .get(range)
-            .map(|values| {
-                Self::from(values.to_vec())
-            })
+        self.0.get(range).map(|values| Self::from(values.to_vec()))
     }
 
     /// Joins two rows together

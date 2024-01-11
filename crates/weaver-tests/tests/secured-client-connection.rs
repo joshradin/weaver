@@ -1,12 +1,11 @@
 use std::io::stdout;
+
 use tempfile::TempDir;
 use tracing_subscriber::filter::LevelFilter;
-use weaver_client::WeaverClient;
+
 use weaver_client::write_rows::write_rows;
-use weaver_core::access_control::auth::LoginContext;
 use weaver_core::queries::ast::Query;
-use weaver_core::rows::Rows;
-use weaver_tests::{run_full_stack, start_server};
+use weaver_tests::run_full_stack;
 
 #[test]
 fn can_connect() -> eyre::Result<()> {
@@ -30,7 +29,6 @@ fn get_processes() -> eyre::Result<()> {
         let (rows, elapsed) = client.query(&Query::select(&["*"], "system.processes", None))?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
 
-
         Ok(())
     })?;
 
@@ -46,8 +44,7 @@ fn get_tables() -> eyre::Result<()> {
     run_full_stack(temp_dir.path(), |server, client| {
         todo!("no tables");
         Ok(())
-        })?;
+    })?;
 
     Ok(())
 }
-

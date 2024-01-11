@@ -49,26 +49,22 @@ impl QueryExecutor {
                     key_index,
                 } => {
                     let core = core.read();
-                    let table = core
-                        .get_table(schema, name)
-                        .ok_or(Error::NoTableFound {
-                            table: name.to_string(),
-                            schema: schema.to_string()
-                        })?;
+                    let table = core.get_table(schema, name).ok_or(Error::NoTableFound {
+                        table: name.to_string(),
+                        schema: schema.to_string(),
+                    })?;
 
-                    let read = table.read(tx, &key_index[0])?
+                    let read = table
+                        .read(tx, &key_index[0])?
                         .map(|row| table.schema().public_only(row));
-                    let in_memory = match InMemoryTable::from_rows(
-                        table.schema().clone(),
-                        read,
-                    ) {
-                        Ok(table) => { table }
+                    let in_memory = match InMemoryTable::from_rows(table.schema().clone(), read) {
+                        Ok(table) => table,
                         Err(e) => {
                             error!("creating in memory table from select result failed: {e}");
                             if let Error::BadColumnCount { .. } = &e {
                                 error!("table schema: {:#?}", table.schema())
                             }
-                            return Err(e)
+                            return Err(e);
                         }
                     };
                     output = Some(Box::new(in_memory));
@@ -77,10 +73,10 @@ impl QueryExecutor {
             }
         }
 
-        let final_table = output
-            .expect("no table");
-        final_table
-            .all(tx)
-            .map(|rows| rows.map(|row| final_table.schema().public_only(row)).to_owned())
+        let final_table = output.expect("no table");
+        final_table.all(tx).map(|rows| {
+            rows.map(|row| final_table.schema().public_only(row))
+                .to_owned()
+        })
     }
 }

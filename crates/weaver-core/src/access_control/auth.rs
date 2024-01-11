@@ -65,7 +65,7 @@ pub mod handshake {
                 .map_err(|e| Error::ThreadPanicked)??
                 .to_result();
             debug!("resp={resp:#?}");
-            let resp=resp?;
+            let resp = resp?;
             let DbResp::TxRows(tx, mut rows) = resp else {
                 unreachable!();
             };
@@ -79,11 +79,13 @@ pub mod handshake {
             debug!("row = {row:?}");
             let auth_string = &row[2];
             match auth_string.as_ref() {
-                Value::Null => {},
+                Value::Null => {}
                 Value::String(str) => {
                     todo!("password authentication")
-                },
-                _ => {unreachable!()}
+                }
+                _ => {
+                    unreachable!()
+                }
             }
 
             let user = User::new(row[0].to_string(), row[1].to_string());

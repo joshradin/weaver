@@ -2,6 +2,7 @@
 
 use crate::data::row::Row;
 use crate::data::types::Type;
+use crate::data::values::Value;
 use crate::db::WEAVER_SCHEMA;
 use crate::dynamic_table::{Col, DynamicTable, EngineKey};
 use crate::error::Error;
@@ -11,7 +12,6 @@ use crate::tables::table_schema::TableSchema;
 use crate::tables::InMemoryTable;
 use crate::tx::Tx;
 use serde::{Deserialize, Serialize};
-use crate::data::values::Value;
 
 /// A user struct is useful for access control
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -66,11 +66,14 @@ impl UserTable {
                 .build()
                 .expect("failed to create users table schema"),
         )
-            .expect("couldn't create users table");
-        table.insert(&Tx::default(), Row::from([Value::from("localhost"), "root".into(), Value::Null])).expect("could not insert admin row");
-        Self {
-            in_memory: table,
-        }
+        .expect("couldn't create users table");
+        table
+            .insert(
+                &Tx::default(),
+                Row::from([Value::from("localhost"), "root".into(), Value::Null]),
+            )
+            .expect("could not insert admin row");
+        Self { in_memory: table }
     }
 }
 

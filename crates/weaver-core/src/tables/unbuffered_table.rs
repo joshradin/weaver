@@ -38,10 +38,11 @@ impl<P: Paged + Sync + Send> UnbufferedTable<P> {
     where
         Error: From<P::Err>,
     {
-        if transactional && !schema
-            .sys_columns()
-            .iter()
-            .any(|col| col.name() == TX_ID_COLUMN)
+        if transactional
+            && !schema
+                .sys_columns()
+                .iter()
+                .any(|col| col.name() == TX_ID_COLUMN)
         {
             schema.add_sys_column(ColumnDefinition::new(
                 TX_ID_COLUMN,
@@ -121,17 +122,11 @@ where
             all.retain(|row| {
                 let ref row_key_data = self.schema.key_data(key_def, row);
                 match key.kind() {
-                    KeyIndexKind::All => {
-                       true
-                    }
+                    KeyIndexKind::All => true,
                     KeyIndexKind::Range { low, high } => {
-                        KeyDataRange(low.clone(), high.clone()).contains(
-                            row_key_data
-                        )
+                        KeyDataRange(low.clone(), high.clone()).contains(row_key_data)
                     }
-                    KeyIndexKind::One(id) => {
-                        id == row_key_data
-                    }
+                    KeyIndexKind::One(id) => id == row_key_data,
                 }
             });
 
@@ -159,14 +154,17 @@ where
             .map(|bytes| self.schema.decode(&bytes))
             .filter(|row| {
                 if let Ok(row) = row {
-                    let tx_id = self.schema.col_idx(TX_ID_COLUMN)
-                        .and_then(|tx_col|row.get(tx_col))
-                            .and_then(|tx| tx.int_value())
+                    let tx_id = self
+                        .schema
+                        .col_idx(TX_ID_COLUMN)
+                        .and_then(|tx_col| row.get(tx_col))
+                        .and_then(|tx| tx.int_value())
                         .map(|tx| TxId::from(tx));
                     let can_see = tx_id.map(|ref i| tx.can_see(i)).unwrap_or(true);
                     trace!(
                         "checking if row {:?} (tx_id: {tx_id:?}) can be seen by tx {} -> {can_see}",
-                        row, tx
+                        row,
+                        tx
                     );
                     can_see
                 } else {

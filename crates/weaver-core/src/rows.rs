@@ -72,8 +72,10 @@ pub trait Rows<'t> {
     fn schema(&self) -> &TableSchema;
     fn next(&mut self) -> Option<Row<'t>>;
 
-    fn map<F : Fn(Row<'t>) -> Row<'t>>(self, callback: F) -> MappedRows<'t, Self, F>
-        where Self : Sized {
+    fn map<F: Fn(Row<'t>) -> Row<'t>>(self, callback: F) -> MappedRows<'t, Self, F>
+    where
+        Self: Sized,
+    {
         MappedRows {
             inner: self,
             mapper: callback,
@@ -135,7 +137,8 @@ impl OwnedRows {
 
     /// Retains all rows that match a predicate
     pub fn retain<F>(&mut self, predicate: F)
-        where F : Fn(&Row) -> bool
+    where
+        F: Fn(&Row) -> bool,
     {
         self.rows.retain(|row| predicate(row.as_ref()))
     }
@@ -168,10 +171,10 @@ impl<'a> Rows<'a> for DefaultRows<'a> {
 }
 
 #[derive(Debug)]
-pub struct MappedRows<'a, R : Rows<'a>, F : Fn(Row<'a>) -> Row<'a>> {
+pub struct MappedRows<'a, R: Rows<'a>, F: Fn(Row<'a>) -> Row<'a>> {
     inner: R,
     mapper: F,
-    _lf: PhantomData<fn(&'a ()) -> ()>
+    _lf: PhantomData<fn(&'a ()) -> ()>,
 }
 
 impl<'t, R: Rows<'t>, F: Fn(Row<'t>) -> Row<'t>> Rows<'t> for MappedRows<'t, R, F> {
@@ -180,7 +183,6 @@ impl<'t, R: Rows<'t>, F: Fn(Row<'t>) -> Row<'t>> Rows<'t> for MappedRows<'t, R, 
     }
 
     fn next(&mut self) -> Option<Row<'t>> {
-        self.inner.next()
-            .map(|next| (self.mapper)(next))
+        self.inner.next().map(|next| (self.mapper)(next))
     }
 }

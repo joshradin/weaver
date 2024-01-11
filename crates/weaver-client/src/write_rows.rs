@@ -42,7 +42,8 @@ pub fn write_rows<'r, W: Write, R: Rows<'r>>(
     table.print(&mut write)?;
     writeln!(
         write,
-        "{row_count} rows in set ({:0.2} sec)",
+        "{row_count} {} in set ({:0.2} sec)",
+        pluralizer::pluralize("row", row_count, false),
         time.as_secs_f64()
     )?;
 

@@ -135,7 +135,9 @@ impl TableSchema {
     /// Gets only public values from this row
     pub fn public_only<'a>(&self, row: Row<'a>) -> Row<'a> {
         let new_len = self.columns().len();
-        row.try_slice(..new_len).unwrap_or_else(|| panic!("row {row:?} does not have expected number of columns {new_len}"))
+        row.try_slice(..new_len).unwrap_or_else(|| {
+            panic!("row {row:?} does not have expected number of columns {new_len}")
+        })
     }
 
     /// Validates and modifies a row for this schema
@@ -147,7 +149,10 @@ impl TableSchema {
     ) -> Result<Row<'a>, Error> {
         trace!("validating: {:?}", row);
         if row.len() != self.columns().len() {
-            warn!("row {row:?} does match public columns {:?}", self.columns().iter().map(|c| &c.name).collect::<Vec<_>>());
+            warn!(
+                "row {row:?} does match public columns {:?}",
+                self.columns().iter().map(|c| &c.name).collect::<Vec<_>>()
+            );
             return Err(Error::BadColumnCount {
                 expected: self.columns().len(),
                 actual: row.len(),
@@ -163,26 +168,26 @@ impl TableSchema {
         };
 
         row.iter_mut()
-           .zip(self.all_columns())
-           .map(|(val, col)| {
-               match col.name() {
-                   name if name == TX_ID_COLUMN => {
-                       *val.to_mut() = Value::Integer(tx.id().into());
-                   }
-                   name if name == ROW_ID_COLUMN => {
-                       *val.to_mut() = Value::Integer(table.next_row_id());
-                   }
-                   _ => {}
-               }
+            .zip(self.all_columns())
+            .map(|(val, col)| {
+                match col.name() {
+                    name if name == TX_ID_COLUMN => {
+                        *val.to_mut() = Value::Integer(tx.id().into());
+                    }
+                    name if name == ROW_ID_COLUMN => {
+                        *val.to_mut() = Value::Integer(table.next_row_id());
+                    }
+                    _ => {}
+                }
 
-               if &**val == &Value::Null && col.default_value.is_some() {
-                   *val.to_mut() = col.default_value.as_ref().cloned().unwrap();
-               } else if &**val == &Value::Null && col.auto_increment.is_some() {
-                   *val.to_mut() = Value::Integer(table.auto_increment(col.name()));
-               }
-               col.validate(val)
-           })
-           .collect::<Result<Vec<_>, _>>()?;
+                if &**val == &Value::Null && col.default_value.is_some() {
+                    *val.to_mut() = col.default_value.as_ref().cloned().unwrap();
+                } else if &**val == &Value::Null && col.auto_increment.is_some() {
+                    *val.to_mut() = Value::Integer(table.auto_increment(col.name()));
+                }
+                col.validate(val)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(row)
     }
@@ -192,9 +197,7 @@ impl TableSchema {
             key_data: self
                 .keys()
                 .iter()
-                .map(|key| {
-                    (key, self.key_data(key, row))
-                })
+                .map(|key| (key, self.key_data(key, row)))
                 .collect::<HashMap<_, _>>(),
         }
     }
@@ -261,10 +264,10 @@ impl ColumnDefinition {
                 auto_increment,
             })
         })()
-            .map_err(|e| Error::IllegalColumnDefinition {
-                col: name,
-                reason: Box::new(e),
-            })
+        .map_err(|e| Error::IllegalColumnDefinition {
+            col: name,
+            reason: Box::new(e),
+        })
     }
 
     /// Gets the name of the column
@@ -305,11 +308,7 @@ impl ColumnDefinition {
 
 impl Debug for ColumnDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f,
-               "column {} {}",
-               self.name,
-               self.data_type
-        )?;
+        write!(f, "column {} {}", self.name, self.data_type)?;
         if self.non_null {
             write!(f, " not null")?;
         }
@@ -340,11 +339,7 @@ pub struct Key {
 
 impl Debug for Key {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f,
-               "index {} ({})",
-               self.name,
-               self.columns.join(", ")
-        )?;
+        write!(f, "index {} ({})", self.name, self.columns.join(", "))?;
         if self.is_primary {
             write!(f, " primary")?;
         } else {

@@ -130,13 +130,10 @@ impl DbSocket {
                 let table = table.clone();
                 move |core, cancel| {
                     debug!("getting table {:?}", (&schema, &table));
-                    let table = match core
-                        .get_table(&schema, &table)
-                        .ok_or(Error::NoTableFound {
-                            table: schema.to_string(),
-                            schema: table.to_string()
-                        })
-                    {
+                    let table = match core.get_table(&schema, &table).ok_or(Error::NoTableFound {
+                        table: schema.to_string(),
+                        schema: table.to_string(),
+                    }) {
                         Ok(table) => table,
                         Err(err) => return Ok(DbResp::Err(err)),
                     };
@@ -147,7 +144,7 @@ impl DbSocket {
         else {
             return Err(Error::NoTableFound {
                 table: schema.to_string(),
-                schema: table.to_string()
+                schema: table.to_string(),
             });
         };
 

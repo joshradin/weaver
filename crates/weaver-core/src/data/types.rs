@@ -1,8 +1,8 @@
-use std::fmt::{Display, Formatter};
 use crate::data::values::Value;
 use crate::error::Error;
 use crate::storage::ReadDataError;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Copy, Clone)]
 #[repr(u8)]
@@ -17,11 +17,11 @@ pub enum Type {
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let s: &str = match self {
-            Type::String => { "string"}
-            Type::Blob => { "blob"}
-            Type::Integer => { "int"}
-            Type::Boolean => { "bool"}
-            Type::Float => { "float"}
+            Type::String => "string",
+            Type::Blob => "blob",
+            Type::Integer => "int",
+            Type::Boolean => "bool",
+            Type::Float => "float",
         };
         write!(f, "{s}")
     }
