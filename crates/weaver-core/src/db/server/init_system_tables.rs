@@ -71,6 +71,8 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                      }| {
                         Row::from([
                             Value::Integer(pid.into()),
+                            Value::String(user),
+                            Value::String(host),
                             Value::Integer(age as i64),
                             Value::String(format!("{state:?}")),
                             Value::String(format!("{info}")),

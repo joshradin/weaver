@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use eyre::eyre;
 use interprocess::local_socket::LocalSocketStream;
+use log::warn;
 
 use weaver_core::access_control::auth::LoginContext;
 use weaver_core::cnxn::stream::WeaverStream;
@@ -22,6 +23,12 @@ pub mod write_rows;
 pub struct WeaverClient<T: Stream> {
     stream: WeaverStream<T>,
     pid: WeaverPid,
+}
+
+impl<T: Stream> Drop for WeaverClient<T> {
+    fn drop(&mut self) {
+        warn!("dropping weaver client");
+    }
 }
 
 impl WeaverClient<TcpStream> {

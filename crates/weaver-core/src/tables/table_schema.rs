@@ -1,11 +1,13 @@
 //! A schema describes a table
 
-use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::ops::{Deref, Index};
 use std::rc::Rc;
-use tracing::info;
+
+use serde::{Deserialize, Serialize};
+use tracing::{info, trace, warn};
 
 use crate::data::row::{OwnedRow, Row};
 use crate::data::serde::{deserialize_data_untyped, serialize_data_untyped};
@@ -68,6 +70,18 @@ impl TableSchema {
         Ok(self.sys_columns.push(column_definition))
     }
 
+    /// Removes a system column by index
+    ///
+    /// # Error
+    /// Returns an error if `index >= sys_columns.len()`
+    pub fn remove_sys_column(&mut self, index: usize) -> Result<(), Error> {
+        if index >= self.sys_columns.len() {
+            return Err(Error::OutOfRange);
+        }
+        self.sys_columns.remove(index);
+        Ok(())
+    }
+
     /// Gets *all* columns, including system columns
     pub fn all_columns(&self) -> Vec<&ColumnDefinition> {
         self.columns.iter().chain(self.sys_columns.iter()).collect()
@@ -118,14 +132,22 @@ impl TableSchema {
             .map_err(|e| e.into())
     }
 
+    /// Gets only public values from this row
+    pub fn public_only<'a>(&self, row: Row<'a>) -> Row<'a> {
+        let new_len = self.columns().len();
+        row.try_slice(..new_len).unwrap_or_else(|| panic!("row {row:?} does not have expected number of columns {new_len}"))
+    }
+
+    /// Validates and modifies a row for this schema
     pub fn validate<'a, T: DynamicTable>(
         &self,
         mut row: Row<'a>,
         tx: &Tx,
         table: &T,
     ) -> Result<Row<'a>, Error> {
-        info!("validating: {:?}", row);
+        trace!("validating: {:?}", row);
         if row.len() != self.columns().len() {
+            warn!("row {row:?} does match public columns {:?}", self.columns().iter().map(|c| &c.name).collect::<Vec<_>>());
             return Err(Error::BadColumnCount {
                 expected: self.columns().len(),
                 actual: row.len(),
@@ -141,55 +163,59 @@ impl TableSchema {
         };
 
         row.iter_mut()
-            .zip(self.all_columns())
-            .map(|(val, col)| {
-                match col.name() {
-                    name if name == TX_ID_COLUMN => {
-                        *val.to_mut() = Value::Integer(tx.id().into());
-                    }
-                    name if name == ROW_ID_COLUMN => {
-                        *val.to_mut() = Value::Integer(table.next_row_id());
-                    }
-                    _ => {}
-                }
+           .zip(self.all_columns())
+           .map(|(val, col)| {
+               match col.name() {
+                   name if name == TX_ID_COLUMN => {
+                       *val.to_mut() = Value::Integer(tx.id().into());
+                   }
+                   name if name == ROW_ID_COLUMN => {
+                       *val.to_mut() = Value::Integer(table.next_row_id());
+                   }
+                   _ => {}
+               }
 
-                if &**val == &Value::Null && col.default_value.is_some() {
-                    *val.to_mut() = col.default_value.as_ref().cloned().unwrap();
-                } else if &**val == &Value::Null && col.auto_increment.is_some() {
-                    *val.to_mut() = Value::Integer(table.auto_increment(col.name()));
-                }
-                col.validate(val)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+               if &**val == &Value::Null && col.default_value.is_some() {
+                   *val.to_mut() = col.default_value.as_ref().cloned().unwrap();
+               } else if &**val == &Value::Null && col.auto_increment.is_some() {
+                   *val.to_mut() = Value::Integer(table.auto_increment(col.name()));
+               }
+               col.validate(val)
+           })
+           .collect::<Result<Vec<_>, _>>()?;
 
         Ok(row)
     }
 
-    pub fn key_data(&self, row: &Row) -> AllKeyData {
+    pub fn all_key_data(&self, row: &Row) -> AllKeyData {
         AllKeyData {
             key_data: self
                 .keys()
                 .iter()
                 .map(|key| {
-                    info!("getting columns {:?} from row", key.columns());
-                    let cols_idxs = key.columns().iter().flat_map(|col| self.col_idx(col));
-                    let row = cols_idxs
-                        .inspect(|col| {
-                            info!("getting {}", col);
-                        })
-                        .map(|col_idx| row[col_idx].clone())
-                        .collect::<Row>();
-                    if row.len() == 0 {
-                        panic!("key should never return in empty row");
-                    }
-                    (key, KeyData::from(row))
+                    (key, self.key_data(key, row))
                 })
                 .collect::<HashMap<_, _>>(),
         }
     }
+
+    pub fn key_data(&self, key: &Key, row: &Row) -> KeyData {
+        info!("getting columns {:?} from row", key.columns());
+        let cols_idxs = key.columns().iter().flat_map(|col| self.col_idx(col));
+        let row = cols_idxs
+            .inspect(|col| {
+                info!("getting {}", col);
+            })
+            .map(|col_idx| row[col_idx].clone())
+            .collect::<Row>();
+        if row.len() == 0 {
+            panic!("key should never return in empty row");
+        }
+        KeyData::from(row)
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ColumnDefinition {
     name: String,
     data_type: Type,
@@ -235,10 +261,10 @@ impl ColumnDefinition {
                 auto_increment,
             })
         })()
-        .map_err(|e| Error::IllegalColumnDefinition {
-            col: name,
-            reason: Box::new(e),
-        })
+            .map_err(|e| Error::IllegalColumnDefinition {
+                col: name,
+                reason: Box::new(e),
+            })
     }
 
     /// Gets the name of the column
@@ -267,18 +293,70 @@ impl ColumnDefinition {
                 actual: (&**value).clone(),
             });
         }
+        Ok(())
+    }
 
+    /// Alters this column to use a different name
+    pub fn with_name(mut self, name: impl AsRef<str>) -> Self {
+        self.name = name.as_ref().to_string();
+        self
+    }
+}
+
+impl Debug for ColumnDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f,
+               "column {} {}",
+               self.name,
+               self.data_type
+        )?;
+        if self.non_null {
+            write!(f, " not null")?;
+        }
+        match self.auto_increment {
+            None => {}
+            Some(0) => {
+                write!(f, " autoincrement")?;
+            }
+            Some(i) => {
+                write!(f, " autoincrement({i})")?;
+            }
+        }
+        if let Some(default) = self.default_value.as_ref() {
+            write!(f, " default {default}")?;
+        }
         Ok(())
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Key {
     name: String,
     columns: Vec<String>,
     non_null: bool,
     unique: bool,
     is_primary: bool,
+}
+
+impl Debug for Key {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f,
+               "index {} ({})",
+               self.name,
+               self.columns.join(", ")
+        )?;
+        if self.is_primary {
+            write!(f, " primary")?;
+        } else {
+            if self.non_null {
+                write!(f, " not null")?;
+            }
+            if self.unique {
+                write!(f, " unique")?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Key {

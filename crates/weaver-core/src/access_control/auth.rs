@@ -51,7 +51,7 @@ pub mod handshake {
             debug!("received login context: {:#?}", login_ctx);
             let tx = db_socket.start_tx()?;
             let query = Query::select(
-                &["user", "host", "password"],
+                &["user", "host"],
                 "weaver.users",
                 Where::Op(
                     "user".to_string(),
@@ -63,8 +63,9 @@ pub mod handshake {
                 .send((tx, query))
                 .join()
                 .map_err(|e| Error::ThreadPanicked)??
-                .to_result()?;
+                .to_result();
             debug!("resp={resp:#?}");
+            let resp=resp?;
             let DbResp::TxRows(tx, mut rows) = resp else {
                 unreachable!();
             };
@@ -76,8 +77,19 @@ pub mod handshake {
                 return Err(Error::custom("no user found"));
             };
             debug!("row = {row:?}");
+            let auth_string = &row[2];
+            match auth_string.as_ref() {
+                Value::Null => {},
+                Value::String(str) => {
+                    todo!("password authentication")
+                },
+                _ => {unreachable!()}
+            }
 
-            todo!()
+            let user = User::new(row[0].to_string(), row[1].to_string());
+            packet_write(stream.transport().as_mut().unwrap(), &user)?;
+            stream.set_user(user);
+            Ok(stream)
         })
     }
 

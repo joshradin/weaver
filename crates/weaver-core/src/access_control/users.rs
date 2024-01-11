@@ -11,6 +11,7 @@ use crate::tables::table_schema::TableSchema;
 use crate::tables::InMemoryTable;
 use crate::tx::Tx;
 use serde::{Deserialize, Serialize};
+use crate::data::values::Value;
 
 /// A user struct is useful for access control
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -49,24 +50,26 @@ pub struct UserTable {
 
 impl UserTable {
     pub fn new() -> Self {
+        let table = InMemoryTable::new(
+            TableSchema::builder(WEAVER_SCHEMA, "users")
+                .column("host", Type::String, true, None, None)
+                .unwrap()
+                .column("user", Type::String, true, None, None)
+                .unwrap()
+                .column("auth_string", Type::String, false, None, None)
+                .unwrap()
+                .primary(&["host", "user"])
+                .unwrap()
+                .index("SK_user", &["user"], false)
+                .unwrap()
+                .engine(EngineKey::new("USER_TABLE"))
+                .build()
+                .expect("failed to create users table schema"),
+        )
+            .expect("couldn't create users table");
+        table.insert(&Tx::default(), Row::from([Value::from("localhost"), "root".into(), Value::Null])).expect("could not insert admin row");
         Self {
-            in_memory: InMemoryTable::new(
-                TableSchema::builder(WEAVER_SCHEMA, "users")
-                    .column("host", Type::String, true, None, None)
-                    .unwrap()
-                    .column("user", Type::String, true, None, None)
-                    .unwrap()
-                    .column("auth_string", Type::String, false, None, None)
-                    .unwrap()
-                    .primary(&["host", "user"])
-                    .unwrap()
-                    .index("SK_user", &["user"], false)
-                    .unwrap()
-                    .engine(EngineKey::new("USER_TABLE"))
-                    .build()
-                    .expect("failed to create users table schema"),
-            )
-            .expect("couldn't create users table"),
+            in_memory: table,
         }
     }
 }

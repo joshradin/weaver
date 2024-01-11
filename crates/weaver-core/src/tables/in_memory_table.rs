@@ -7,7 +7,7 @@ use crate::rows::{KeyIndex, Rows};
 use crate::storage::VecPaged;
 use crate::tables::table_schema::{TableSchema, TableSchemaBuilder};
 use crate::tables::unbuffered_table::UnbufferedTable;
-use crate::tx::Tx;
+use crate::tx::{Tx, TX_ID_COLUMN};
 use derive_more::Deref;
 
 #[derive(Debug, Deref)]
@@ -18,12 +18,24 @@ impl InMemoryTable {
         Ok(InMemoryTable(UnbufferedTable::new(
             schema,
             VecPaged::default(),
+            true,
+        )?))
+    }
+
+    pub fn non_transactional(schema: TableSchema) -> Result<Self, Error> {
+        Ok(InMemoryTable(UnbufferedTable::new(
+            schema,
+            VecPaged::default(),
+            false,
         )?))
     }
 
     /// Creates an in-memory table from a set of rows and a given schema
-    pub fn from_rows<'t>(schema: TableSchema, mut rows: impl Rows<'t>) -> Result<Self, Error> {
-        let mut table = Self::new(schema)?;
+    pub fn from_rows<'t>(mut schema: TableSchema, mut rows: impl Rows<'t>) -> Result<Self, Error> {
+        if let Some(pos) = schema.sys_columns().iter().position(|col| &col.name() == &TX_ID_COLUMN) {
+            schema.remove_sys_column(pos)?;
+        }
+        let mut table = Self::non_transactional(schema)?;
         let ref tx = Tx::default();
         while let Some(row) = rows.next() {
             table.insert(tx, row)?;

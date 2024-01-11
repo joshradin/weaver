@@ -2,6 +2,7 @@
 
 use parking_lot::RwLock;
 use std::sync::Weak;
+use tracing::{error, event, info};
 
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::Table;
@@ -36,9 +37,11 @@ impl QueryExecutor {
         let core = self.core.upgrade().ok_or(Error::NoCoreAvailable)?;
         let mut stack = vec![root];
         let mut output: Option<Table> = None;
+        info!("executing query plan {plan:#?}");
 
         while !stack.is_empty() {
             let node = stack.pop().unwrap();
+            info!("executing node {:#?}", node);
 
             match &node.kind {
                 QueryPlanKind::SelectByKey {
@@ -48,21 +51,36 @@ impl QueryExecutor {
                     let core = core.read();
                     let table = core
                         .get_table(schema, name)
-                        .ok_or(Error::NoTableFound(schema.to_string(), name.to_string()))?;
+                        .ok_or(Error::NoTableFound {
+                            table: name.to_string(),
+                            schema: schema.to_string()
+                        })?;
 
-                    let read = table.read(tx, &key_index[0])?;
-                    output = Some(Box::new(InMemoryTable::from_rows(
+                    let read = table.read(tx, &key_index[0])?
+                        .map(|row| table.schema().public_only(row));
+                    let in_memory = match InMemoryTable::from_rows(
                         table.schema().clone(),
                         read,
-                    )?));
+                    ) {
+                        Ok(table) => { table }
+                        Err(e) => {
+                            error!("creating in memory table from select result failed: {e}");
+                            if let Error::BadColumnCount { .. } = &e {
+                                error!("table schema: {:#?}", table.schema())
+                            }
+                            return Err(e)
+                        }
+                    };
+                    output = Some(Box::new(in_memory));
                 }
                 QueryPlanKind::Project { .. } => {}
             }
         }
 
-        output
-            .expect("no table")
+        let final_table = output
+            .expect("no table");
+        final_table
             .all(tx)
-            .map(|rows| rows.to_owned())
+            .map(|rows| rows.map(|row| final_table.schema().public_only(row)).to_owned())
     }
 }

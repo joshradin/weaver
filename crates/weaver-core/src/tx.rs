@@ -8,7 +8,7 @@ use crossbeam::channel::{bounded, Receiver, Sender};
 use derive_more::{Display, From, Into};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 
 use behavior::{TxCompletion, TxDropBehavior};
 use coordinator::TxCompletionToken;
@@ -108,7 +108,7 @@ impl Tx {
     fn send_complete(&mut self, completion: TxCompletion) {
         if let Some(ref msg_sender) = self.msg_sender {
             let _lock = self.lock.lock();
-            debug!("tx {} locked tx_lock for completion", self);
+            trace!("tx {} locked tx_lock for completion", self);
             let (ack_send, ack_recv) = bounded(0);
             let _ = msg_sender.send(TxCompletionToken {
                 tx_id: self.id,

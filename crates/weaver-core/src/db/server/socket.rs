@@ -132,7 +132,10 @@ impl DbSocket {
                     debug!("getting table {:?}", (&schema, &table));
                     let table = match core
                         .get_table(&schema, &table)
-                        .ok_or(Error::NoTableFound(schema.to_string(), table.to_string()))
+                        .ok_or(Error::NoTableFound {
+                            table: schema.to_string(),
+                            schema: table.to_string()
+                        })
                     {
                         Ok(table) => table,
                         Err(err) => return Ok(DbResp::Err(err)),
@@ -142,7 +145,10 @@ impl DbSocket {
             }))
             .join()??
         else {
-            return Err(Error::NoTableFound(schema.to_string(), table.to_string()));
+            return Err(Error::NoTableFound {
+                table: schema.to_string(),
+                schema: table.to_string()
+            });
         };
 
         Ok(table)

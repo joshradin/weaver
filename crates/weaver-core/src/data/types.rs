@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use crate::data::values::Value;
 use crate::error::Error;
 use crate::storage::ReadDataError;
@@ -11,6 +12,19 @@ pub enum Type {
     Integer,
     Boolean,
     Float,
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let s: &str = match self {
+            Type::String => { "string"}
+            Type::Blob => { "blob"}
+            Type::Integer => { "int"}
+            Type::Boolean => { "bool"}
+            Type::Float => { "float"}
+        };
+        write!(f, "{s}")
+    }
 }
 
 impl Type {

@@ -10,7 +10,7 @@ use std::borrow::{Borrow, Cow};
 use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::{Debug, Formatter, Write};
-use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::ops::{Deref, DerefMut, Index, IndexMut, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
 use std::slice::SliceIndex;
 
 /// A row of data
@@ -30,11 +30,23 @@ impl<'a> Row<'a> {
     }
 
     /// Gets a slice of the data
-    pub fn slice<I>(&'a self, range: I) -> Row<'a>
+    pub fn slice<I>(&self, range: I) -> Row<'a>
     where
         I: SliceIndex<[Cow<'a, Value>], Output = [Cow<'a, Value>]>,
     {
-        Self::from(&self.0[range])
+        Self::from(self.0[range].to_vec())
+    }
+
+    /// Gets a slice of the data if all values are within range
+    pub fn try_slice<I>(&self, range: I) -> Option<Row<'a>>
+        where
+            I: SliceIndex<[Cow<'a, Value>], Output = [Cow<'a, Value>]>,
+    {
+        self.0
+            .get(range)
+            .map(|values| {
+                Self::from(values.to_vec())
+            })
     }
 
     /// Joins two rows together
@@ -209,6 +221,45 @@ impl<'a> Index<usize> for Row<'a> {
     type Output = Cow<'a, Value>;
 
     fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl<'a> Index<RangeTo<usize>> for Row<'a> {
+    type Output = [Cow<'a, Value>];
+
+    fn index(&self, index: RangeTo<usize>) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl<'a> Index<RangeToInclusive<usize>> for Row<'a> {
+    type Output = [Cow<'a, Value>];
+
+    fn index(&self, index: RangeToInclusive<usize>) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl<'a> Index<RangeFull> for Row<'a> {
+    type Output = [Cow<'a, Value>];
+
+    fn index(&self, index: RangeFull) -> &Self::Output {
+        &self.0[index]
+    }
+}
+impl<'a> Index<RangeFrom<usize>> for Row<'a> {
+    type Output = [Cow<'a, Value>];
+
+    fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl<'a> Index<RangeInclusive<usize>> for Row<'a> {
+    type Output = [Cow<'a, Value>];
+
+    fn index(&self, index: RangeInclusive<usize>) -> &Self::Output {
         &self.0[index]
     }
 }

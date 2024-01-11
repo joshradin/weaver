@@ -74,7 +74,7 @@ impl Drop for WeaverDbInstance {
     }
 }
 
-pub fn run_full_stack<F>(cb: F, path: &Path) -> Result<(), eyre::Error>
+pub fn run_full_stack<F>(path: &Path, cb: F) -> Result<(), eyre::Error>
 where
     F: FnOnce(
         &mut WeaverDbInstance,
@@ -82,14 +82,21 @@ where
     ) -> Result<(), eyre::Error>,
 {
     let server = start_server(0, path, None);
-    DualResult::zip_with(server, |server| match server {
-        Ok(_) => WeaverClient::connect_localhost(path.join("weaverdb.socket"), LoginContext::new()),
-        Err(err) => Err(eyre!("can not start client without server: {}", err)),
+    DualResult::zip_with(server, |server| {
+        let mut context = LoginContext::new();
+        context.set_user("root");
+        match server {
+            Ok(_) => WeaverClient::connect_localhost(path.join("weaverdb.socket"), context),
+            Err(err) => Err(eyre!("can not start client without server: {}", err)),
+        }
     })
     .then(
-        |(ref mut server, ref mut client)| {
+        |(mut server, mut client)| {
             debug!("running full stack");
-            cb(server, client)
+            let output = cb(&mut server, &mut client);
+            drop(client);
+            drop(server);
+            output
         },
         |(e1, e2)| match (e1, e2) {
             (Some(e1), Some(e2)) => {

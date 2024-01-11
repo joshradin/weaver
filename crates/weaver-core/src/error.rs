@@ -60,8 +60,8 @@ pub enum Error {
     RecvError(#[from] RecvError),
     #[error("No core available")]
     NoCoreAvailable,
-    #[error("No table named {0:?} found in schema {1:?}")]
-    NoTableFound(String, String),
+    #[error("No table named {table:?} found in schema {schema:?}")]
+    NoTableFound { table: String, schema: String },
     #[error("no transaction")]
     NoTransaction,
     #[error("Process {0} failed")]

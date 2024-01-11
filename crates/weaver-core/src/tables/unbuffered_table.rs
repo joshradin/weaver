@@ -7,13 +7,13 @@ use std::ops::Bound::{Excluded, Unbounded};
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use parking_lot::RwLock;
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 
 use crate::data::row::{OwnedRow, Row};
 use crate::data::types::Type;
 use crate::dynamic_table::{Col, DynamicTable, OwnedCol, Table};
 use crate::error::Error;
-use crate::key::KeyData;
+use crate::key::{KeyData, KeyDataRange};
 use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, Rows};
 use crate::storage::b_plus_tree::BPlusTree;
 use crate::storage::{Paged, VecPaged};
@@ -34,11 +34,11 @@ pub struct UnbufferedTable<P: Paged + Sync + Send> {
 
 impl<P: Paged + Sync + Send> UnbufferedTable<P> {
     /// Creates a new, empty in memory table
-    pub fn new(mut schema: TableSchema, paged: P) -> Result<Self, Error>
+    pub fn new(mut schema: TableSchema, paged: P, transactional: bool) -> Result<Self, Error>
     where
         Error: From<P::Err>,
     {
-        if !schema
+        if transactional && !schema
             .sys_columns()
             .iter()
             .any(|col| col.name() == TX_ID_COLUMN)
@@ -94,7 +94,7 @@ where
     fn insert(&self, tx: &Tx, row: Row) -> Result<(), crate::error::Error> {
         let row = self.schema.validate(row, tx, self)?;
         info!("validated row: {:?}", row);
-        let key_data = self.schema.key_data(&row);
+        let key_data = self.schema.all_key_data(&row);
         let primary = key_data.primary().clone();
         info!("validated row primary key: {:?}", primary);
         self.main_buffer.insert(primary, row.to_owned())?;
@@ -117,9 +117,25 @@ where
                 KeyIndexKind::One(id) => Ok(todo!()),
             }
         } else {
-            let all = self.all_rows(tx)?;
+            let mut all = self.all_rows(tx)?;
+            all.retain(|row| {
+                let ref row_key_data = self.schema.key_data(key_def, row);
+                match key.kind() {
+                    KeyIndexKind::All => {
+                       true
+                    }
+                    KeyIndexKind::Range { low, high } => {
+                        KeyDataRange(low.clone(), high.clone()).contains(
+                            row_key_data
+                        )
+                    }
+                    KeyIndexKind::One(id) => {
+                        id == row_key_data
+                    }
+                }
+            });
 
-            todo!()
+            Ok(Box::new(all))
         }
     }
 
@@ -143,11 +159,12 @@ where
             .map(|bytes| self.schema.decode(&bytes))
             .filter(|row| {
                 if let Ok(row) = row {
-                    let tx_id = row[self.schema.col_idx(TX_ID_COLUMN).unwrap()]
-                        .int_value()
+                    let tx_id = self.schema.col_idx(TX_ID_COLUMN)
+                        .and_then(|tx_col|row.get(tx_col))
+                            .and_then(|tx| tx.int_value())
                         .map(|tx| TxId::from(tx));
-                    let can_see = tx_id.map(|ref i| tx.can_see(i)).unwrap_or(false);
-                    debug!(
+                    let can_see = tx_id.map(|ref i| tx.can_see(i)).unwrap_or(true);
+                    trace!(
                         "checking if row {:?} (tx_id: {tx_id:?}) can be seen by tx {} -> {can_see}",
                         row, tx
                     );
