@@ -228,19 +228,19 @@ where
 
 /// An implementation over pages
 #[derive(Debug)]
-pub struct VecPaged {
+pub struct PagedVec {
     pages: RwLock<Vec<Arc<RwLock<Box<[u8]>>>>>,
     usage: RwLock<HashMap<usize, Arc<AtomicI32>>>,
     page_len: usize,
 }
 
-impl Default for VecPaged {
+impl Default for PagedVec {
     fn default() -> Self {
         Self::new(PAGE_SIZE)
     }
 }
 
-impl VecPaged {
+impl PagedVec {
     /// Creates a new vec-paged with a given page len
     pub fn new(page_len: usize) -> Self {
         Self {
@@ -251,7 +251,7 @@ impl VecPaged {
     }
 }
 
-impl Paged for VecPaged {
+impl Paged for PagedVec {
     type Page<'a> = SharedPage<'a>;
     type PageMut<'a> = SharedPageMut<'a>;
 

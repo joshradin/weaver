@@ -1,4 +1,5 @@
 use crate::data::row::{OwnedRow, Row};
+use crate::data::types::Type;
 use crate::data::values::Value;
 use derive_more::From;
 use std::cmp::Ordering;
@@ -9,6 +10,19 @@ use tracing::trace;
 /// Keys are always order-able
 #[derive(Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct KeyData(OwnedRow);
+
+impl KeyData {
+    /// Checks if can get stuff by range correctly
+    pub fn is_fast(&self) -> bool {
+        for value in &self.0 {
+            match value.value_type() {
+                Some(Type::Binary(_) | Type::String(_)) => return false,
+                _ => {}
+            }
+        }
+        true
+    }
+}
 
 impl Debug for KeyData {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -79,35 +93,19 @@ impl<R: RangeBounds<KeyData>> From<R> for KeyDataRange {
 
 impl KeyDataRange {
     pub fn contains(&self, key_data: &KeyData) -> bool {
-        match &self.0 {
-            Bound::Included(included) => {
-                if key_data < included {
-                    return false;
-                }
-            }
-            Bound::Excluded(excluded) => {
-                if key_data <= excluded {
-                    return false;
-                }
-            }
-            Bound::Unbounded => {}
-        }
+        let gt = match &self.0 {
+            Bound::Included(included) => key_data >= included,
+            Bound::Excluded(excluded) => key_data > excluded,
+            Bound::Unbounded => true,
+        };
 
-        match &self.1 {
-            Bound::Included(included) => {
-                if key_data > included {
-                    return false;
-                }
-            }
-            Bound::Excluded(excluded) => {
-                if key_data >= excluded {
-                    return false;
-                }
-            }
-            Bound::Unbounded => {}
-        }
+        let lt = match &self.1 {
+            Bound::Included(included) => key_data <= included,
+            Bound::Excluded(excluded) => key_data < excluded,
+            Bound::Unbounded => true,
+        };
 
-        true
+        gt && lt
     }
 
     /// Checks if the given key is greater than the range given
@@ -249,6 +247,7 @@ mod tests {
     use crate::data::values::Value;
     use crate::key::{KeyData, KeyDataRange};
     use std::collections::{BTreeSet, HashSet};
+    use std::ops::Bound;
 
     #[test]
     fn order_keys() {

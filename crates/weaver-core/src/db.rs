@@ -5,7 +5,8 @@ use std::fmt::Debug;
 
 pub mod core;
 pub mod server;
+
 mod start_db;
 mod start_server;
 
-pub const WEAVER_SCHEMA: &'static str = "weaver";
+pub static SYSTEM_SCHEMA: &'static str = "weaver";

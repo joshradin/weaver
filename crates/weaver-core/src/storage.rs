@@ -1,13 +1,15 @@
 //! Storage primitives
 
 use crate::storage::cells::PageId;
+use nom::error::Error;
+use nom::ErrorConvert;
 use std::borrow::{Borrow, Cow};
 use std::io::Write;
 use std::string::FromUtf8Error;
 use thiserror::Error;
 
 mod abstraction;
-pub use abstraction::{Paged, VecPaged};
+pub use abstraction::{Paged, PagedVec};
 pub mod b_plus_tree;
 pub mod cells;
 pub mod ram_file;
@@ -37,6 +39,18 @@ pub enum ReadDataError {
     FromUtf8Error(#[from] FromUtf8Error),
     #[error("Page {0} already locked")]
     PageLocked(PageId),
+    #[error("{:?}: {:x?}", e.code, e.input)]
+    NomError { e: nom::error::Error<Box<[u8]>> },
+}
+
+impl From<nom::error::Error<&[u8]>> for ReadDataError {
+    fn from(value: Error<&[u8]>) -> Self {
+        let e = nom::error::Error {
+            input: Box::from(value.input),
+            code: value.code,
+        };
+        Self::NomError { e }
+    }
 }
 
 #[derive(Debug, Error)]

@@ -12,13 +12,12 @@ use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::socket::DbSocket;
 use crate::db::server::WeaverDb;
-use crate::dynamic_table::{EngineKey, SYSTEM_TABLE_KEY};
+use crate::db::SYSTEM_SCHEMA;
+use crate::dynamic_table::EngineKey;
 use crate::error::Error;
 use crate::rows::OwnedRows;
-use crate::tables::system_tables::SystemTable;
+use crate::tables::system_tables::{SystemTable, SYSTEM_TABLE_KEY};
 use crate::tables::table_schema::TableSchema;
-
-pub static SYSTEM_SCHEMA: &str = "system";
 
 pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
     let start = Instant::now();
@@ -46,11 +45,11 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
 fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(), Error> {
     let schema = TableSchema::builder(SYSTEM_SCHEMA, "processes")
         .column("pid", Type::Integer, true, None, None)?
-        .column("user", Type::String, true, None, None)?
-        .column("host", Type::String, true, None, None)?
+        .column("user", Type::String(128), true, None, None)?
+        .column("host", Type::String(128), true, None, None)?
         .column("age", Type::Integer, true, None, None)?
-        .column("state", Type::String, true, None, None)?
-        .column("info", Type::String, true, None, None)?
+        .column("state", Type::String(128), true, None, None)?
+        .column("info", Type::String(128), true, None, None)?
         .engine(EngineKey::new(SYSTEM_TABLE_KEY))
         .build()?;
     let table = SystemTable::new(schema.clone(), socket.clone(), move |socket, key| {
@@ -71,11 +70,11 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                      }| {
                         Row::from([
                             Value::Integer(pid.into()),
-                            Value::String(user),
-                            Value::String(host),
+                            Value::String(user, 128),
+                            Value::String(host, 128),
                             Value::Integer(age as i64),
-                            Value::String(format!("{state:?}")),
-                            Value::String(format!("{info}")),
+                            Value::String(format!("{state:?}"), 128),
+                            Value::String(format!("{info}"), 128),
                         ])
                         .to_owned()
                     },

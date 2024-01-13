@@ -5,9 +5,9 @@ use weaver_core::data::row::Row;
 use weaver_core::data::values::Value;
 use weaver_core::key::KeyData;
 use weaver_core::storage::b_plus_tree::BPlusTree;
-use weaver_core::storage::VecPaged;
+use weaver_core::storage::PagedVec;
 
-fn insert_rand(count: usize, page_len: usize) -> BPlusTree<VecPaged> {
+fn insert_rand(count: usize, page_len: usize) -> BPlusTree<PagedVec> {
     insert(
         (0..count)
             .into_iter()
@@ -16,8 +16,8 @@ fn insert_rand(count: usize, page_len: usize) -> BPlusTree<VecPaged> {
     )
 }
 
-fn insert<I: IntoIterator<Item = i64>>(iter: I, page_len: usize) -> BPlusTree<VecPaged> {
-    let mut btree = BPlusTree::new(VecPaged::new(page_len));
+fn insert<I: IntoIterator<Item = i64>>(iter: I, page_len: usize) -> BPlusTree<PagedVec> {
+    let mut btree = BPlusTree::new(PagedVec::new(page_len));
 
     iter.into_iter()
         .try_for_each(|id: i64| {

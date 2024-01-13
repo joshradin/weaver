@@ -1,17 +1,17 @@
 //! Users are what connect to the database
 
+use serde::{Deserialize, Serialize};
+
 use crate::data::row::Row;
 use crate::data::types::Type;
 use crate::data::values::Value;
-use crate::db::WEAVER_SCHEMA;
+use crate::db::SYSTEM_SCHEMA;
 use crate::dynamic_table::{Col, DynamicTable, EngineKey};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
-use crate::storage::VecPaged;
 use crate::tables::table_schema::TableSchema;
 use crate::tables::InMemoryTable;
 use crate::tx::Tx;
-use serde::{Deserialize, Serialize};
 
 /// A user struct is useful for access control
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -51,12 +51,12 @@ pub struct UserTable {
 impl UserTable {
     pub fn new() -> Self {
         let table = InMemoryTable::new(
-            TableSchema::builder(WEAVER_SCHEMA, "users")
-                .column("host", Type::String, true, None, None)
+            TableSchema::builder(SYSTEM_SCHEMA, "users")
+                .column("host", Type::String(128), true, None, None)
                 .unwrap()
-                .column("user", Type::String, true, None, None)
+                .column("user", Type::String(128), true, None, None)
                 .unwrap()
-                .column("auth_string", Type::String, false, None, None)
+                .column("auth_string", Type::String(128), false, None, None)
                 .unwrap()
                 .primary(&["host", "user"])
                 .unwrap()

@@ -1,8 +1,12 @@
 //! Defines storage engines
 
 use crate::data::row::Row;
+use crate::db::core::WeaverDbCore;
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
+use crate::tables::file_table::B_PLUS_TREE_FILE_KEY;
+use crate::tables::in_memory_table::IN_MEMORY_KEY;
+use crate::tables::system_tables::SYSTEM_TABLE_KEY;
 use crate::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 use serde::{Deserialize, Serialize};
@@ -96,12 +100,23 @@ impl Debug for Table {
 }
 
 pub trait StorageEngineFactory: Send + Sync {
-    fn open(&self, schema: &TableSchema) -> Result<Table, Error>;
+    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, Error>;
 }
 
 impl<F: Fn(&TableSchema) -> Result<Table, Error> + Send + Sync> StorageEngineFactory for F {
-    fn open(&self, schema: &TableSchema) -> Result<Table, Error> {
+    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, Error> {
         (self)(schema)
+    }
+}
+
+struct FnStorageEngineFactory<F: Fn(&TableSchema) -> Result<Table, Error> + Send + Sync + 'static> {
+    func: F,
+}
+impl<F: Fn(&TableSchema) -> Result<Table, Error> + Send + Sync> StorageEngineFactory
+    for FnStorageEngineFactory<F>
+{
+    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, Error> {
+        (self.func)(schema)
     }
 }
 
@@ -122,14 +137,12 @@ impl EngineKey {
     }
 }
 
-pub const IN_MEMORY_KEY: &'static str = "IN_MEMORY";
-pub const SYSTEM_TABLE_KEY: &'static str = "SYSTEM_TABLE";
-
 impl EngineKey {
     pub fn all() -> impl Iterator<Item = EngineKey> {
         [
             EngineKey::new(IN_MEMORY_KEY),
             EngineKey::new(SYSTEM_TABLE_KEY),
+            EngineKey::new(B_PLUS_TREE_FILE_KEY),
         ]
         .into_iter()
     }

@@ -120,6 +120,9 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
 
     /// Get cells within a range
     pub fn get_range<I: Into<KeyDataRange>>(&self, key_data: I) -> Result<Vec<Cell>, Error> {
+        if self.count() == 0 {
+            return Ok(vec![]);
+        }
         let range = key_data.into();
         let l = match range.start_bound() {
             Bound::Included(i) => match self.binary_search(i)? {
@@ -290,6 +293,16 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
             return Ok(None);
         }
         self.get_cell(0).map(|cell| Some(cell.key_data()))
+    }
+
+    /// Gets the median key in this cell
+    pub fn median_key(&self) -> Result<Option<KeyData>, Error> {
+        let count = self.count();
+        if count == 0 {
+            return Ok(None);
+        }
+        let mid = count / 2;
+        self.get_key_data(mid).map(Some)
     }
 
     /// Gets the range of the key data
@@ -1110,7 +1123,7 @@ mod tests {
     use crate::data::values::Value;
     use crate::error::Error;
     use crate::key::KeyData;
-    use crate::storage::abstraction::{Paged, VecPaged};
+    use crate::storage::abstraction::{Paged, PagedVec};
     use crate::storage::cells::{Cell, KeyCell, PageId};
     use crate::storage::ram_file::{PagedFile, RandomAccessFile};
     use crate::storage::slotted_page::{PageType, SlottedPageAllocator, SlottedPageHeader};
@@ -1118,7 +1131,7 @@ mod tests {
 
     #[test]
     fn slotted_page() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         {
             let slotted_page = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
             let slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
@@ -1129,7 +1142,7 @@ mod tests {
 
     #[test]
     fn reuse_slotted_page_after_free() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         {
             let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
             let slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
@@ -1160,7 +1173,7 @@ mod tests {
 
     #[test]
     fn insert_cell() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data = KeyData::from([Value::from(1_i64)]);
         page.insert(KeyCell::new(15, key_data.clone()).into())
@@ -1175,7 +1188,7 @@ mod tests {
 
     #[test]
     fn insert_cell_same_value() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data = KeyData::from([Value::from(1_i64)]);
         page.insert(KeyCell::new(15, key_data.clone()).into())
@@ -1193,7 +1206,7 @@ mod tests {
     #[test]
     fn insert_cell_into_full() {
         let mut slotted_pager =
-            SlottedPageAllocator::new(VecPaged::new(size_of::<SlottedPageHeader>()));
+            SlottedPageAllocator::new(PagedVec::new(size_of::<SlottedPageHeader>()));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data = KeyData::from([Value::from(1_i64)]);
         let err = page
@@ -1210,7 +1223,7 @@ mod tests {
 
     #[test]
     fn binary_search() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
 
         for i in 0..32 {
@@ -1228,7 +1241,7 @@ mod tests {
 
     #[test]
     fn get_range() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
 
         for i in 0..32 {
@@ -1256,7 +1269,7 @@ mod tests {
     }
     #[test]
     fn drain_one_page() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(12848));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(12848));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
 
         for i in 0..512 {
@@ -1299,7 +1312,7 @@ mod tests {
 
     #[test]
     fn reuse_cell() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data1 = KeyData::from([Value::from(1_i64)]);
         let key_data2 = KeyData::from([Value::from(2_i64)]);
@@ -1322,7 +1335,7 @@ mod tests {
 
     #[test]
     fn merge_free_cells() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data1 = KeyData::from([Value::from(1_i64)]);
         let key_data2 = KeyData::from([Value::from(2_i64)]);
@@ -1357,7 +1370,7 @@ mod tests {
 
     #[test]
     fn rebuild_free_cells() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         {
             let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
             let key_data1 = KeyData::from([Value::from(1_i64)]);
@@ -1379,7 +1392,7 @@ mod tests {
 
     #[test]
     fn rebuild_has_no_free_cells_if_no_deletions() {
-        let mut slotted_pager = SlottedPageAllocator::new(VecPaged::new(1028));
+        let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         {
             let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
             let key_data1 = KeyData::from([Value::from(1_i64)]);

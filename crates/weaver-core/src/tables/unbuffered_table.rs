@@ -1,10 +1,12 @@
 //! An in-memory storage engine
 
+use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Bound::{Excluded, Unbounded};
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::OnceLock;
 
 use parking_lot::RwLock;
 use tracing::{debug, info, trace};
@@ -16,7 +18,7 @@ use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
 use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, Rows};
 use crate::storage::b_plus_tree::BPlusTree;
-use crate::storage::{Paged, VecPaged};
+use crate::storage::{Paged, PagedVec};
 use crate::tables::table_schema::{ColumnDefinition, TableSchema};
 use crate::tx::{Tx, TxId, TX_ID_COLUMN};
 
@@ -28,7 +30,7 @@ struct RowId(u64);
 pub struct UnbufferedTable<P: Paged + Sync + Send> {
     schema: TableSchema,
     main_buffer: BPlusTree<P>,
-    auto_incremented: HashMap<OwnedCol, AtomicI64>,
+    auto_incremented: HashMap<OwnedCol, OnceLock<AtomicI64>>,
     row_id: AtomicI64,
 }
 
@@ -57,7 +59,7 @@ impl<P: Paged + Sync + Send> UnbufferedTable<P> {
             .columns()
             .iter()
             .filter_map(|f| f.auto_increment().map(|i| (f.name(), i)))
-            .map(|(col, i)| (col.to_owned(), AtomicI64::new(i)))
+            .map(|(col, i)| (col.to_owned(), OnceLock::new()))
             .collect();
         Ok(Self {
             schema,
@@ -82,10 +84,20 @@ where
     }
 
     fn auto_increment(&self, col: Col) -> i64 {
-        self.auto_incremented
+        let lock = self
+            .auto_incremented
             .get(col)
-            .expect("auto incremented should be initialized")
-            .fetch_add(1, Ordering::SeqCst)
+            .expect("auto incremented should be initialized");
+        lock.get_or_init(|| {
+            AtomicI64::new(
+                self.schema
+                    .get_column(col)
+                    .unwrap()
+                    .auto_increment()
+                    .unwrap_or(0),
+            )
+        })
+        .fetch_add(1, Ordering::SeqCst)
     }
 
     fn next_row_id(&self) -> i64 {

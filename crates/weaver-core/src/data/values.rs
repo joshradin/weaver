@@ -9,8 +9,8 @@ use std::hash::{Hash, Hasher};
 #[derive(Clone, Deserialize, Serialize, From)]
 #[serde(untagged)]
 pub enum Value {
-    String(String),
-    Blob(Vec<u8>),
+    String(String, u16),
+    Binary(Vec<u8>, u16),
     Integer(i64),
     Boolean(bool),
     Float(f64),
@@ -29,8 +29,8 @@ impl Value {
 
     pub fn value_type(&self) -> Option<Type> {
         Some(match self {
-            Value::String(_) => Type::String,
-            Value::Blob(_) => Type::Blob,
+            &Value::String(_, max_len) => Type::String(max_len),
+            &Value::Binary(_, max_len) => Type::Binary(max_len),
             Value::Integer(_) => Type::Integer,
             Value::Boolean(_) => Type::Boolean,
             Value::Float(_) => Type::Float,
@@ -38,6 +38,14 @@ impl Value {
                 return None;
             }
         })
+    }
+
+    pub fn string<S: AsRef<str>>(s: S, max_len: impl Into<Option<u16>>) -> Self {
+        Self::String(s.as_ref().to_string(), max_len.into().unwrap_or(u16::MAX))
+    }
+
+    pub fn binary<S: for<'a> AsRef<&'a [u8]>>(bytes: S, max_len: impl Into<Option<u16>>) -> Self {
+        Self::Binary(bytes.as_ref().to_vec(), max_len.into().unwrap_or(u16::MAX))
     }
 }
 
@@ -49,22 +57,28 @@ impl AsRef<Value> for Value {
 
 impl From<&str> for Value {
     fn from(value: &str) -> Self {
-        Self::from(value.to_string())
+        Self::string(value, None)
     }
 }
 
 impl From<&String> for Value {
     fn from(value: &String) -> Self {
-        Self::from(value.to_string())
+        Self::string(value, None)
+    }
+}
+
+impl From<String> for Value {
+    fn from(value: String) -> Self {
+        Self::string(value, None)
     }
 }
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::String(s) => {
+            Value::String(s, _) => {
                 write!(f, "{s}")
             }
-            Value::Blob(b) => {
+            Value::Binary(b, _) => {
                 write!(
                     f,
                     "{}",
@@ -90,10 +104,10 @@ impl Display for Value {
 impl Debug for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::String(s) => {
+            Value::String(s, _) => {
                 write!(f, "{s:?}")
             }
-            Value::Blob(b) => {
+            Value::Binary(b, _) => {
                 write!(
                     f,
                     "b\"{}\"",
@@ -121,8 +135,8 @@ impl PartialEq for Value {
         use crate::data::Value::Null;
         use Value::*;
         match (self, other) {
-            (String(l), String(r)) => l == r,
-            (Blob(l), Blob(r)) => l == r,
+            (String(l, _), String(r, _)) => l == r,
+            (Binary(l, _), Binary(r, _)) => l == r,
             (Integer(l), Integer(r)) => l == r,
             (Boolean(l), Boolean(r)) => l == r,
             (Float(l), Float(r)) => l.total_cmp(r).is_eq(),
@@ -138,9 +152,14 @@ impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         use crate::data::Value::Null;
         use Value::*;
-        Some(match (self, other) {
-            (String(l), String(r)) => l.cmp(r),
-            (Blob(l), Blob(r)) => l.cmp(r),
+        let emit = Some(match (self, other) {
+            (String(l, l_max_len), String(r, r_max_len)) => {
+                let max = *l_max_len.max(r_max_len) as usize;
+                let l = format!("{l}{}", "\u{0}".repeat(max - l.len()));
+                let r = format!("{r}{}", "\u{0}".repeat(max - r.len()));
+                l.cmp(&r)
+            }
+            (Binary(l, _), Binary(r, _)) => l.cmp(r),
             (Integer(l), Integer(r)) => l.cmp(r),
             (Boolean(l), Boolean(r)) => l.cmp(r),
             (Float(l), Float(r)) => l.total_cmp(r),
@@ -148,19 +167,35 @@ impl PartialOrd for Value {
             (_, Null) => Ordering::Greater,
             (Null, _) => Ordering::Less,
             _ => return None,
-        })
+        });
+        emit
     }
 }
 
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Value::String(s) => s.hash(state),
-            Value::Blob(s) => s.hash(state),
+            Value::String(s, _) => s.hash(state),
+            Value::Binary(s, _) => s.hash(state),
             Value::Integer(s) => s.hash(state),
             Value::Boolean(s) => s.hash(state),
             Value::Float(f) => u64::from_be_bytes(f.to_be_bytes()).hash(state),
             Value::Null => ().hash(state),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::data::values::Value;
+    use crate::key::KeyData;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn order_strings() {
+        let mut bset = BTreeSet::new();
+        bset.insert(KeyData::from(["hello, world!"]));
+        bset.insert(KeyData::from(["world!"]));
+        println!("bset: {bset:#?}");
     }
 }

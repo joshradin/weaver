@@ -56,7 +56,7 @@ pub mod handshake {
                 Where::Op(
                     "user".to_string(),
                     Op::Eq,
-                    Value::String(login_ctx.user.to_string()),
+                    Value::string(login_ctx.user.to_string(), None),
                 ),
             );
             let resp = db_socket
@@ -80,7 +80,7 @@ pub mod handshake {
             let auth_string = &row[2];
             match auth_string.as_ref() {
                 Value::Null => {}
-                Value::String(str) => {
+                Value::String(str, _) => {
                     todo!("password authentication")
                 }
                 _ => {

@@ -5,10 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Copy, Clone)]
-#[repr(u8)]
 pub enum Type {
-    String = 1,
-    Blob,
+    String(u16),
+    Binary(u16),
     Integer,
     Boolean,
     Float,
@@ -16,14 +15,13 @@ pub enum Type {
 
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let s: &str = match self {
-            Type::String => "string",
-            Type::Blob => "blob",
-            Type::Integer => "int",
-            Type::Boolean => "bool",
-            Type::Float => "float",
-        };
-        write!(f, "{s}")
+        match self {
+            Type::String(i) => write!(f, "string({i})"),
+            Type::Binary(i) => write!(f, "binary({i})"),
+            Type::Integer => write!(f, "int"),
+            Type::Boolean => write!(f, "boolean"),
+            Type::Float => write!(f, "float"),
+        }
     }
 }
 
@@ -32,29 +30,13 @@ impl Type {
     pub fn validate(&self, val: &Value) -> bool {
         use Type::*;
         match (self, val) {
-            (String, Value::String(..)) => true,
-            (Blob, Value::Blob(..)) => true,
+            (String(len), Value::String(s, _)) => s.len() <= (*len as usize),
+            (Binary(len), Value::Binary(b, _)) => b.len() <= (*len as usize),
             (Integer, Value::Integer(..)) => true,
             (Boolean, Value::Boolean(..)) => true,
             (Float, Value::Float(..)) => true,
             (_, Value::Null) => true,
             _ => false,
-        }
-    }
-}
-
-impl TryFrom<u8> for Type {
-    type Error = ReadDataError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        use Type::*;
-        match value {
-            1 => Ok(String),
-            2 => Ok(Blob),
-            3 => Ok(Integer),
-            4 => Ok(Boolean),
-            5 => Ok(Float),
-            u => Err(Self::Error::UnknownTypeDiscriminant(u)),
         }
     }
 }

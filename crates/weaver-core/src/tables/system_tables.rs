@@ -2,13 +2,10 @@
 //! the internal state of the weaver
 
 use crate::data::row::Row;
-use crate::data::values::Value;
-use crate::db::server::layers::packets::{DbReqBody, DbResp};
-use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::socket::DbSocket;
-use crate::dynamic_table::{Col, DynamicTable, StorageEngineFactory, Table};
+use crate::dynamic_table::{Col, DynamicTable};
 use crate::error::Error;
-use crate::rows::{KeyIndex, OwnedRows, Rows};
+use crate::rows::{KeyIndex, Rows};
 use crate::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 use std::fmt::Debug;
@@ -75,3 +72,5 @@ impl DynamicTable for SystemTable {
         unimplemented!("can not delete data from a system table")
     }
 }
+
+pub const SYSTEM_TABLE_KEY: &'static str = "SYSTEM_TABLE";

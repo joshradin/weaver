@@ -1,11 +1,5 @@
 //! A row of data
 
-use crate::data::types::Type;
-use crate::data::values::Value;
-use crate::key::KeyData;
-use serde::de::{SeqAccess, Visitor};
-use serde::ser::SerializeSeq;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
 use std::collections::VecDeque;
 use std::fmt;
@@ -15,6 +9,13 @@ use std::ops::{
     RangeToInclusive,
 };
 use std::slice::SliceIndex;
+
+use serde::de::{SeqAccess, Visitor};
+use serde::ser::SerializeSeq;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::data::types::Type;
+use crate::data::values::Value;
 
 /// A row of data
 #[derive(PartialEq, Eq, PartialOrd, Hash)]

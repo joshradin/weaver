@@ -7,7 +7,7 @@ use weaver_core::data::row::Row;
 use weaver_core::data::values::Value;
 use weaver_core::key::KeyData;
 use weaver_core::storage::b_plus_tree::BPlusTree;
-use weaver_core::storage::VecPaged;
+use weaver_core::storage::PagedVec;
 
 fn insert_rand(count: usize) {
     insert(
@@ -29,7 +29,7 @@ fn insert<V: Into<Value>, I: IntoIterator<Item = V>>(iter: I) {
         .with_thread_names(true)
         .try_init();
 
-    let temp = VecPaged::new(4096);
+    let temp = PagedVec::new(4096);
     let mut btree = BPlusTree::new(temp);
 
     let mut keys = vec![];
@@ -60,10 +60,13 @@ fn insert_100() {
 #[test]
 fn insert_100_strings() {
     insert_rand_with(100, |rng| {
-        rng.sample_iter(&Alphanumeric)
-            .take(rand::thread_rng().gen_range(5..=15))
-            .map(char::from)
-            .collect::<String>()
+        Value::string(
+            rng.sample_iter(&Alphanumeric)
+                .take(rand::thread_rng().gen_range(5..=15))
+                .map(char::from)
+                .collect::<String>(),
+            16,
+        )
     });
 }
 
@@ -75,10 +78,13 @@ fn insert_1000() {
 #[test]
 fn insert_1000_strings() {
     insert_rand_with(1000, |rng| {
-        rng.sample_iter(&Alphanumeric)
-            .take(rand::thread_rng().gen_range(5..=15))
-            .map(char::from)
-            .collect::<String>()
+        Value::string(
+            rng.sample_iter(&Alphanumeric)
+                .take(rand::thread_rng().gen_range(5..=15))
+                .map(char::from)
+                .collect::<String>(),
+            16,
+        )
     });
 }
 
@@ -90,11 +96,13 @@ fn insert_10000() {
 #[test]
 fn insert_10000_strings() {
     insert_rand_with(10_000, |rng| {
-        let string_len = rng.gen_range(5..=15);
-        rng.sample_iter(&Alphanumeric)
-            .take(string_len)
-            .map(char::from)
-            .collect::<String>()
+        Value::string(
+            rng.sample_iter(&Alphanumeric)
+                .take(rand::thread_rng().gen_range(5..=15))
+                .map(char::from)
+                .collect::<String>(),
+            16,
+        )
     });
 }
 

@@ -13,10 +13,11 @@ use crate::data::row::{OwnedRow, Row};
 use crate::data::serde::{deserialize_data_untyped, serialize_data_untyped};
 use crate::data::types::Type;
 use crate::data::values::Value;
-use crate::dynamic_table::{Col, DynamicTable, EngineKey, IN_MEMORY_KEY, ROW_ID_COLUMN};
+use crate::dynamic_table::{Col, DynamicTable, EngineKey, ROW_ID_COLUMN};
 use crate::error::Error;
 use crate::key::KeyData;
 use crate::rows::KeyIndex;
+use crate::tables::in_memory_table::IN_MEMORY_KEY;
 use crate::tx::{Tx, TX_ID_COLUMN};
 
 /// Table schema
