@@ -145,27 +145,7 @@ where
         }
         let median_key = page.median_key()?.expect("median key must be defined");
 
-        let cells = {
-            if median_key.is_fast() {
-                page.drain(..=median_key.clone())?
-            } else {
-                let mut to_remove = vec![];
-                for cell in page.all()? {
-                    let key_data = cell.key_data();
-                    if key_data <= median_key {
-                        to_remove.push(key_data)
-                    }
-                }
-                let mut cells = vec![];
-                for ref remove in to_remove {
-                    let Some(cell) = page.delete(remove)? else {
-                        panic!("cell should be present at this point");
-                    };
-                    cells.push(cell);
-                }
-                cells
-            }
-        };
+        let cells = page.drain(..=median_key.clone())?;
 
         #[cfg(debug_assertions)]
         {

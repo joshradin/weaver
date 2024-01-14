@@ -12,16 +12,7 @@ use tracing::trace;
 pub struct KeyData(OwnedRow);
 
 impl KeyData {
-    /// Checks if can get stuff by range correctly
-    pub fn is_fast(&self) -> bool {
-        for value in &self.0 {
-            match value.value_type() {
-                Some(Type::Binary(_) | Type::String(_)) => return false,
-                _ => {}
-            }
-        }
-        true
-    }
+
 }
 
 impl Debug for KeyData {

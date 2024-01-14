@@ -385,17 +385,53 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     /// Drains the cells from this page that are within a given key data range
     pub fn drain<I: Into<KeyDataRange>>(&mut self, key_data: I) -> Result<Vec<Cell>, Error> {
         let range = key_data.into();
-        let kds = self
-            .get_range(range)?
-            .into_iter()
-            .map(|cell| cell.key_data());
-        kds.map(|kd| self.delete(&kd))
-            .flat_map(|res| match res {
-                Ok(Some(cell)) => Some(Ok(cell)),
-                Ok(None) => None,
-                Err(e) => Some(Err(e)),
-            })
-            .collect()
+        let min = match &range.0 {
+            Bound::Included(i) => {
+                match self.binary_search(i)? {
+                    Ok(exact) => { exact }
+                    Err(not_present) => { not_present + 1 }
+                }
+            }
+            Bound::Excluded(i) => {
+                match self.binary_search(i)? {
+                    Ok(exact) => { exact + 1 }
+                    Err(not_present) => { not_present + 1 }
+                }
+            }
+            Bound::Unbounded => { 0 }
+        };
+        let max = match &range.1 {
+            Bound::Included(i) => {
+                match self.binary_search(i)? {
+                    Ok(exact) => { exact }
+                    Err(not_present) => { not_present }
+                }
+            }
+            Bound::Excluded(i) => {
+                match self.binary_search(i)? {
+                    Ok(exact) => { exact + 1 }
+                    Err(not_present) => { not_present - 1 }
+                }
+            }
+            Bound::Unbounded => { self.count()  }
+        };
+        // remove min..=max
+
+
+
+
+
+        // let kds = self
+        //     .get_range(range)?
+        //     .into_iter()
+        //     .map(|cell| cell.key_data());
+        // kds.map(|kd| self.delete(&kd))
+        //     .flat_map(|res| match res {
+        //         Ok(Some(cell)) => Some(Ok(cell)),
+        //         Ok(None) => None,
+        //         Err(e) => Some(Err(e)),
+        //     })
+        //     .collect()
     }
 
     /// Gets the space used by the header, the slots, and the cells
@@ -477,6 +513,47 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
         self.page.as_mut_slice()[cell_ptr..][..cell_len].fill(0);
 
         if self.slot_ptr == slot_offset {
+            self.slot_ptr -= size_of::<u64>();
+        } else {
+            let end_ptr = self.slot_ptr - size_of::<u64>();
+            let a = self.read_ptr(slot_offset)?;
+            let b = self.read_ptr(end_ptr)?;
+            self.write_ptr(slot_offset, b)?;
+            self.write_ptr(end_ptr, a)?;
+
+            self.slot_ptr -= size_of::<u64>();
+        }
+        self.write_ptr(self.slot_ptr, 0)?;
+        self.header.to_mut().size -= 1;
+        if self.cell_ptr == cell_ptr {
+            // can just increase the cell ptr to ignore
+            self.cell_ptr += cell_len;
+        } else {
+            // add to free list
+            let free_cell = FreeCell {
+                offset: cell_ptr,
+                len: cell_len,
+            };
+            self.free_list.push_back(free_cell);
+            self.merge_free_cells();
+        }
+
+        Ok(())
+    }
+
+    /// Frees the slot at the given offset to an end slot, exclusuive
+    fn free_slot_chunk(&mut self, slot_offset: usize, end_slot_offset: usize) -> Result<(), Error> {
+        if slot_offset >= self.slot_ptr || slot_offset > end_slot_offset {
+            return Err(Error::WriteDataError(WriteDataError::InsufficientSpace));
+        }
+        let chunk_size = end_slot_offset - slot_offset;
+        assert_eq!(chunk_size % size_of::<u64>(), 0, "chunk must be divisible by 8");
+
+        let cell_ptr = self.read_ptr(slot_offset)?;
+        let cell_len = self.get_cell_at_offset(cell_ptr)?.len();
+        self.page.as_mut_slice()[cell_ptr..][..cell_len].fill(0);
+
+        if self.slot_ptr == end_slot_offset {
             self.slot_ptr -= size_of::<u64>();
         } else {
             let end_ptr = self.slot_ptr - size_of::<u64>();
