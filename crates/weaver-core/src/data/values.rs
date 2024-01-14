@@ -154,9 +154,6 @@ impl PartialOrd for Value {
         use Value::*;
         let emit = Some(match (self, other) {
             (String(l, l_max_len), String(r, r_max_len)) => {
-                let max = *l_max_len.max(r_max_len) as usize;
-                let l = format!("{l}{}", "\u{0}".repeat(max - l.len()));
-                let r = format!("{r}{}", "\u{0}".repeat(max - r.len()));
                 l.cmp(&r)
             }
             (Binary(l, _), Binary(r, _)) => l.cmp(r),
