@@ -6,10 +6,12 @@ use std::collections::{BTreeMap, Bound, LinkedList, VecDeque};
 use std::iter::FusedIterator;
 use std::mem::{size_of, size_of_val};
 use std::num::NonZeroU32;
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use parking_lot::{Mutex, RwLock};
+use crate::common::linked_list;
 
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
@@ -19,6 +21,9 @@ use crate::storage::abstraction::{
 };
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
+
+
+
 
 impl StorageBackedData for Option<PageId> {
     type Owned = Self;
@@ -317,6 +322,8 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
             .unwrap_or(Bound::Unbounded);
         Ok(KeyDataRange(min, max))
     }
+
+
 }
 
 impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
@@ -389,7 +396,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
             Bound::Included(i) => {
                 match self.binary_search(i)? {
                     Ok(exact) => { exact }
-                    Err(not_present) => { not_present + 1 }
+                    Err(not_present) => { not_present }
                 }
             }
             Bound::Excluded(i) => {
@@ -409,29 +416,21 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
             }
             Bound::Excluded(i) => {
                 match self.binary_search(i)? {
-                    Ok(exact) => { exact + 1 }
+                    Ok(exact) => { exact - 1 }
                     Err(not_present) => { not_present - 1 }
                 }
             }
             Bound::Unbounded => { self.count()  }
         };
         // remove min..=max
+        let cells = (min..=max)
+            .into_iter()
+            .map(|slot| self.get_cell(slot))
+            .collect::<Result<Vec<_>, _>>()?;
 
-
-
-
-
-        // let kds = self
-        //     .get_range(range)?
-        //     .into_iter()
-        //     .map(|cell| cell.key_data());
-        // kds.map(|kd| self.delete(&kd))
-        //     .flat_map(|res| match res {
-        //         Ok(Some(cell)) => Some(Ok(cell)),
-        //         Ok(None) => None,
-        //         Err(e) => Some(Err(e)),
-        //     })
-        //     .collect()
+        self.free_slot_chunk(min * size_of::<u64>(), (max + 1) * size_of::<u64>())?;
+        self.sync_slots();
+        Ok(cells)
     }
 
     /// Gets the space used by the header, the slots, and the cells
@@ -548,36 +547,43 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
         }
         let chunk_size = end_slot_offset - slot_offset;
         assert_eq!(chunk_size % size_of::<u64>(), 0, "chunk must be divisible by 8");
+        let slots = (end_slot_offset - slot_offset) / size_of::<u64>();
+        let mut free_cells = vec![];
 
-        let cell_ptr = self.read_ptr(slot_offset)?;
-        let cell_len = self.get_cell_at_offset(cell_ptr)?.len();
-        self.page.as_mut_slice()[cell_ptr..][..cell_len].fill(0);
 
-        if self.slot_ptr == end_slot_offset {
-            self.slot_ptr -= size_of::<u64>();
-        } else {
-            let end_ptr = self.slot_ptr - size_of::<u64>();
-            let a = self.read_ptr(slot_offset)?;
-            let b = self.read_ptr(end_ptr)?;
-            self.write_ptr(slot_offset, b)?;
-            self.write_ptr(end_ptr, a)?;
-
-            self.slot_ptr -= size_of::<u64>();
-        }
-        self.write_ptr(self.slot_ptr, 0)?;
-        self.header.to_mut().size -= 1;
-        if self.cell_ptr == cell_ptr {
-            // can just increase the cell ptr to ignore
-            self.cell_ptr += cell_len;
-        } else {
-            // add to free list
-            let free_cell = FreeCell {
+        for i in 0..slots {
+             let slot_offset = slot_offset + i * size_of::<u64>();
+            let cell_ptr = self.read_ptr(slot_offset)?;
+            let cell_len = self.get_cell_at_offset(cell_ptr)?.len();
+            self.page.as_mut_slice()[cell_ptr..][..cell_len].fill(0);
+            free_cells.push(FreeCell {
                 offset: cell_ptr,
                 len: cell_len,
-            };
-            self.free_list.push_back(free_cell);
-            self.merge_free_cells();
+            })
         }
+
+        if self.slot_ptr == end_slot_offset {
+            self.slot_ptr = slot_offset;
+        } else {
+            for i in 0..slots {
+                let slot_offset = slot_offset + i * size_of::<u64>();
+                let end_ptr = self.slot_ptr - (size_of::<u64>() * (i + 1));
+                let a = self.read_ptr(slot_offset)?;
+                let b = self.read_ptr(end_ptr)?;
+                self.write_ptr(slot_offset, b)?;
+                self.write_ptr(end_ptr, a)?;
+            }
+            self.slot_ptr -= chunk_size;
+        }
+
+
+        for i in 0..slots {
+            self.write_ptr(self.slot_ptr + i * size_of::<u64>(), 0)?;
+        }
+        self.header.to_mut().size -= slots as u32;
+
+        self.free_list.extend(free_cells);
+        self.merge_free_cells();
 
         Ok(())
     }
@@ -629,7 +635,17 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
                 }
                 list
             }),
-        )
+        );
+        // TODO: if free cell ptr == self.cell_ptr, then increase self.cell_ptr to free cell ptr + len and remove free cell.
+        linked_list::sort_by_cached_key(&mut self.free_list, |cell| cell.offset);
+        let mut cells = self.free_list.split_off(0);
+        for cell in cells {
+            if cell.offset == self.cell_ptr {
+                self.cell_ptr = cell.offset + cell.len;
+            } else {
+                self.free_list.push_back(cell);
+            }
+        }
     }
 
     /// Writes a pointer (offset from page) at a given offset
@@ -1194,6 +1210,8 @@ impl<P: Paged> Paged for SlottedPageAllocator<P> {
 #[cfg(test)]
 mod tests {
     use std::mem::size_of;
+    use rand::seq::SliceRandom;
+    use rand::thread_rng;
 
     use tempfile::tempfile;
 
@@ -1349,7 +1367,9 @@ mod tests {
         let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(12848));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
 
-        for i in 0..512 {
+        let mut values = Vec::from_iter(0..512);
+        values.shuffle(&mut thread_rng());
+        for i in values {
             let key_data = KeyData::from([Value::from(i)]);
             page.insert(KeyCell::new(15, key_data.clone()).into())
                 .unwrap();
@@ -1385,6 +1405,8 @@ mod tests {
                 "page should not contain {cell:?} after drain"
             );
         }
+        let max = page.max_key().expect("no max key").unwrap();
+        assert_eq!(max, KeyData::from([511]));
     }
 
     #[test]
