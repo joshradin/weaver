@@ -88,22 +88,26 @@ impl TableSchema {
         self.columns.iter().chain(self.sys_columns.iter()).collect()
     }
 
+    /// Gets the keys defined in this schema
     pub fn keys(&self) -> &[Key] {
         &self.keys
     }
 
-    pub fn col_idx(&self, name: &str) -> Option<usize> {
+    /// Gets the index of a column.
+    ///
+    /// Returns `None` if not present
+    pub fn column_index(&self, name: &str) -> Option<usize> {
         self.all_columns()
             .iter()
-            .enumerate()
-            .find(|(idx, col)| col.name == name)
-            .map(|(idx, ..)| idx)
+            .position(|col| col.name == name)
     }
 
+    /// Gets a column definition by name
     pub fn get_column(&self, name: &str) -> Option<&ColumnDefinition> {
         self.all_columns().into_iter().find(|col| col.name == name)
     }
 
+    /// Checks if this schema contains a column by name
     pub fn contains_column(&self, name: &str) -> bool {
         self.all_columns().into_iter().any(|col| col.name == name)
     }
@@ -117,6 +121,9 @@ impl TableSchema {
             .ok_or(Error::NoPrimaryKey)
     }
 
+    /// Gets the full index.
+    ///
+    /// This is equivalent to a full range search over the primary key.
     pub fn full_index(&self) -> Result<KeyIndex, Error> {
         self.primary_key().map(|key| KeyIndex::all(key.name()))
     }
@@ -193,6 +200,9 @@ impl TableSchema {
         Ok(row)
     }
 
+    /// Gets all key data for a given row.
+    ///
+    /// This included primary and secondary keys.
     pub fn all_key_data(&self, row: &Row) -> AllKeyData {
         AllKeyData {
             key_data: self
@@ -203,18 +213,16 @@ impl TableSchema {
         }
     }
 
+    /// Gets the key data for a given row as defined by a given key
     pub fn key_data(&self, key: &Key, row: &Row) -> KeyData {
-        info!("getting columns {:?} from row", key.columns());
-        let cols_idxs = key.columns().iter().flat_map(|col| self.col_idx(col));
+        trace!("getting columns {:?} from row", key.columns());
+        let cols_idxs = key.columns().iter().flat_map(|col| self.column_index(col));
         let row = cols_idxs
             .inspect(|col| {
-                info!("getting {}", col);
+                trace!("getting {}", col);
             })
             .map(|col_idx| row[col_idx].clone())
             .collect::<Row>();
-        if row.len() == 0 {
-            panic!("key should never return in empty row");
-        }
         KeyData::from(row)
     }
 }
@@ -609,7 +617,7 @@ impl<'a> ColumnizedRow<'a> {
             schema
                 .all_columns()
                 .iter()
-                .map(|col| (col.name.to_owned(), schema.col_idx(col.name()).unwrap()))
+                .map(|col| (col.name.to_owned(), schema.column_index(col.name()).unwrap()))
                 .collect::<HashMap<_, _>>(),
         );
 

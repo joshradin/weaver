@@ -168,7 +168,7 @@ where
                 if let Ok(row) = row {
                     let tx_id = self
                         .schema
-                        .col_idx(TX_ID_COLUMN)
+                        .column_index(TX_ID_COLUMN)
                         .and_then(|tx_col| row.get(tx_col))
                         .and_then(|tx| tx.int_value())
                         .map(|tx| TxId::from(tx));
