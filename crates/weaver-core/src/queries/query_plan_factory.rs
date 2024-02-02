@@ -11,7 +11,7 @@ use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::{Table, TableCol};
 use crate::error::Error;
 use crate::key::KeyData;
-use weaver_ast::ast::{Op, Query, Select, Where};
+use weaver_ast::ast::{Op, Query, Select, Value, Where};
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{KeyIndex, KeyIndexKind};
 use crate::tables::table_schema::{Key, TableSchema, TableSchemaBuilder};
@@ -177,7 +177,7 @@ impl QueryPlanFactory {
         match where_ {
             None => Ok(vec![key.all()]),
             Some(cond) => match cond {
-                Where::Op(col, Op::Eq, value) => {
+                Where::Op(col, Op::Eq, Value::Literal(value)) => {
                     let col = self.column_ref(col, involved_tables, ctx)?;
                     if key.columns().len() == 1 && key.columns().contains(&col.2) {
                         return Ok(vec![KeyIndex::new(

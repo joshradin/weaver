@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
+use weaver_ast::ast;
 
 /// A single value within a row
 #[derive(Clone, Deserialize, Serialize, From)]
@@ -54,7 +55,16 @@ impl AsRef<Literal> for Literal {
         self
     }
 }
-
+impl From<ast::Literal> for Literal {
+    fn from(value: ast::Literal) -> Self {
+        match value {
+            ast::Literal::String(s) => { Literal::String(s.to_string(), u16::MAX) }
+            ast::Literal::Integer(i) => { Literal::Integer(i)}
+            ast::Literal::Float(f) => { Literal::Float(f)}
+            ast::Literal::Boolean(b) => { Literal::Boolean(b)}
+        }
+    }
+}
 impl From<&str> for Literal {
     fn from(value: &str) -> Self {
         Self::string(value, None)

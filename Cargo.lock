@@ -2035,6 +2035,7 @@ dependencies = [
  "pluralizer",
  "prettytable",
  "simplelog",
+ "weaver-ast",
  "weaver-core",
 ]
 
