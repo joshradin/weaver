@@ -1,4 +1,7 @@
 pipeline {
+    triggers {
+        pollSCM "H/5 * * * *"
+    }
     agent { 
         kubernetes {
             yaml '''
@@ -9,6 +12,7 @@ pipeline {
                         - name: rust
                           image: rust:latest
                           tty: true
+                          imagePullPolicy: IfNotPresent
             '''
         } 
     }
