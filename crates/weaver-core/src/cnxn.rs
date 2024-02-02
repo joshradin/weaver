@@ -25,6 +25,8 @@ pub static DEFAULT_PORT: u16 = 5234;
 pub enum RemoteDbReq {
     /// A remote query
     Query(Query),
+    /// A remote query that's parsed server-side
+    DelegatedQuery(String),
     GetRow,
     GetSchema,
     ConnectionInfo,

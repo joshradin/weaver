@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use fs2::FileExt;
 
 use parking_lot::RwLock;
 use tracing::{debug, info};
@@ -22,6 +24,7 @@ pub mod fs;
 /// A db core. Represents some part of a distributed db
 pub struct WeaverDbCore {
     path: PathBuf,
+    lock_file: Option<File>,
     engines: HashMap<EngineKey, Box<dyn StorageEngineFactory>>,
     default_engine: Option<EngineKey>,
     open_tables: RwLock<HashMap<(String, String), Arc<Table>>>,
@@ -43,6 +46,15 @@ impl WeaverDbCore {
     /// All table are opened relative to this path
     pub fn with_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let path = path.as_ref().to_path_buf();
+        let lock_file = File::options()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(path.join("weaver.lock"))?;
+
+        lock_file.lock_exclusive()?;
+
+
         let engines = EngineKey::all()
             .filter_map(|key| match key.as_ref() {
                 IN_MEMORY_KEY => Some((
@@ -58,6 +70,7 @@ impl WeaverDbCore {
 
         let mut shard = Self {
             path,
+            lock_file: Some(lock_file),
             engines,
             default_engine: Some(EngineKey::new(B_PLUS_TREE_FILE_KEY)),
             open_tables: Default::default(),
@@ -139,10 +152,19 @@ impl WeaverDbCore {
             .get(&(schema.to_string(), name.to_string()))
             .cloned()
     }
+
+    /// Gets the path this weaver db is open in
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
 }
 
 impl Drop for WeaverDbCore {
     fn drop(&mut self) {
+        if let Some(lock_file) = self.lock_file.take() {
+            drop(lock_file.unlock());
+            let _ = std::fs::remove_file(&self.path.join("weaver.lock"));
+        }
         info!("Shutting down distro db core");
     }
 }

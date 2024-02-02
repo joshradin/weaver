@@ -1,5 +1,6 @@
 //! The connect loop provides the "main" method for newly created connections
 
+use std::str::FromStr;
 use crate::cancellable_task::{Cancel, CancellableTaskHandle, Cancelled, Canceller};
 use crossbeam::channel::{unbounded, Receiver, RecvError, TryRecvError};
 use either::Either;
@@ -13,6 +14,7 @@ use crate::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use crate::db::server::layers::packets::{DbReqBody, DbResp};
 use crate::db::server::processes::{ProcessState, WeaverProcessChild};
 use crate::error::Error;
+use crate::queries::ast::Query;
 use crate::rows::Rows;
 use crate::tx::Tx;
 
@@ -47,6 +49,15 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
                     RemoteDbReq::Query(query) => Either::Right(match tx.take() {
                         None => socket.send(DbReqBody::TxQuery(Tx::default(), query)),
                         Some(existing_tx) => socket.send(DbReqBody::TxQuery(existing_tx, query)),
+                    }),
+                    RemoteDbReq::DelegatedQuery(ref query) => Either::Right({
+                        let query: Query = query.parse()?;
+
+
+                        match tx.take() {
+                            None => socket.send(DbReqBody::TxQuery(Tx::default(), query)),
+                            Some(existing_tx) => socket.send(DbReqBody::TxQuery(existing_tx, query)),
+                        }
                     }),
                     RemoteDbReq::Ping => Either::Right(socket.send(DbReqBody::Ping)),
                     RemoteDbReq::StartTransaction => {

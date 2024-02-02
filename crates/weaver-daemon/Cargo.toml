@@ -1,8 +1,12 @@
 [package]
 name = "weaver-daemon"
-version = "0.0.0"
-edition = "2021"
 description = "Responsible for running the weaver database. Should not shut down for any reason"
+version.workspace = true
+authors.workspace =true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

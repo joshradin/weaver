@@ -6,6 +6,7 @@ use crossbeam::channel::{RecvError, SendError};
 use openssl::error::ErrorStack;
 use openssl::ssl::HandshakeError;
 use serde::ser::StdError;
+use weaver_ast::error::QueryParseError;
 
 use crate::access_control::auth::error::AuthInitError;
 use crate::cancellable_task::Cancelled;
@@ -119,6 +120,9 @@ pub enum Error {
     AllocationFailed(usize),
     #[error("Could not find {0:?}")]
     NotFound(KeyData),
+    #[error(transparent)]
+    QueryParseError(#[from] QueryParseError),
+
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {
         msg: String,

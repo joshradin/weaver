@@ -8,11 +8,20 @@ use crate::tx::Tx;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::str::FromStr;
 
 /// The query type
 #[derive(Debug, Clone, Serialize, Deserialize, From)]
 pub enum Query {
     Select(Select),
+}
+
+impl FromStr for Query {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

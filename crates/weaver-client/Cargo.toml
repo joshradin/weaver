@@ -1,7 +1,11 @@
 [package]
 name = "weaver-client"
-version = "0.0.0"
-edition = "2021"
+version.workspace = true
+authors.workspace =true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
 
 [[bin]]
 name = "weaver"
