@@ -1,11 +1,16 @@
 pipeline {
     agent { docker { image "rust:latest" } }
     stages {
-        stage("check") {
-            sh "cargo check --workspace"
+        stage("build") {
+            steps {
+                sh "cargo build --workspace"
+            }   
         }
-        stage("test") {
-            sh "cargo test --workspace"
+        stage("check") {
+            steps {
+                 sh "cargo check --workspace"
+                 sh "cargo test --workspace"
+            }
         }
     }
 }
