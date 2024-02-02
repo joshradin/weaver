@@ -1,5 +1,5 @@
 //! # weaver-core
-
+pub use weaver_ast::ast;
 pub mod access_control;
 pub mod cancellable_task;
 pub mod cnxn;

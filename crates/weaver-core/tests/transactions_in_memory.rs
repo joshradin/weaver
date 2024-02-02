@@ -27,7 +27,7 @@ fn transactions_in_memory() -> Result<(), Error> {
             Ok((|| -> Result<_, Error> {
                 let ref schema = TableSchema::builder("default", "in_mem")
                     .column("id", Type::Integer, true, None, 0)?
-                    .column("name", Type::String, true, None, None)?
+                    .column("name", Type::String(u16::MAX), true, None, None)?
                     .build()?;
                 db.open_table(schema)?;
                 let table = db.get_table("default", "in_mem").unwrap();
@@ -36,7 +36,7 @@ fn transactions_in_memory() -> Result<(), Error> {
                     table
                         .insert(
                             &tx1,
-                            Row::from([Literal::Integer(0), Literal::String("Hello".to_string())]),
+                            Row::from([Literal::Integer(0), Literal::from("Hello".to_string())]),
                         )
                         .expect("could not insert");
 
@@ -44,7 +44,7 @@ fn transactions_in_memory() -> Result<(), Error> {
                     table
                         .insert(
                             &tx2,
-                            Row::from([Literal::Integer(1), Literal::String("Hello".to_string())]),
+                            Row::from([Literal::Integer(1), Literal::from("Hello".to_string())]),
                         )
                         .expect("could not insert");
 

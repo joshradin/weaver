@@ -20,7 +20,7 @@ fn create_in_memory() {
     let ref schema = TableSchema::builder("default", "in_mem")
         .column("id", Type::Integer, true, None, 0)
         .unwrap()
-        .column("name", Type::String, true, None, None)
+        .column("name", Type::String(u16::MAX), true, None, None)
         .unwrap()
         .build()
         .expect("could not build schema");
@@ -34,14 +34,14 @@ fn create_in_memory() {
         table
             .insert(
                 &tx1,
-                Row::from([Literal::Integer(0), Literal::String("Hello".to_string())]),
+                Row::from([Literal::Integer(0), Literal::from("Hello".to_string())]),
             )
             .expect("could not insert");
 
         table
             .insert(
                 &tx1,
-                Row::from([Literal::Integer(1), Literal::String("Hello".to_string())]),
+                Row::from([Literal::Integer(1), Literal::from("Hello".to_string())]),
             )
             .expect("could not insert");
 
