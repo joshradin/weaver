@@ -1,7 +1,4 @@
 pipeline {
-    options {
-
-    }
     triggers {
         pollSCM "H/5 * * * *"
     }
