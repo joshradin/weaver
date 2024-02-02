@@ -1,15 +1,31 @@
 pipeline {
-    agent { docker { image "rust:latest" } }
+    agent { 
+        kubernetes {
+            yaml '''
+                apiVersion: v1
+                kind: Pod
+                spec:
+                    containers:
+                        - name: rust
+                          image: rust:latest
+                          tty: true
+            '''
+        } 
+    }
     stages {
         stage("build") {
             steps {
-                sh "cargo build --workspace"
+                container("rust") {
+                    sh "cargo build --workspace"
+                }
             }   
         }
         stage("check") {
             steps {
-                 sh "cargo check --workspace"
-                 sh "cargo test --workspace"
+                container("rust") {
+                    sh "cargo check --workspace"
+                    sh "cargo test --workspace"
+                }
             }
         }
     }
