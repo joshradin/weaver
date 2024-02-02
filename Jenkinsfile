@@ -26,7 +26,7 @@ pipeline {
         stage("Tests") {
             steps {
                 container("rust") {
-                    sh "cargo nextest run --workspace --profile ci"
+                    sh "cargo nextest run --workspace --profile ci --hide-progress-bar --no-capture"
                 }
                 junit testResults: "target/nextest/ci/junit.xml"
             }
