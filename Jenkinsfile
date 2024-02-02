@@ -11,7 +11,7 @@ pipeline {
         stage("Install requirements") {
             steps {
                 container("rust") {
-                    sh "cargo install cargo-nextest"
+                    sh 'curl -LsSf https://get.nexte.st/latest/linux-arm | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin'
                 }
             }
         }
