@@ -4,7 +4,7 @@ use tempfile::TempDir;
 use tracing_subscriber::filter::LevelFilter;
 
 use weaver_client::write_rows::write_rows;
-use weaver_core::queries::ast::Query;
+use weaver_ast::ast::Query;
 use weaver_tests::run_full_stack;
 
 #[test]

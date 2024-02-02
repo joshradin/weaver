@@ -6,7 +6,7 @@ use tracing::{debug, info_span};
 use crate::access_control::users::UserTable;
 use crate::data::row::Row;
 use crate::data::types::Type;
-use crate::data::values::Value;
+use crate::data::values::Literal;
 use crate::db::core::WeaverDbCore;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::processes::WeaverProcessInfo;
@@ -69,12 +69,12 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                          using,
                      }| {
                         Row::from([
-                            Value::Integer(pid.into()),
-                            Value::String(user, 128),
-                            Value::String(host, 128),
-                            Value::Integer(age as i64),
-                            Value::String(format!("{state:?}"), 128),
-                            Value::String(format!("{info}"), 128),
+                            Literal::Integer(pid.into()),
+                            Literal::String(user, 128),
+                            Literal::String(host, 128),
+                            Literal::Integer(age as i64),
+                            Literal::String(format!("{state:?}"), 128),
+                            Literal::String(format!("{info}"), 128),
                         ])
                         .to_owned()
                     },

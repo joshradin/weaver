@@ -1215,7 +1215,7 @@ mod tests {
 
     use tempfile::tempfile;
 
-    use crate::data::values::Value;
+    use crate::data::values::Literal;
     use crate::error::Error;
     use crate::key::KeyData;
     use crate::storage::abstraction::{Paged, PagedVec};
@@ -1270,7 +1270,7 @@ mod tests {
     fn insert_cell() {
         let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
-        let key_data = KeyData::from([Value::from(1_i64)]);
+        let key_data = KeyData::from([Literal::from(1_i64)]);
         page.insert(KeyCell::new(15, key_data.clone()).into())
             .expect("could not insert into page");
         assert_eq!(page.count(), 1);
@@ -1285,7 +1285,7 @@ mod tests {
     fn insert_cell_same_value() {
         let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
-        let key_data = KeyData::from([Value::from(1_i64)]);
+        let key_data = KeyData::from([Literal::from(1_i64)]);
         page.insert(KeyCell::new(15, key_data.clone()).into())
             .expect("could not insert into page");
         page.insert(KeyCell::new(16, key_data.clone()).into())
@@ -1303,7 +1303,7 @@ mod tests {
         let mut slotted_pager =
             SlottedPageAllocator::new(PagedVec::new(size_of::<SlottedPageHeader>()));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
-        let key_data = KeyData::from([Value::from(1_i64)]);
+        let key_data = KeyData::from([Literal::from(1_i64)]);
         let err = page
             .insert(KeyCell::new(15, key_data.clone()).into())
             .expect_err("shouldn't be able to insert into page");
@@ -1322,7 +1322,7 @@ mod tests {
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
 
         for i in 0..32 {
-            let key_data = KeyData::from([Value::from(i)]);
+            let key_data = KeyData::from([Literal::from(i)]);
             page.insert(KeyCell::new(15, key_data.clone()).into())
                 .unwrap();
         }
@@ -1340,7 +1340,7 @@ mod tests {
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
 
         for i in 0..32 {
-            let key_data = KeyData::from([Value::from(i)]);
+            let key_data = KeyData::from([Literal::from(i)]);
             page.insert(KeyCell::new(15, key_data.clone()).into())
                 .unwrap();
         }
@@ -1370,7 +1370,7 @@ mod tests {
         let mut values = Vec::from_iter(0..512);
         values.shuffle(&mut thread_rng());
         for i in values {
-            let key_data = KeyData::from([Value::from(i)]);
+            let key_data = KeyData::from([Literal::from(i)]);
             page.insert(KeyCell::new(15, key_data.clone()).into())
                 .unwrap();
         }
@@ -1413,13 +1413,13 @@ mod tests {
     fn reuse_cell() {
         let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
-        let key_data1 = KeyData::from([Value::from(1_i64)]);
-        let key_data2 = KeyData::from([Value::from(2_i64)]);
+        let key_data1 = KeyData::from([Literal::from(1_i64)]);
+        let key_data2 = KeyData::from([Literal::from(2_i64)]);
         page.insert(KeyCell::new(15, key_data1.clone()).into())
             .expect("could not insert into page");
         page.insert(KeyCell::new(16, key_data2.clone()).into())
             .expect("could not insert into page");
-        page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into())
+        page.insert(KeyCell::new(17, KeyData::from([Literal::from(3_i64)])).into())
             .expect("could not insert into page");
         assert_eq!(page.count(), 3);
         page.delete(&key_data1).expect("could not delete");
@@ -1436,13 +1436,13 @@ mod tests {
     fn merge_free_cells() {
         let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
-        let key_data1 = KeyData::from([Value::from(1_i64)]);
-        let key_data2 = KeyData::from([Value::from(2_i64)]);
+        let key_data1 = KeyData::from([Literal::from(1_i64)]);
+        let key_data2 = KeyData::from([Literal::from(2_i64)]);
         page.insert(KeyCell::new(15, key_data1.clone()).into())
             .expect("could not insert into page");
         page.insert(KeyCell::new(16, key_data2.clone()).into())
             .expect("could not insert into page");
-        page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into())
+        page.insert(KeyCell::new(17, KeyData::from([Literal::from(3_i64)])).into())
             .expect("could not insert into page");
         assert_eq!(page.count(), 3);
         page.delete(&key_data2).expect("could not delete");
@@ -1472,13 +1472,13 @@ mod tests {
         let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         {
             let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
-            let key_data1 = KeyData::from([Value::from(1_i64)]);
-            let key_data2 = KeyData::from([Value::from(2_i64)]);
+            let key_data1 = KeyData::from([Literal::from(1_i64)]);
+            let key_data2 = KeyData::from([Literal::from(2_i64)]);
             page.insert(KeyCell::new(15, key_data1.clone()).into())
                 .expect("could not insert into page");
             page.insert(KeyCell::new(16, key_data2.clone()).into())
                 .expect("could not insert into page");
-            page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into())
+            page.insert(KeyCell::new(17, KeyData::from([Literal::from(3_i64)])).into())
                 .expect("could not insert into page");
             page.delete(&key_data2).expect("could not delete");
             page.delete(&key_data1).expect("could not delete");
@@ -1494,13 +1494,13 @@ mod tests {
         let mut slotted_pager = SlottedPageAllocator::new(PagedVec::new(1028));
         {
             let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
-            let key_data1 = KeyData::from([Value::from(1_i64)]);
-            let key_data2 = KeyData::from([Value::from(2_i64)]);
+            let key_data1 = KeyData::from([Literal::from(1_i64)]);
+            let key_data2 = KeyData::from([Literal::from(2_i64)]);
             page.insert(KeyCell::new(15, key_data1.clone()).into())
                 .expect("could not insert into page");
             page.insert(KeyCell::new(16, key_data2.clone()).into())
                 .expect("could not insert into page");
-            page.insert(KeyCell::new(17, KeyData::from([Value::from(3_i64)])).into())
+            page.insert(KeyCell::new(17, KeyData::from([Literal::from(3_i64)])).into())
                 .expect("could not insert into page");
         }
         let page = slotted_pager

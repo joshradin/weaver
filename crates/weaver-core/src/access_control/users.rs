@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::data::row::Row;
 use crate::data::types::Type;
-use crate::data::values::Value;
+use crate::data::values::Literal;
 use crate::db::SYSTEM_SCHEMA;
 use crate::dynamic_table::{Col, DynamicTable, EngineKey};
 use crate::error::Error;
@@ -70,7 +70,7 @@ impl UserTable {
         table
             .insert(
                 &Tx::default(),
-                Row::from([Value::from("localhost"), "root".into(), Value::Null]),
+                Row::from([Literal::from("localhost"), "root".into(), Literal::Null]),
             )
             .expect("could not insert admin row");
         Self { in_memory: table }

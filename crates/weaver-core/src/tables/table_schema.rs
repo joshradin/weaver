@@ -12,7 +12,7 @@ use tracing::{info, trace, warn};
 use crate::data::row::{OwnedRow, Row};
 use crate::data::serde::{deserialize_data_untyped, serialize_data_untyped};
 use crate::data::types::Type;
-use crate::data::values::Value;
+use crate::data::values::Literal;
 use crate::dynamic_table::{Col, DynamicTable, EngineKey, ROW_ID_COLUMN};
 use crate::error::Error;
 use crate::key::KeyData;
@@ -180,18 +180,18 @@ impl TableSchema {
             .map(|(val, col)| {
                 match col.name() {
                     name if name == TX_ID_COLUMN => {
-                        *val.to_mut() = Value::Integer(tx.id().into());
+                        *val.to_mut() = Literal::Integer(tx.id().into());
                     }
                     name if name == ROW_ID_COLUMN => {
-                        *val.to_mut() = Value::Integer(table.next_row_id());
+                        *val.to_mut() = Literal::Integer(table.next_row_id());
                     }
                     _ => {}
                 }
 
-                if &**val == &Value::Null && col.default_value.is_some() {
+                if &**val == &Literal::Null && col.default_value.is_some() {
                     *val.to_mut() = col.default_value.as_ref().cloned().unwrap();
-                } else if &**val == &Value::Null && col.auto_increment.is_some() {
-                    *val.to_mut() = Value::Integer(table.auto_increment(col.name()));
+                } else if &**val == &Literal::Null && col.auto_increment.is_some() {
+                    *val.to_mut() = Literal::Integer(table.auto_increment(col.name()));
                 }
                 col.validate(val)
             })
@@ -232,7 +232,7 @@ pub struct ColumnDefinition {
     name: String,
     data_type: Type,
     non_null: bool,
-    default_value: Option<Value>,
+    default_value: Option<Literal>,
     auto_increment: Option<i64>,
 }
 
@@ -241,7 +241,7 @@ impl ColumnDefinition {
         name: impl AsRef<str>,
         data_type: Type,
         non_null: bool,
-        default_value: impl Into<Option<Value>>,
+        default_value: impl Into<Option<Literal>>,
         auto_increment: impl Into<Option<i64>>,
     ) -> Result<Self, Error> {
         let name = name.as_ref().to_string();
@@ -289,7 +289,7 @@ impl ColumnDefinition {
     pub fn non_null(&self) -> bool {
         self.non_null
     }
-    pub fn default_value(&self) -> Option<&Value> {
+    pub fn default_value(&self) -> Option<&Literal> {
         self.default_value.as_ref()
     }
 
@@ -298,7 +298,7 @@ impl ColumnDefinition {
     }
 
     /// Validates a value
-    pub fn validate(&self, value: &mut Cow<Value>) -> Result<(), Error> {
+    pub fn validate(&self, value: &mut Cow<Literal>) -> Result<(), Error> {
         if !self.data_type().validate(value) {
             return Err(Error::TypeError {
                 expected: self.data_type.clone(),
@@ -440,7 +440,7 @@ impl TableSchemaBuilder {
         name: impl AsRef<str>,
         data_type: Type,
         non_null: bool,
-        default_value: impl Into<Option<Value>>,
+        default_value: impl Into<Option<Literal>>,
         auto_increment: impl Into<Option<i64>>,
     ) -> Result<Self, Error> {
         self.columns.push(ColumnDefinition::new(
@@ -507,7 +507,7 @@ impl TableSchemaBuilder {
             ROW_ID_COLUMN,
             Type::Integer,
             true,
-            Value::Integer(0),
+            Literal::Integer(0),
             0,
         )?);
 
@@ -590,7 +590,7 @@ pub struct ColumnizedRow<'a> {
 }
 
 impl<'a> Index<Col<'a>> for ColumnizedRow<'a> {
-    type Output = Cow<'a, Value>;
+    type Output = Cow<'a, Literal>;
 
     fn index(&self, index: Col) -> &Self::Output {
         self.get_by_name(index).unwrap()
@@ -598,7 +598,7 @@ impl<'a> Index<Col<'a>> for ColumnizedRow<'a> {
 }
 
 impl<'a> ColumnizedRow<'a> {
-    pub fn get_by_name(&self, col: Col) -> Option<&Cow<'a, Value>> {
+    pub fn get_by_name(&self, col: Col) -> Option<&Cow<'a, Literal>> {
         self.col_to_idx.get(col).and_then(|&idx| self.row.get(idx))
     }
 }

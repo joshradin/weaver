@@ -5,7 +5,7 @@ use rand::prelude::ThreadRng;
 use rand::{Rng, thread_rng};
 use tempfile::tempfile;
 use weaver_core::data::row::Row;
-use weaver_core::data::values::Value;
+use weaver_core::data::values::Literal;
 use weaver_core::key::KeyData;
 use weaver_core::storage::b_plus_tree::BPlusTree;
 use weaver_core::storage::PagedVec;
@@ -19,12 +19,12 @@ fn insert_rand(count: usize, page_len: usize) -> BPlusTree<PagedVec> {
     )
 }
 
-fn insert_rand_with<V: Into<Value>, F: Fn(&mut ThreadRng) -> V>(count: usize, page_len: usize, prod: F) -> BPlusTree<PagedVec> {
+fn insert_rand_with<V: Into<Literal>, F: Fn(&mut ThreadRng) -> V>(count: usize, page_len: usize, prod: F) -> BPlusTree<PagedVec> {
     let mut rng = rand::thread_rng();
     insert((0..count).into_iter().map(|_| prod(&mut rng)), page_len)
 }
 
-fn insert<V : Into<Value>, I: IntoIterator<Item = V>>(iter: I, page_len: usize) -> BPlusTree<PagedVec> {
+fn insert<V : Into<Literal>, I: IntoIterator<Item = V>>(iter: I, page_len: usize) -> BPlusTree<PagedVec> {
     let mut btree = BPlusTree::new(PagedVec::new(page_len));
 
     iter.into_iter()

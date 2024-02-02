@@ -1,4 +1,4 @@
-use crate::data::values::Value;
+use crate::data::values::Literal;
 use crate::error::Error;
 use crate::storage::ReadDataError;
 use serde::{Deserialize, Serialize};
@@ -27,15 +27,15 @@ impl Display for Type {
 
 impl Type {
     /// Checks whether the given value is valid for this type
-    pub fn validate(&self, val: &Value) -> bool {
+    pub fn validate(&self, val: &Literal) -> bool {
         use Type::*;
         match (self, val) {
-            (String(len), Value::String(s, _)) => s.len() <= (*len as usize),
-            (Binary(len), Value::Binary(b, _)) => b.len() <= (*len as usize),
-            (Integer, Value::Integer(..)) => true,
-            (Boolean, Value::Boolean(..)) => true,
-            (Float, Value::Float(..)) => true,
-            (_, Value::Null) => true,
+            (String(len), Literal::String(s, _)) => s.len() <= (*len as usize),
+            (Binary(len), Literal::Binary(b, _)) => b.len() <= (*len as usize),
+            (Integer, Literal::Integer(..)) => true,
+            (Boolean, Literal::Boolean(..)) => true,
+            (Float, Literal::Float(..)) => true,
+            (_, Literal::Null) => true,
             _ => false,
         }
     }

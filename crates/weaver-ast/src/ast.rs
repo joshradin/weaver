@@ -1,14 +1,26 @@
 //! Query asts
 
-use crate::data::values::Value;
-use crate::db::server::layers::packets::{DbReq, DbReqBody, Headers};
-use crate::dynamic_table::{Col, TableCol};
-use crate::tables::TableRef;
-use crate::tx::Tx;
-use derive_more::From;
+
+use derive_more::{Display, From};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::str::FromStr;
+pub use literal::Literal;
+pub use identifier::Identifier;
+use crate::error::QueryParseError;
+use crate::QueryParser;
+
+mod literal;
+mod identifier;
+
+
+/// A value, can either be a [Literal] or an [Identifier]
+#[derive(Debug, PartialOrd, PartialEq, Clone, Serialize, Deserialize, From, Display)]
+#[serde(untagged)]
+pub enum Value {
+    Literal(Literal),
+    Identifier(Identifier)
+}
 
 /// The query type
 #[derive(Debug, Clone, Serialize, Deserialize, From)]
@@ -17,10 +29,11 @@ pub enum Query {
 }
 
 impl FromStr for Query {
-    type Err = ();
+    type Err = QueryParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        todo!()
+        let mut parser = QueryParser::new();
+        parser.parse(s)
     }
 }
 
@@ -71,11 +84,4 @@ pub enum Op {
     Less,
     GreaterEq,
     LessEq,
-}
-
-impl Into<DbReq> for (Tx, Query) {
-    fn into(self) -> DbReq {
-        let (tx, query) = self;
-        DbReq::new(Headers::default(), DbReqBody::TxQuery(tx, query))
-    }
 }

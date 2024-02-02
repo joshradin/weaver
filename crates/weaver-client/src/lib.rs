@@ -12,7 +12,7 @@ use weaver_core::cnxn::{MessageStream, RemoteDbReq, RemoteDbResp};
 use weaver_core::common::stream_support::Stream;
 use weaver_core::data::row::Row;
 use weaver_core::db::server::processes::WeaverPid;
-use weaver_core::queries::ast::Query;
+use weaver_ast::ast::Query;
 use weaver_core::rows::Rows;
 use weaver_core::tables::table_schema::TableSchema;
 

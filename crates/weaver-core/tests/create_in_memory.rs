@@ -2,7 +2,7 @@ use tracing::info;
 use tracing::level_filters::LevelFilter;
 use weaver_core::data::row::Row;
 use weaver_core::data::types::Type;
-use weaver_core::data::values::Value;
+use weaver_core::data::values::Literal;
 
 use weaver_core::db::core::WeaverDbCore;
 use weaver_core::error::Error;
@@ -34,14 +34,14 @@ fn create_in_memory() {
         table
             .insert(
                 &tx1,
-                Row::from([Value::Integer(0), Value::String("Hello".to_string())]),
+                Row::from([Literal::Integer(0), Literal::String("Hello".to_string())]),
             )
             .expect("could not insert");
 
         table
             .insert(
                 &tx1,
-                Row::from([Value::Integer(1), Value::String("Hello".to_string())]),
+                Row::from([Literal::Integer(1), Literal::String("Hello".to_string())]),
             )
             .expect("could not insert");
 

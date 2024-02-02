@@ -14,7 +14,7 @@ use crate::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use crate::db::server::layers::packets::{DbReqBody, DbResp};
 use crate::db::server::processes::{ProcessState, WeaverProcessChild};
 use crate::error::Error;
-use crate::queries::ast::Query;
+use weaver_ast::ast::Query;
 use crate::rows::Rows;
 use crate::tx::Tx;
 

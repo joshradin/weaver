@@ -4,7 +4,7 @@ use rand::{Rng, RngCore};
 use tempfile::tempfile;
 use tracing::level_filters::LevelFilter;
 use weaver_core::data::row::Row;
-use weaver_core::data::values::Value;
+use weaver_core::data::values::Literal;
 use weaver_core::key::KeyData;
 use weaver_core::storage::b_plus_tree::BPlusTree;
 use weaver_core::storage::PagedVec;
@@ -17,12 +17,12 @@ fn insert_rand(count: usize) {
     )
 }
 
-fn insert_rand_with<V: Into<Value>, F: Fn(&mut ThreadRng) -> V>(count: usize, prod: F) {
+fn insert_rand_with<V: Into<Literal>, F: Fn(&mut ThreadRng) -> V>(count: usize, prod: F) {
     let mut rng = rand::thread_rng();
     insert((0..count).into_iter().map(|_| prod(&mut rng)))
 }
 
-fn insert<V: Into<Value>, I: IntoIterator<Item = V>>(iter: I) {
+fn insert<V: Into<Literal>, I: IntoIterator<Item = V>>(iter: I) {
     let _ = tracing_subscriber::fmt()
         .with_max_level(LevelFilter::TRACE)
         .with_thread_ids(true)
@@ -60,7 +60,7 @@ fn insert_100() {
 #[test]
 fn insert_100_strings() {
     insert_rand_with(100, |rng| {
-        Value::string(
+        Literal::string(
             rng.sample_iter(&Alphanumeric)
                 .take(rand::thread_rng().gen_range(5..=15))
 
@@ -79,7 +79,7 @@ fn insert_1000() {
 #[test]
 fn insert_1000_strings() {
     insert_rand_with(1000, |rng| {
-        Value::string(
+        Literal::string(
             rng.sample_iter(&Alphanumeric)
                 .take(rand::thread_rng().gen_range(5..=15))
                 .map(char::from)
@@ -97,7 +97,7 @@ fn insert_10000() {
 #[test]
 fn insert_10000_strings() {
     insert_rand_with(10_000, |rng| {
-        Value::string(
+        Literal::string(
             rng.sample_iter(&Alphanumeric)
                 .take(rand::thread_rng().gen_range(5..=15))
                 .map(char::from)

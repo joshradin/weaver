@@ -21,6 +21,7 @@ pub mod handshake {
     use std::fmt::Debug;
 
     use tracing::{debug, error_span, warn};
+    use weaver_ast::ast;
 
     use crate::access_control::auth::context::AuthContext;
     use crate::access_control::auth::LoginContext;
@@ -28,11 +29,11 @@ pub mod handshake {
     use crate::cnxn::stream::WeaverStream;
     use crate::cnxn::RemoteDbResp;
     use crate::common::stream_support::{packet_read, packet_write, Stream};
-    use crate::data::values::Value;
+    use crate::data::values::Literal;
     use crate::db::server::layers::packets::{DbReqBody, DbResp};
     use crate::db::server::socket::DbSocket;
     use crate::error::Error;
-    use crate::queries::ast::{Op, Query, Where};
+    use weaver_ast::ast::{Op, Query, Where};
     use crate::rows::Rows;
 
     /// Server side authentication. On success, provides a user struct.
@@ -56,7 +57,7 @@ pub mod handshake {
                 Where::Op(
                     "user".to_string(),
                     Op::Eq,
-                    Value::string(login_ctx.user.to_string(), None),
+                    ast::Value::Identifier(login_ctx.user.to_string().into()),
                 ),
             );
             let resp = db_socket
@@ -79,8 +80,8 @@ pub mod handshake {
             debug!("row = {row:?}");
             let auth_string = &row[2];
             match auth_string.as_ref() {
-                Value::Null => {}
-                Value::String(str, _) => {
+                Literal::Null => {}
+                Literal::String(str, _) => {
                     todo!("password authentication")
                 }
                 _ => {

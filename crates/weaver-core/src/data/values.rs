@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 /// A single value within a row
 #[derive(Clone, Deserialize, Serialize, From)]
 #[serde(untagged)]
-pub enum Value {
+pub enum Literal {
     String(String, u16),
     Binary(Vec<u8>, u16),
     Integer(i64),
@@ -17,7 +17,7 @@ pub enum Value {
     Null,
 }
 
-impl Value {
+impl Literal {
     /// If this is an int value, returns as an int
     pub fn int_value(&self) -> Option<i64> {
         if let Self::Integer(i) = self {
@@ -29,12 +29,12 @@ impl Value {
 
     pub fn value_type(&self) -> Option<Type> {
         Some(match self {
-            &Value::String(_, max_len) => Type::String(max_len),
-            &Value::Binary(_, max_len) => Type::Binary(max_len),
-            Value::Integer(_) => Type::Integer,
-            Value::Boolean(_) => Type::Boolean,
-            Value::Float(_) => Type::Float,
-            Value::Null => {
+            &Literal::String(_, max_len) => Type::String(max_len),
+            &Literal::Binary(_, max_len) => Type::Binary(max_len),
+            Literal::Integer(_) => Type::Integer,
+            Literal::Boolean(_) => Type::Boolean,
+            Literal::Float(_) => Type::Float,
+            Literal::Null => {
                 return None;
             }
         })
@@ -49,91 +49,91 @@ impl Value {
     }
 }
 
-impl AsRef<Value> for Value {
-    fn as_ref(&self) -> &Value {
+impl AsRef<Literal> for Literal {
+    fn as_ref(&self) -> &Literal {
         self
     }
 }
 
-impl From<&str> for Value {
+impl From<&str> for Literal {
     fn from(value: &str) -> Self {
         Self::string(value, None)
     }
 }
 
-impl From<&String> for Value {
+impl From<&String> for Literal {
     fn from(value: &String) -> Self {
         Self::string(value, None)
     }
 }
 
-impl From<String> for Value {
+impl From<String> for Literal {
     fn from(value: String) -> Self {
         Self::string(value, None)
     }
 }
-impl Display for Value {
+impl Display for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::String(s, _) => {
+            Literal::String(s, _) => {
                 write!(f, "{s}")
             }
-            Value::Binary(b, _) => {
+            Literal::Binary(b, _) => {
                 write!(
                     f,
                     "{}",
                     b.iter().map(|s| format!("{:x}", s)).collect::<String>()
                 )
             }
-            Value::Integer(i) => {
+            Literal::Integer(i) => {
                 write!(f, "{i}")
             }
-            Value::Boolean(b) => {
+            Literal::Boolean(b) => {
                 write!(f, "{b}")
             }
-            Value::Float(fl) => {
+            Literal::Float(fl) => {
                 write!(f, "{fl}")
             }
-            Value::Null => {
+            Literal::Null => {
                 write!(f, "null")
             }
         }
     }
 }
 
-impl Debug for Value {
+impl Debug for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::String(s, _) => {
+            Literal::String(s, _) => {
                 write!(f, "{s:?}")
             }
-            Value::Binary(b, _) => {
+            Literal::Binary(b, _) => {
                 write!(
                     f,
                     "b\"{}\"",
                     b.iter().map(|s| format!("{:x}", s)).collect::<String>()
                 )
             }
-            Value::Integer(i) => {
+            Literal::Integer(i) => {
                 write!(f, "{i}_i64")
             }
-            Value::Boolean(b) => {
+            Literal::Boolean(b) => {
                 write!(f, "{b}")
             }
-            Value::Float(fl) => {
+            Literal::Float(fl) => {
                 write!(f, "{fl}_f64")
             }
-            Value::Null => {
+            Literal::Null => {
                 write!(f, "null")
             }
         }
     }
 }
 
-impl PartialEq for Value {
+impl PartialEq for Literal {
     fn eq(&self, other: &Self) -> bool {
-        use crate::data::Value::Null;
-        use Value::*;
+        use crate::data::Literal::Null;
+        use Literal::*;
         match (self, other) {
             (String(l, _), String(r, _)) => l == r,
             (Binary(l, _), Binary(r, _)) => l == r,
@@ -146,12 +146,12 @@ impl PartialEq for Value {
     }
 }
 
-impl Eq for Value {}
+impl Eq for Literal {}
 
-impl PartialOrd for Value {
+impl PartialOrd for Literal {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use crate::data::Value::Null;
-        use Value::*;
+        use crate::data::Literal::Null;
+        use Literal::*;
         let emit = Some(match (self, other) {
             (String(l, l_max_len), String(r, r_max_len)) => {
                 l.cmp(&r)
@@ -169,22 +169,22 @@ impl PartialOrd for Value {
     }
 }
 
-impl Hash for Value {
+impl Hash for Literal {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Value::String(s, _) => s.hash(state),
-            Value::Binary(s, _) => s.hash(state),
-            Value::Integer(s) => s.hash(state),
-            Value::Boolean(s) => s.hash(state),
-            Value::Float(f) => u64::from_be_bytes(f.to_be_bytes()).hash(state),
-            Value::Null => ().hash(state),
+            Literal::String(s, _) => s.hash(state),
+            Literal::Binary(s, _) => s.hash(state),
+            Literal::Integer(s) => s.hash(state),
+            Literal::Boolean(s) => s.hash(state),
+            Literal::Float(f) => u64::from_be_bytes(f.to_be_bytes()).hash(state),
+            Literal::Null => ().hash(state),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::data::values::Value;
+    use crate::data::values::Literal;
     use crate::key::KeyData;
     use std::collections::BTreeSet;
 

@@ -11,7 +11,7 @@ use weaver_ast::error::QueryParseError;
 use crate::access_control::auth::error::AuthInitError;
 use crate::cancellable_task::Cancelled;
 use crate::data::types::Type;
-use crate::data::values::Value;
+use crate::data::values::Literal;
 use crate::db::server::layers::packets::{DbResp, IntoDbResponse};
 use crate::db::server::processes::WeaverPid;
 use crate::db::server::socket::MainQueueItem;
@@ -26,7 +26,7 @@ pub enum Error {
     #[error("Illegal auto increment: {reason}")]
     IllegalAutoIncrement { reason: String },
     #[error("Unexpected value of type found. (expected {expected:?}, received: {actual:?})")]
-    TypeError { expected: Type, actual: Value },
+    TypeError { expected: Type, actual: Literal },
     #[error("Illegal definition for column {col:?}: {reason}")]
     IllegalColumnDefinition { col: OwnedCol, reason: Box<Error> },
     #[error("Expected {expected} columns, but found {actual}")]

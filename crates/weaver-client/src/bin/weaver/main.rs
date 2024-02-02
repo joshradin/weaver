@@ -9,7 +9,7 @@ use weaver_client::write_rows::write_rows;
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::LoginContext;
 use weaver_core::cnxn::MessageStream;
-use weaver_core::queries::ast::{Query, Select};
+use weaver_ast::ast::{Query, Select};
 
 use crate::cli::App;
 

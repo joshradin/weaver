@@ -4,7 +4,7 @@ use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::Table;
 use crate::error::Error;
-use crate::queries::ast::Query;
+use weaver_ast::ast::Query;
 use crate::rows::{OwnedRows, Rows};
 use crate::tx::{Tx, TxRef};
 use crossbeam::channel::Receiver;
@@ -110,6 +110,12 @@ impl From<DbReqBody> for DbReq {
             ctx: None,
             body: value,
         }
+    }
+}
+
+impl From<(Tx, Query)> for DbReq {
+    fn from((tx,query): (Tx, Query)) -> Self {
+        DbReq::new(Headers::default(), DbReqBody::TxQuery(tx, query))
     }
 }
 

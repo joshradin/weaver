@@ -11,7 +11,7 @@ use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::{Table, TableCol};
 use crate::error::Error;
 use crate::key::KeyData;
-use crate::queries::ast::{Op, Query, Select, Where};
+use weaver_ast::ast::{Op, Query, Select, Where};
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{KeyIndex, KeyIndexKind};
 use crate::tables::table_schema::{Key, TableSchema, TableSchemaBuilder};

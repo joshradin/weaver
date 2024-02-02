@@ -4,7 +4,7 @@ use tracing::level_filters::LevelFilter;
 use weaver_core::access_control::auth::init::AuthConfig;
 use weaver_core::data::row::Row;
 use weaver_core::data::types::Type;
-use weaver_core::data::values::Value;
+use weaver_core::data::values::Literal;
 use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::layers::packets::{DbReqBody, DbResp, IntoDbResponse};
 use weaver_core::db::server::WeaverDb;
@@ -36,7 +36,7 @@ fn transactions_in_memory() -> Result<(), Error> {
                     table
                         .insert(
                             &tx1,
-                            Row::from([Value::Integer(0), Value::String("Hello".to_string())]),
+                            Row::from([Literal::Integer(0), Literal::String("Hello".to_string())]),
                         )
                         .expect("could not insert");
 
@@ -44,7 +44,7 @@ fn transactions_in_memory() -> Result<(), Error> {
                     table
                         .insert(
                             &tx2,
-                            Row::from([Value::Integer(1), Value::String("Hello".to_string())]),
+                            Row::from([Literal::Integer(1), Literal::String("Hello".to_string())]),
                         )
                         .expect("could not insert");
 

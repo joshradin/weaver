@@ -744,7 +744,7 @@ mod tests {
 
     use crate::data::serde::deserialize_data_untyped;
     use crate::data::types::Type;
-    use crate::data::values::Value;
+    use crate::data::values::Literal;
     use crate::storage::abstraction::PagedVec;
 
     use super::*;
@@ -808,8 +808,8 @@ mod tests {
             strings.push(s.clone());
 
             if let Err(e) = btree.insert(
-                [Value::string(s.clone(), 16)],
-                [Value::from(s), (2 * i).into()],
+                [Literal::string(s.clone(), 16)],
+                [Literal::from(s), (2 * i).into()],
             ) {
                 btree.print().expect("could not print");
                 panic!("error occurred: {e}");
@@ -837,7 +837,7 @@ mod tests {
             let s: String = i.to_string();
             strings.push(s.clone());
 
-            if let Err(e) = btree.insert([s.clone()], [Value::from(s)]) {
+            if let Err(e) = btree.insert([s.clone()], [Literal::from(s)]) {
                 btree.print().expect("could not print");
                 panic!("error occurred: {e}");
             }
