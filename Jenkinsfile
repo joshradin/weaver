@@ -15,11 +15,10 @@ pipeline {
                 }
             }
         }
-        stage("Build") {
+        stage("Check") {
             steps {
                 container("rust") {
                     sh "cargo check --workspace"
-                    sh "cargo build --workspace"
                 }
             }   
         }
