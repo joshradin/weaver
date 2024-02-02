@@ -3,18 +3,9 @@ pipeline {
         pollSCM "H/5 * * * *"
     }
     agent { 
-        kubernetes {
-            yaml '''
-                apiVersion: v1
-                kind: Pod
-                spec:
-                    containers:
-                        - name: rust
-                          image: rust:latest
-                          tty: true
-                          imagePullPolicy: IfNotPresent
-            '''
-        } 
+        node {
+            label "rust"
+        }
     }
     stages {
         stage("build") {
