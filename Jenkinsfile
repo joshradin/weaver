@@ -27,8 +27,8 @@ pipeline {
             steps {
                 container("rust") {
                     sh "cargo nextest run --workspace --profile ci"
-                    junit testResults: "target/nextest/ci/junit.xml"
                 }
+                junit testResults: "target/nextest/ci/junit.xml"
             }
         }
     }
