@@ -1,4 +1,7 @@
 pipeline {
+    options {
+
+    }
     triggers {
         pollSCM "H/5 * * * *"
     }
@@ -8,7 +11,14 @@ pipeline {
         }
     }
     stages {
-        stage("build") {
+        stage("Install requirements") {
+            steps {
+                container("rust") {
+                    sh "cargo install cargo-nextest"
+                }
+            }
+        }
+        stage("Build") {
             steps {
                 container("rust") {
                     sh "cargo check --workspace"
@@ -16,10 +26,11 @@ pipeline {
                 }
             }   
         }
-        stage("check") {
+        stage("Tests") {
             steps {
                 container("rust") {
-                    sh "cargo test --workspace"
+                    sh "cargo nextest run --workspace --profile ci"
+                    junit testResults: "target/nextest/ci/junit.xml"
                 }
             }
         }
