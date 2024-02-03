@@ -4,14 +4,16 @@ pipeline {
     }
     agent { 
         node {
-            label "rust"
+            label "rust && alpine"
         }
     }
     stages {
         stage("Install requirements") {
             steps {
-                sh 'curl -LsSf https://get.nexte.st/latest/linux-arm -o nextest.tar.gz'
-                sh 'tar -xvf nextest.tar.gz -C ${CARGO_HOME:-~/.cargo}/bin'
+                container("rust") {
+                    sh 'curl -LsSf https://get.nexte.st/latest/linux-arm -o nextest.tar.gz'
+                    sh 'tar -xvf nextest.tar.gz -C ${CARGO_HOME:-~/.cargo}/bin'
+                }
             }
         }
         stage("Check") {
@@ -23,7 +25,9 @@ pipeline {
         }
         stage("Tests") {
             steps {
-                sh "cargo-nextest run --workspace --profile ci --hide-progress-bar --no-capture"
+                container("rust") {
+                    sh "cargo-nextest run --workspace --profile ci --hide-progress-bar --no-capture"
+                }
                 junit testResults: "target/nextest/ci/junit.xml"
             }
         }
