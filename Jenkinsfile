@@ -4,14 +4,7 @@ pipeline {
     }
     agent { 
         kubernetes {
-            inheritFrom 'default'
-            yaml '''
-            spec:
-                containers:
-                    - name: rust
-                      image: rust:alpine
-                      tty: true
-            '''
+            inheritFrom 'rust'
         }
     }
     stages {
