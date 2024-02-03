@@ -3,9 +3,8 @@ pipeline {
         pollSCM "H/5 * * * *"
     }
     options {
-        buildDiscarder {
-            logRotator(numToKeepStr: '10')
-        }
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
     }
     agent { 
         kubernetes {
