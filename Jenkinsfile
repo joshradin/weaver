@@ -2,6 +2,11 @@ pipeline {
     triggers {
         pollSCM "H/5 * * * *"
     }
+    options {
+        buildDiscarder {
+            logRotator(numToKeepStr: '10')
+        }
+    }
     agent { 
         kubernetes {
             inheritFrom 'rust'
