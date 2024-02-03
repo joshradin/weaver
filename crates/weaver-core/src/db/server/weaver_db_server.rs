@@ -7,7 +7,7 @@ use std::thread::JoinHandle;
 
 use crossbeam::channel::{unbounded, Sender};
 use parking_lot::{Mutex, RwLock};
-use threadpool_crossbeam_channel::{Builder, ThreadPool};
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use tracing::{debug, error, error_span, info, info_span, trace, warn};
 
 use crate::access_control::auth::context::AuthContext;
@@ -49,7 +49,6 @@ pub(super) struct WeaverDbShared {
     message_queue: Sender<MainQueueItem>,
     main_handle: Option<JoinHandle<()>>,
     worker_handles: Mutex<Vec<JoinHandle<Result<(), Error>>>>,
-    req_worker_pool: ThreadPool,
 
     /// Should only be bound to TCP once.
     tcp_bound: AtomicBool,
@@ -77,14 +76,14 @@ impl WeaverDb {
             let mut shard = shard;
             shard.tx_coordinator = Some(TxCoordinator::new(WeakWeaverDb(weak.clone()), 0));
 
-            let worker_pool = Builder::new()
-                .num_threads(workers)
-                .thread_name("worker".to_string())
-                .build();
+            // let worker_pool = ThreadPoolBuilder::new()
+            //     .num_threads(workers)
+            //     .thread_name(|c| format!("weaver-core-worker-{c}"))
+            //     .build()
+            //     .expect("could not build worker pool");
             let (sc, rc) = unbounded::<MainQueueItem>();
 
             let main_handle = {
-                let worker_pool = worker_pool.clone();
                 let weak_db = weak.clone();
                 thread::Builder::new()
                     .name("db-core".to_string())
@@ -156,7 +155,6 @@ impl WeaverDb {
                 message_queue: sc,
                 main_handle: Some(main_handle),
                 worker_handles: Mutex::default(),
-                req_worker_pool: worker_pool,
                 tcp_bound: AtomicBool::new(false),
                 tcp_local_address: Default::default(),
 
@@ -418,9 +416,7 @@ impl Default for WeaverDb {
 
 impl Drop for WeaverDbShared {
     fn drop(&mut self) {
-        info!("Dropping pooled db core");
-        info!("Joining request worker pool");
-        self.req_worker_pool.join();
+        info!("Dropping db core");
     }
 }
 
