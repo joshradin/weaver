@@ -9,8 +9,10 @@ pipeline {
     }
     stages {
         stage("Install requirements") {
-            sh 'curl -LsSf https://get.nexte.st/latest/linux-arm -o nextest.tar.gz'
-            sh 'tar -xvf nextest.tar.gz -C ${CARGO_HOME:-~/.cargo}/bin'
+            steps {
+                sh 'curl -LsSf https://get.nexte.st/latest/linux-arm -o nextest.tar.gz'
+                sh 'tar -xvf nextest.tar.gz -C ${CARGO_HOME:-~/.cargo}/bin'
+            }
         }
         stage("Check") {
             steps {
