@@ -21,8 +21,12 @@ pipeline {
                     sh "cargo install cargo-nextest --locked"
                     sh "cargo nextest run --workspace --profile ci"
                 }
-                junit testResults: "target/nextest/ci/junit.xml"
             }
+        }
+    }
+    post {
+        always {
+            junit testResults: "target/nextest/ci/junit.xml"
         }
     }
 }
