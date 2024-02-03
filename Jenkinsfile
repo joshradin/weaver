@@ -19,7 +19,7 @@ pipeline {
             steps {
                 container("rust") {
                     sh "cargo install cargo-nextest --locked"
-                    sh "cargo nextest run --workspace --profile ci --hide-progress-bar --no-capture"
+                    sh "cargo nextest run --workspace --profile ci"
                 }
                 junit testResults: "target/nextest/ci/junit.xml"
             }
