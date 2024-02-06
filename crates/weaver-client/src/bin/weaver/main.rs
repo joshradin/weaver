@@ -56,3 +56,9 @@ fn main() -> eyre::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn empty() {}
+}

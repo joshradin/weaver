@@ -1,9 +1,19 @@
-[profile.ci]
+[profile.ci-unit]
 # Print out output for failing tests as soon as they fail, and also at the end
 # of the run (for easy scrollability).
 failure-output = "immediate-final"
 # Do not cancel the test run on the first failure.
 fail-fast = false
 
-[profile.ci.junit]  # this can be some other profile, too
-path = "junit.xml"
+[profile.ci-unit.junit]  # this can be some other profile, too
+path = "junit-unit.xml"
+
+[profile.ci-int]
+# Print out output for failing tests as soon as they fail, and also at the end
+# of the run (for easy scrollability).
+failure-output = "immediate-final"
+# Do not cancel the test run on the first failure.
+fail-fast = false
+
+[profile.ci-int.junit]  # this can be some other profile, too
+path = "junit-int.xml"
