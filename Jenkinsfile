@@ -22,7 +22,6 @@ pipeline {
         stage("Tests") {
             steps {
                 container("rust") {
-                    sh "cargo install cargo-nextest --locked"
                     sh "cargo nextest run --workspace --profile ci"
                 }
             }
