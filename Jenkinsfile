@@ -48,7 +48,7 @@ pipeline {
     post {
         always {
             archiveArtifacts artifacts: "bins/bin/*", fingerprint: true
-            junit testResults: "target/nextest/ci/junit-*.xml"
+            junit testResults: "target/nextest/*/junit.xml"
         }
     }
 }
