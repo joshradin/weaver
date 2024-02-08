@@ -156,7 +156,7 @@ where
                 .map(|c| c.key_data())
                 .collect::<BTreeSet<_>>();
             let lower = cells.iter().map(|c| c.key_data()).collect::<BTreeSet<_>>();
-             /* trace!(
+            /* trace!(
                 "split page {page_id:?} into\nlower {:#?}\nmedian: {median_key:?}\nupper {:#?}",
                 lower,
                 upper
@@ -173,7 +173,7 @@ where
         let parent = match page.parent() {
             None => {
                 let (mut new_root, _) = allocator.new_with_type(PageType::Key)?;
-                 /* trace!("creating new root {}", new_root.page_id()); */
+                /* trace!("creating new root {}", new_root.page_id()); */
                 let root_id = new_root.page_id();
                 let _ = self.root.write().insert(root_id);
                 page.set_parent(root_id);
@@ -189,7 +189,7 @@ where
 
         split_page.set_parent(parent);
         let key_ptr_cell = KeyCell::new(split_page_id.as_u32(), median_key.clone());
-         /* trace!("created ptr {}", key_ptr_cell); */
+        /* trace!("created ptr {}", key_ptr_cell); */
         let ptr_cell = Cell::Key(key_ptr_cell.clone());
 
         drop(page);
@@ -197,7 +197,7 @@ where
 
         let parent = self.get_new_parent(&median_key, parent)?;
 
-         /* trace!("inserting split page into {parent:?}"); */
+        /* trace!("inserting split page into {parent:?}"); */
 
         let emit = if self.insert_cell(ptr_cell.clone(), parent)? {
             let parent = self.get_new_parent(&median_key, parent)?;
@@ -217,11 +217,11 @@ where
         let parent_cell = self.allocator.get(parent)?;
         let parent = if let Some(left_parent) = parent_cell.left_sibling() {
             let left_parent_cell = self.allocator.get(left_parent)?;
-             /* trace!(
-                    "parent max: l(new)={:?}, r(orig)={:?}",
-                    left_parent_cell.max_key(),
-                    parent_cell.max_key()
-                ); */
+            /* trace!(
+                "parent max: l(new)={:?}, r(orig)={:?}",
+                left_parent_cell.max_key(),
+                parent_cell.max_key()
+            ); */
 
             let use_left = if let Some(ref left_max) = left_parent_cell.max_key()? {
                 median_key <= left_max
@@ -239,11 +239,11 @@ where
         };
         let parent = if let Some(right_sibling) = parent_cell.right_sibling() {
             let right_parent_cell = self.allocator.get(right_sibling)?;
-             /* trace!(
-                    "parent max: l(orig)={:?}, r(new)={:?}",
-                    parent_cell.max_key(),
-                    right_parent_cell.max_key(),
-                ); */
+            /* trace!(
+                "parent max: l(orig)={:?}, r(new)={:?}",
+                parent_cell.max_key(),
+                right_parent_cell.max_key(),
+            ); */
 
             let use_right = if let Some(ref right_min) = right_parent_cell.min_key()? {
                 median_key >= right_min
@@ -642,7 +642,7 @@ where
         let built = builder.build();
         let mut vec = vec![];
         write_tree(&built, &mut vec)?;
-         /* trace!("{}", String::from_utf8_lossy(&vec)); */
+        /* trace!("{}", String::from_utf8_lossy(&vec)); */
         Ok(())
     }
 
@@ -759,7 +759,7 @@ mod tests {
         let btree = BPlusTree::new(PagedVec::new(128));
         btree.insert([1], [1, 2, 3]).expect("could not insert");
         let raw = btree.get(&[1].into()).unwrap().unwrap();
-         /* trace!("raw: {:x?}", raw); */
+        /* trace!("raw: {:x?}", raw); */
         let read =
             deserialize_data_untyped(raw, vec![Type::Integer; 3]).expect("could not deserialize");
         assert_eq!(&read[0], &1.into());
@@ -823,7 +823,7 @@ mod tests {
                 .get(&[i].into())
                 .unwrap()
                 .unwrap_or_else(|| panic!("could not get record for key {i}"));
-             /* trace!("gotten: {:x?}", gotten); */
+            /* trace!("gotten: {:x?}", gotten); */
         }
     }
 

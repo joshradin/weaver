@@ -4,4 +4,4 @@ use serde::{Deserialize, Serialize};
 /// An identifier
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Serialize, Deserialize, From, Display)]
 #[serde(transparent)]
-pub struct Identifier(String);
+pub struct Identifier(pub String);

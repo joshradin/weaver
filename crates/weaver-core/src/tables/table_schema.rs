@@ -97,9 +97,7 @@ impl TableSchema {
     ///
     /// Returns `None` if not present
     pub fn column_index(&self, name: &str) -> Option<usize> {
-        self.all_columns()
-            .iter()
-            .position(|col| col.name == name)
+        self.all_columns().iter().position(|col| col.name == name)
     }
 
     /// Gets a column definition by name
@@ -617,7 +615,12 @@ impl<'a> ColumnizedRow<'a> {
             schema
                 .all_columns()
                 .iter()
-                .map(|col| (col.name.to_owned(), schema.column_index(col.name()).unwrap()))
+                .map(|col| {
+                    (
+                        col.name.to_owned(),
+                        schema.column_index(col.name()).unwrap(),
+                    )
+                })
                 .collect::<HashMap<_, _>>(),
         );
 

@@ -33,8 +33,8 @@ pub mod handshake {
     use crate::db::server::layers::packets::{DbReqBody, DbResp};
     use crate::db::server::socket::DbSocket;
     use crate::error::Error;
-    use weaver_ast::ast::{Op, Query, Where};
     use crate::rows::Rows;
+    use weaver_ast::ast::{BinaryOp, Query, Where};
 
     /// Server side authentication. On success, provides a user struct.
     pub fn server_auth<T: Stream + Debug>(
@@ -56,7 +56,7 @@ pub mod handshake {
                 "weaver.users",
                 Where::Op(
                     "user".to_string(),
-                    Op::Eq,
+                    BinaryOp::Eq,
                     ast::Value::Identifier(login_ctx.user.to_string().into()),
                 ),
             );

@@ -1,56 +1,46 @@
 //! Query asts
 
-
-use derive_more::{Display, From};
-use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::str::FromStr;
-pub use literal::Literal;
+
+use derive_more::{Display, From as FromDerive};
+use serde::{Deserialize, Serialize};
+
 pub use identifier::Identifier;
-use crate::error::QueryParseError;
-use crate::QueryParser;
-
-mod literal;
+pub use literal::Literal;
+pub use expr::*;
+pub use from::*;
 mod identifier;
+mod literal;
+mod expr;
 
+mod from;
 
-/// A value, can either be a [Literal] or an [Identifier]
-#[derive(Debug, PartialOrd, PartialEq, Clone, Serialize, Deserialize, From, Display)]
-#[serde(untagged)]
-pub enum Value {
-    Literal(Literal),
-    Identifier(Identifier)
-}
 
 /// The query type
-#[derive(Debug, Clone, Serialize, Deserialize, From)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromDerive)]
+#[serde(rename_all="camelCase")]
 pub enum Query {
+    Explain(Box<Query>),
     Select(Select),
-}
-
-impl FromStr for Query {
-    type Err = QueryParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parser = QueryParser::new();
-        parser.parse(s)
-    }
+    #[serde(untagged)]
+    QueryList(Vec<Query>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Select {
-    pub columns: Vec<String>,
-    pub table_ref: String,
-    pub condition: Option<Where>,
+    pub columns: Vec<ResultColumn>,
+    pub from: Option<From>,
+    pub condition: Option<Expr>,
     pub limit: Option<u64>,
     pub offset: Option<u64>,
 }
 
 impl Query {
-    pub fn select(columns: &[&str], table: &str, where_: impl Into<Option<Where>>) -> Self {
+    pub fn select(columns: &[&str], table: &str, where_: impl Into<Option<Expr>>) -> Self {
         Self::Select(Select {
-            columns: columns.iter().map(|s| s.to_string()).collect(),
-            table_ref: table.to_string(),
+            columns: todo!(),
+            from: todo!(),
             condition: where_.into(),
             limit: None,
             offset: None,
@@ -59,25 +49,28 @@ impl Query {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Where {
-    Op(String, Op, Value),
-    All(Vec<Where>),
-    Any(Vec<Where>),
-}
-
-impl Where {
-    pub fn columns(&self) -> HashSet<String> {
-        match self {
-            Where::Op(col, _, _) => HashSet::from([col.clone()]),
-            Where::All(all) => all.iter().flat_map(|i| i.columns()).collect(),
-            Where::Any(any) => any.iter().flat_map(|i| i.columns()).collect(),
-        }
+#[serde(rename_all="camelCase")]
+pub enum ResultColumn {
+    #[serde(rename = "*")]
+    Wildcard,
+    TableWildcard(Identifier),
+    #[serde(untagged)]
+    Expr {
+        expr: Expr,
+        alias: Option<Identifier>
     }
 }
 
+/// Some type that references columns
+pub trait ReferencesCols {
+
+    fn columns(&self) -> HashSet<String>;
+}
+
 /// Operator for where clauses
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Op {
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(rename_all="camelCase")]
+pub enum BinaryOp {
     Eq,
     Neq,
     Greater,

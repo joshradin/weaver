@@ -63,7 +63,6 @@ fn insert_100_strings() {
         Literal::string(
             rng.sample_iter(&Alphanumeric)
                 .take(rand::thread_rng().gen_range(5..=15))
-
                 .map(char::from)
                 .collect::<String>(),
             16,

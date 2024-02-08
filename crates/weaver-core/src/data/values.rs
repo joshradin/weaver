@@ -58,10 +58,10 @@ impl AsRef<Literal> for Literal {
 impl From<ast::Literal> for Literal {
     fn from(value: ast::Literal) -> Self {
         match value {
-            ast::Literal::String(s) => { Literal::String(s.to_string(), u16::MAX) }
-            ast::Literal::Integer(i) => { Literal::Integer(i)}
-            ast::Literal::Float(f) => { Literal::Float(f)}
-            ast::Literal::Boolean(b) => { Literal::Boolean(b)}
+            ast::Literal::String(s) => Literal::String(s.to_string(), u16::MAX),
+            ast::Literal::Integer(i) => Literal::Integer(i),
+            ast::Literal::Float(f) => Literal::Float(f),
+            ast::Literal::Boolean(b) => Literal::Boolean(b),
         }
     }
 }
@@ -163,9 +163,7 @@ impl PartialOrd for Literal {
         use crate::data::Literal::Null;
         use Literal::*;
         let emit = Some(match (self, other) {
-            (String(l, l_max_len), String(r, r_max_len)) => {
-                l.cmp(&r)
-            }
+            (String(l, l_max_len), String(r, r_max_len)) => l.cmp(&r),
             (Binary(l, _), Binary(r, _)) => l.cmp(r),
             (Integer(l), Integer(r)) => l.cmp(r),
             (Boolean(l), Boolean(r)) => l.cmp(r),

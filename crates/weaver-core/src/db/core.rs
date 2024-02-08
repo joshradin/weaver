@@ -1,8 +1,8 @@
+use fs2::FileExt;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use fs2::FileExt;
 
 use parking_lot::RwLock;
 use tracing::{debug, info};
@@ -53,7 +53,6 @@ impl WeaverDbCore {
             .open(path.join("weaver.lock"))?;
 
         lock_file.lock_exclusive()?;
-
 
         let engines = EngineKey::all()
             .filter_map(|key| match key.as_ref() {

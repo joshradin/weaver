@@ -5,11 +5,11 @@ use clap::Parser;
 use log::{error, info, LevelFilter};
 use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
 
+use weaver_ast::ast::{Query, Select};
 use weaver_client::write_rows::write_rows;
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::LoginContext;
 use weaver_core::cnxn::MessageStream;
-use weaver_ast::ast::{Query, Select};
 
 use crate::cli::App;
 
@@ -45,7 +45,7 @@ fn main() -> eyre::Result<()> {
 
     let query = Query::Select(Select {
         columns: vec!["*".to_string()],
-        table_ref: "system.process".to_string(),
+        from: "system.process".to_string(),
         condition: None,
         limit: None,
         offset: None,

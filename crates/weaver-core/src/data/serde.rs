@@ -252,7 +252,9 @@ pub fn serialize_data_typed<'a, V: AsRef<Literal>, I: IntoIterator<Item = V>>(da
     }
     serializer.finish()
 }
-pub fn serialize_data_untyped<'a, V: AsRef<Literal>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
+pub fn serialize_data_untyped<'a, V: AsRef<Literal>, I: IntoIterator<Item = V>>(
+    data: I,
+) -> Vec<u8> {
     let mut serializer = DataSerializer::new(SerdeMode::Untyped);
     for value in data {
         serializer.serialize(value.as_ref());
@@ -307,7 +309,11 @@ mod tests {
     }
     #[test]
     fn deserialize_data_typed() {
-        let row = Row::from([Literal::from(15), Literal::Null, Literal::from("hello, world!")]);
+        let row = Row::from([
+            Literal::from(15),
+            Literal::Null,
+            Literal::from("hello, world!"),
+        ]);
         let serialized = serialize_data_typed(&row);
         let read = super::deserialize_data_typed(&serialized).expect("could not deserialize");
         let row_de = Row::from(read);
@@ -316,7 +322,11 @@ mod tests {
 
     #[test]
     fn deserialize_data_untyped() {
-        let row = Row::from([Literal::from(15), Literal::Null, Literal::from("hello, world!")]);
+        let row = Row::from([
+            Literal::from(15),
+            Literal::Null,
+            Literal::from("hello, world!"),
+        ]);
         let types = row.types();
         let serialized = serialize_data_untyped(&row);
         let read = super::deserialize_data_untyped(

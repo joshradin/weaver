@@ -11,11 +11,11 @@ use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::{Table, TableCol};
 use crate::error::Error;
 use crate::key::KeyData;
-use weaver_ast::ast::{Op, Query, Select, Value, Where};
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{KeyIndex, KeyIndexKind};
 use crate::tables::table_schema::{Key, TableSchema, TableSchemaBuilder};
 use crate::tables::TableRef;
+use weaver_ast::ast::{BinaryOp, Query, Select, Value, Where};
 
 #[derive(Debug)]
 pub struct QueryPlanFactory {
@@ -68,7 +68,7 @@ impl QueryPlanFactory {
     ) -> Result<Vec<TableRef>, Error> {
         let mut emit = vec![];
         match query {
-            Query::Select(Select { table_ref, .. }) => {
+            Query::Select(Select { from: table_ref, .. }) => {
                 emit.push(self.table_ref(table_ref, plan_context)?)
             }
         }
@@ -88,7 +88,7 @@ impl QueryPlanFactory {
         let node = match query {
             Query::Select(Select {
                 columns,
-                table_ref,
+                              from: table_ref,
                 condition,
                 limit,
                 offset,
@@ -177,7 +177,7 @@ impl QueryPlanFactory {
         match where_ {
             None => Ok(vec![key.all()]),
             Some(cond) => match cond {
-                Where::Op(col, Op::Eq, Value::Literal(value)) => {
+                Where::Op(col, BinaryOp::Eq, Value::Literal(value)) => {
                     let col = self.column_ref(col, involved_tables, ctx)?;
                     if key.columns().len() == 1 && key.columns().contains(&col.2) {
                         return Ok(vec![KeyIndex::new(

@@ -1,0 +1,174 @@
+use crate::tokens::{Token, TokenError};
+use crate::ast;
+
+use std::borrow::Cow;
+
+grammar<'input>(input: &'input str);
+
+pub Query: ast::Query = {
+
+    <mut queries: Query_+> => if queries.len() == 1 { queries.remove(0) } else { ast::Query::QueryList(<>) }
+}
+
+Query_: ast::Query = {
+    <SelectStmt> ";" => ast::Query::Select(<>)
+}
+
+SelectStmt: ast::Select = {
+    "select" <cols: Comma<ResultColumn>>
+        <from: ("from" <FromClause>)?>
+    => {
+        ast::Select {
+            columns: cols,
+            from,
+            condition: None,
+            limit: None,
+            offset: None,
+            }
+    }
+}
+
+FromClause: ast::From = {
+    TableOrSubQuery => ast::From(<>),
+    JoinClause  => ast::From(ast::TableOrSubQuery::JoinClause(<>)),
+}
+
+TableOrSubQuery: ast::TableOrSubQuery = {
+    <table: Table> <table_alias: ("as" <Identifier>)?> => {
+        ast::TableOrSubQuery::Table {
+            schema: table.0,
+            table_name: table.1,
+            alias: table_alias,
+        }
+    },
+    "(" <select: SelectStmt>  ")"  <table_alias: ("as" <Identifier>)?>=> {
+            ast::TableOrSubQuery::Select {
+                select: Box::new(select),
+                alias: table_alias
+            }
+        },
+    "(" <JoinClause> ")" => {
+        ast::TableOrSubQuery::JoinClause(<>)
+    }
+}
+
+JoinClause: ast::JoinClause = {
+    <left: TableOrSubQuery> <op: JoinOperator> <right: TableOrSubQuery> <constraint: JoinConstraint> => ast::JoinClause { left: Box::new(left), op, right: Box::new(right), constraint},
+    <base: JoinClause>  <op: JoinOperator> <right: TableOrSubQuery> <constraint: JoinConstraint>  => ast::JoinClause { left: Box::new(ast::TableOrSubQuery::JoinClause(base)), op, right: Box::new(right), constraint},
+}
+
+JoinOperator: ast::JoinOperator = {
+    "," => ast::JoinOperator::Inner,
+    "inner"? "join" => ast::JoinOperator::Inner,
+    "left" "outer"? "join" => ast::JoinOperator::Left,
+    "right" "outer"? "join" => ast::JoinOperator::Right,
+    "full" "outer"? "join" => ast::JoinOperator::Full,
+    "outer" "join" => ast::JoinOperator::Outer,
+    "cross" "join" => ast::JoinOperator::Cross,
+}
+
+JoinConstraint: ast::JoinConstraint = {
+    "on" <e: Expr> => ast::JoinConstraint { on: e }
+}
+
+ResultColumn: ast::ResultColumn = {
+    "*" => ast::ResultColumn::Wildcard,
+    <table_name: Identifier> "." "*" => ast::ResultColumn::TableWildcard(table_name),
+    <e: Expr> <alias: ("as" <Identifier>)?> => ast::ResultColumn::Expr { expr: e, alias },
+}
+
+Expr: ast::Expr = {
+    #[precedence(level="0")]
+    Literal => ast::Expr::Literal(<>),
+     #[precedence(level="0")]
+    "?" => ast::Expr::BindParameter(None),
+     #[precedence(level="0")]
+    ":" <"int"> =>  ast::Expr::BindParameter(Some(<>)),
+     #[precedence(level="0")]
+    <table_name: (<Table> ".")?> <column_name: Identifier> => ast::Expr::Column {
+        schema_name: table_name.as_ref().and_then(|(schema, _)| schema.clone()), table_name: table_name.map(|t| t.1), column_name
+    },
+    #[precedence(level="1")]
+    #[assoc(side="left")]
+    <l: Expr> <op: BinaryOp> <r: Expr> => ast::Expr::Binary(Box::new(l), op, Box::new(r))
+}
+
+BinaryOp: ast::BinaryOp = {
+    "=" => ast::BinaryOp::Eq,
+    "!=" => ast::BinaryOp::Neq,
+//
+//    "<" => ast::BinaryOp::Eq,
+//    ">" => ast::BinaryOp::Eq,
+}
+
+Literal: ast::Literal = {
+    "int" => ast::Literal::Integer(<>),
+    "float" => ast::Literal::Float(<>),
+    "bool" => ast::Literal::Boolean(<>),
+    "string" => ast::Literal::String(<>.to_string()),
+}
+#[inline]
+Table: (Option<ast::Identifier>, ast::Identifier) = {
+    <schema_name: (<Identifier> ".")?> <table_name: Identifier> => (schema_name, table_name)
+}
+Identifier: ast::Identifier = "id" => ast::Identifier(<>.to_string());
+// MACROS
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+}
+
+Comma1<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T> => {
+        v.push(e);
+        v
+    }
+}
+
+
+// TOKENS
+extern {
+    type Location = usize;
+    type Error = TokenError;
+
+    enum Token<'input> {
+        "int" => Token::Int(<i64>),
+        "float" => Token::Float(<f64>),
+        "bool" => Token::Boolean(<bool>),
+        "string" => Token::String(<Cow<'input, str>>),
+        "binary" => Token::Binary(<Cow<'input, [u8]>>),
+
+        "id" => Token::Ident(<Cow<'input, str>>),
+
+        "select" => Token::Select,
+        "from" => Token::From,
+        "on" => Token::On,
+
+        "join" => Token::Join,
+        "inner" => Token::Inner,
+        "outer" => Token::Outer,
+        "left" => Token::Left,
+        "right" => Token::Right,
+        "full" => Token::Full,
+        "cross" => Token::Cross,
+
+        "as" => Token::As,
+
+
+        "?" => Token::Qmark,
+        "*" => Token::Star,
+        "=" => Token::Eq,
+        "!=" => Token::Neq,
+        ":" => Token::Colon,
+        ";" => Token::SemiColon,
+        "," => Token::Comma,
+        "." => Token::Dot,
+        "(" => Token::LParen,
+        ")" => Token::RParen
+    }
+}

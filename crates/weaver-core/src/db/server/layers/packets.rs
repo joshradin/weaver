@@ -4,7 +4,6 @@ use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::Table;
 use crate::error::Error;
-use weaver_ast::ast::Query;
 use crate::rows::{OwnedRows, Rows};
 use crate::tx::{Tx, TxRef};
 use crossbeam::channel::Receiver;
@@ -14,6 +13,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use weaver_ast::ast::Query;
 
 /// Headers are used to convey extra data in requests
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -114,7 +114,7 @@ impl From<DbReqBody> for DbReq {
 }
 
 impl From<(Tx, Query)> for DbReq {
-    fn from((tx,query): (Tx, Query)) -> Self {
+    fn from((tx, query): (Tx, Query)) -> Self {
         DbReq::new(Headers::default(), DbReqBody::TxQuery(tx, query))
     }
 }

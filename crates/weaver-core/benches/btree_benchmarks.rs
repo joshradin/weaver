@@ -1,8 +1,8 @@
-use std::iter;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput, BatchSize};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use rand::distributions::Alphanumeric;
 use rand::prelude::ThreadRng;
-use rand::{Rng, thread_rng};
+use rand::{thread_rng, Rng};
+use std::iter;
 use tempfile::tempfile;
 use weaver_core::data::row::Row;
 use weaver_core::data::values::Literal;
@@ -19,12 +19,19 @@ fn insert_rand(count: usize, page_len: usize) -> BPlusTree<PagedVec> {
     )
 }
 
-fn insert_rand_with<V: Into<Literal>, F: Fn(&mut ThreadRng) -> V>(count: usize, page_len: usize, prod: F) -> BPlusTree<PagedVec> {
+fn insert_rand_with<V: Into<Literal>, F: Fn(&mut ThreadRng) -> V>(
+    count: usize,
+    page_len: usize,
+    prod: F,
+) -> BPlusTree<PagedVec> {
     let mut rng = rand::thread_rng();
     insert((0..count).into_iter().map(|_| prod(&mut rng)), page_len)
 }
 
-fn insert<V : Into<Literal>, I: IntoIterator<Item = V>>(iter: I, page_len: usize) -> BPlusTree<PagedVec> {
+fn insert<V: Into<Literal>, I: IntoIterator<Item = V>>(
+    iter: I,
+    page_len: usize,
+) -> BPlusTree<PagedVec> {
     let mut btree = BPlusTree::new(PagedVec::new(page_len));
 
     iter.into_iter()
@@ -64,15 +71,20 @@ fn btree_insert_rand_strings(c: &mut Criterion) {
     for count in &[10, 100, 1000, 10000] {
         group.throughput(Throughput::Elements(*count));
         group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, &count| {
-            b.iter_batched(|| {
-                iter::repeat_with(|| {
-                    thread_rng().sample_iter(&Alphanumeric)
-                       .take(rand::thread_rng().gen_range(5..=15))
-                       .map(char::from)
-                       .collect::<String>()
-                })
+            b.iter_batched(
+                || {
+                    iter::repeat_with(|| {
+                        thread_rng()
+                            .sample_iter(&Alphanumeric)
+                            .take(rand::thread_rng().gen_range(5..=15))
+                            .map(char::from)
+                            .collect::<String>()
+                    })
                     .take(count as usize)
-            } , |iter| insert(iter, 4096), BatchSize::SmallInput);
+                },
+                |iter| insert(iter, 4096),
+                BatchSize::SmallInput,
+            );
         });
     }
 }

@@ -11,9 +11,7 @@ use tracing::trace;
 #[derive(Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct KeyData(OwnedRow);
 
-impl KeyData {
-
-}
+impl KeyData {}
 
 impl Debug for KeyData {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

@@ -6,13 +6,13 @@ use eyre::eyre;
 use interprocess::local_socket::LocalSocketStream;
 use log::warn;
 
+use weaver_ast::ast::Query;
 use weaver_core::access_control::auth::LoginContext;
 use weaver_core::cnxn::stream::WeaverStream;
 use weaver_core::cnxn::{MessageStream, RemoteDbReq, RemoteDbResp};
 use weaver_core::common::stream_support::Stream;
 use weaver_core::data::row::Row;
 use weaver_core::db::server::processes::WeaverPid;
-use weaver_ast::ast::Query;
 use weaver_core::rows::Rows;
 use weaver_core::tables::table_schema::TableSchema;
 

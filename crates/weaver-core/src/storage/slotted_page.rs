@@ -10,8 +10,8 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use parking_lot::{Mutex, RwLock};
 use crate::common::linked_list;
+use parking_lot::{Mutex, RwLock};
 
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
@@ -21,9 +21,6 @@ use crate::storage::abstraction::{
 };
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
-
-
-
 
 impl StorageBackedData for Option<PageId> {
     type Owned = Self;
@@ -322,8 +319,6 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
             .unwrap_or(Bound::Unbounded);
         Ok(KeyDataRange(min, max))
     }
-
-
 }
 
 impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
@@ -393,34 +388,26 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     pub fn drain<I: Into<KeyDataRange>>(&mut self, key_data: I) -> Result<Vec<Cell>, Error> {
         let range = key_data.into();
         let min = match &range.0 {
-            Bound::Included(i) => {
-                match self.binary_search(i)? {
-                    Ok(exact) => { exact }
-                    Err(not_present) => { not_present }
-                }
-            }
-            Bound::Excluded(i) => {
-                match self.binary_search(i)? {
-                    Ok(exact) => { exact + 1 }
-                    Err(not_present) => { not_present + 1 }
-                }
-            }
-            Bound::Unbounded => { 0 }
+            Bound::Included(i) => match self.binary_search(i)? {
+                Ok(exact) => exact,
+                Err(not_present) => not_present,
+            },
+            Bound::Excluded(i) => match self.binary_search(i)? {
+                Ok(exact) => exact + 1,
+                Err(not_present) => not_present + 1,
+            },
+            Bound::Unbounded => 0,
         };
         let max = match &range.1 {
-            Bound::Included(i) => {
-                match self.binary_search(i)? {
-                    Ok(exact) => { exact }
-                    Err(not_present) => { not_present }
-                }
-            }
-            Bound::Excluded(i) => {
-                match self.binary_search(i)? {
-                    Ok(exact) => { exact - 1 }
-                    Err(not_present) => { not_present - 1 }
-                }
-            }
-            Bound::Unbounded => { self.count()  }
+            Bound::Included(i) => match self.binary_search(i)? {
+                Ok(exact) => exact,
+                Err(not_present) => not_present,
+            },
+            Bound::Excluded(i) => match self.binary_search(i)? {
+                Ok(exact) => exact - 1,
+                Err(not_present) => not_present - 1,
+            },
+            Bound::Unbounded => self.count(),
         };
         // remove min..=max
         let cells = (min..=max)
@@ -546,13 +533,16 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
             return Err(Error::WriteDataError(WriteDataError::InsufficientSpace));
         }
         let chunk_size = end_slot_offset - slot_offset;
-        assert_eq!(chunk_size % size_of::<u64>(), 0, "chunk must be divisible by 8");
+        assert_eq!(
+            chunk_size % size_of::<u64>(),
+            0,
+            "chunk must be divisible by 8"
+        );
         let slots = (end_slot_offset - slot_offset) / size_of::<u64>();
         let mut free_cells = vec![];
 
-
         for i in 0..slots {
-             let slot_offset = slot_offset + i * size_of::<u64>();
+            let slot_offset = slot_offset + i * size_of::<u64>();
             let cell_ptr = self.read_ptr(slot_offset)?;
             let cell_len = self.get_cell_at_offset(cell_ptr)?.len();
             self.page.as_mut_slice()[cell_ptr..][..cell_len].fill(0);
@@ -575,7 +565,6 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
             }
             self.slot_ptr -= chunk_size;
         }
-
 
         for i in 0..slots {
             self.write_ptr(self.slot_ptr + i * size_of::<u64>(), 0)?;
@@ -1209,9 +1198,9 @@ impl<P: Paged> Paged for SlottedPageAllocator<P> {
 
 #[cfg(test)]
 mod tests {
-    use std::mem::size_of;
     use rand::seq::SliceRandom;
     use rand::thread_rng;
+    use std::mem::size_of;
 
     use tempfile::tempfile;
 
