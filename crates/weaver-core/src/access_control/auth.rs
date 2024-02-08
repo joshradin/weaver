@@ -34,7 +34,7 @@ pub mod handshake {
     use crate::db::server::socket::DbSocket;
     use crate::error::Error;
     use crate::rows::Rows;
-    use weaver_ast::ast::{BinaryOp, Query, Where};
+    use weaver_ast::ast::{BinaryOp, Query};
 
     /// Server side authentication. On success, provides a user struct.
     pub fn server_auth<T: Stream + Debug>(
@@ -51,15 +51,11 @@ pub mod handshake {
             let mut login_ctx: LoginContext = packet_read(stream.transport().as_mut().unwrap())?;
             debug!("received login context: {:#?}", login_ctx);
             let tx = db_socket.start_tx()?;
-            let query = Query::select(
-                &["user", "host"],
-                "weaver.users",
-                Where::Op(
-                    "user".to_string(),
-                    BinaryOp::Eq,
-                    ast::Value::Identifier(login_ctx.user.to_string().into()),
-                ),
-            );
+            let query = Query::parse(
+                &format!(r#"select user, host from weaver.users where user = '{}'"#, login_ctx.user),
+            )
+            .expect("failed to parse");
+
             let resp = db_socket
                 .send((tx, query))
                 .join()

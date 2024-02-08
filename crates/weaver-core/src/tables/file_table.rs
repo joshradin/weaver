@@ -2,7 +2,7 @@
 
 use crate::data::row::Row;
 use crate::db::core::WeaverDbCore;
-use crate::dynamic_table::{Col, DynamicTable, StorageEngineFactory, Table};
+use crate::dynamic_table::{Col, DynamicTable, HasSchema, StorageEngineFactory, Table};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::ram_file::PagedFile;
@@ -29,10 +29,6 @@ impl BptfTable {
 }
 
 impl DynamicTable for BptfTable {
-    fn schema(&self) -> &TableSchema {
-        self.0.schema()
-    }
-
     fn auto_increment(&self, col: Col) -> i64 {
         self.0.auto_increment(col)
     }
@@ -59,6 +55,12 @@ impl DynamicTable for BptfTable {
 
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
         self.0.delete(tx, key)
+    }
+}
+
+impl HasSchema for BptfTable {
+    fn schema(&self) -> &TableSchema {
+        self.0.schema()
     }
 }
 

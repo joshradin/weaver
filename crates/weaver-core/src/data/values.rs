@@ -62,6 +62,8 @@ impl From<ast::Literal> for Literal {
             ast::Literal::Integer(i) => Literal::Integer(i),
             ast::Literal::Float(f) => Literal::Float(f),
             ast::Literal::Boolean(b) => Literal::Boolean(b),
+            ast::Literal::Binary(binary) => { Literal::Binary(binary.into(), u16::MAX)}
+            ast::Literal::Null => { Literal::Null }
         }
     }
 }

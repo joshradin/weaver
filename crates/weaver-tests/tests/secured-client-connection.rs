@@ -26,7 +26,7 @@ fn get_processes() -> eyre::Result<()> {
         .try_init();
     let temp_dir = TempDir::new()?;
     run_full_stack(temp_dir.path(), |server, client| {
-        let (rows, elapsed) = client.query(&Query::select(&["*"], "system.processes", None))?;
+        let (rows, elapsed) = client.query(&Query::parse("select * from system.process")?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
 
         Ok(())

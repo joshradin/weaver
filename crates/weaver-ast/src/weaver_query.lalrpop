@@ -17,20 +17,21 @@ Query_: ast::Query = {
 SelectStmt: ast::Select = {
     "select" <cols: Comma<ResultColumn>>
         <from: ("from" <FromClause>)?>
+        <condition: ("where" <Expr>)?>
     => {
         ast::Select {
             columns: cols,
             from,
-            condition: None,
+            condition,
             limit: None,
             offset: None,
             }
     }
 }
 
-FromClause: ast::From = {
-    TableOrSubQuery => ast::From(<>),
-    JoinClause  => ast::From(ast::TableOrSubQuery::JoinClause(<>)),
+FromClause: ast::FromClause = {
+    TableOrSubQuery => ast::FromClause(<>),
+    JoinClause  => ast::FromClause(ast::TableOrSubQuery::JoinClause(<>)),
 }
 
 TableOrSubQuery: ast::TableOrSubQuery = {
@@ -188,6 +189,7 @@ extern {
         "select" => Token::Select,
         "from" => Token::From,
         "on" => Token::On,
+        "where" => Token::Where,
 
         "join" => Token::Join,
         "inner" => Token::Inner,
@@ -201,7 +203,7 @@ extern {
         "is" => Token::Is,
 
         "not" => Token::Not,
-        "?" => Token::Qmark,
+        "?" => Token::QMark,
         "*" => Token::Star,
         "+" => Token::Plus,
         "-" => Token::Minus,

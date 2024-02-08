@@ -51,7 +51,7 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
                         Some(existing_tx) => socket.send(DbReqBody::TxQuery(existing_tx, query)),
                     }),
                     RemoteDbReq::DelegatedQuery(ref query) => Either::Right({
-                        let query: Query = query.parse()?;
+                        let query: Query = Query::parse(query)?;
 
                         match tx.take() {
                             None => socket.send(DbReqBody::TxQuery(Tx::default(), query)),

@@ -1,9 +1,10 @@
 use crate::ast::{Expr, Identifier, Select};
+use derive_more::{AsRef, Deref};
 use serde::{Deserialize, Serialize};
 
 /// The from clause
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct From(pub TableOrSubQuery);
+#[derive(Debug, Clone, Serialize, Deserialize, Deref, AsRef)]
+pub struct FromClause(pub TableOrSubQuery);
 
 /// A table or a subquery
 #[derive(Debug, Clone, Serialize, Deserialize)]

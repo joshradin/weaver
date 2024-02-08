@@ -5,6 +5,7 @@ use crate::db::server::WeaverDb;
 use crate::dynamic_table::Table;
 use crate::error::Error;
 use crate::rows::{OwnedRows, Rows};
+use crate::tables::shared_table::SharedTable;
 use crate::tx::{Tx, TxRef};
 use crossbeam::channel::Receiver;
 use serde::{Deserialize, Serialize};
@@ -216,7 +217,7 @@ pub enum DbResp {
     Pong,
     Ok,
     Tx(Tx),
-    TxTable(Tx, Arc<Table>),
+    TxTable(Tx, SharedTable),
     TxRows(Tx, OwnedRows),
     Rows(OwnedRows),
     Err(Error),

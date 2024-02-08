@@ -136,6 +136,7 @@ fn op(input: &str) -> IResult<&str, Token> {
         value(Token::RParen, char(')')),
         value(Token::Colon, char(':')),
         value(Token::SemiColon, char(';')),
+        value(Token::QMark, char('?')),
     ))
     .parse(input)
 }

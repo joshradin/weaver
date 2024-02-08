@@ -43,13 +43,10 @@ fn main() -> eyre::Result<()> {
         }
     };
 
-    let query = Query::Select(Select {
-        columns: vec!["*".to_string()],
-        from: "system.process".to_string(),
-        condition: None,
-        limit: None,
-        offset: None,
-    });
+
+    let query = Query::parse(r"
+    select * from system.process
+    ")?;
 
     let (rows, duration) = connection.query(&query)?;
     write_rows(stdout(), rows, duration)?;

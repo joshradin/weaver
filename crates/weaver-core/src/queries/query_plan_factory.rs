@@ -1,21 +1,24 @@
 //! Creates an unoptimized [query plan](QueryPlan) from a [query](Query)
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::convert::From;
+use rand::Rng;
 
-use crate::data::row::OwnedRow;
 use tracing::{debug, error_span, trace};
+
+use weaver_ast::ast;
+use weaver_ast::ast::{BinaryOp, Expr, FromClause, Identifier, Query, ReferencesCols, ResultColumn, Select, TableOrSubQuery};
 
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::socket::DbSocket;
 use crate::db::server::WeakWeaverDb;
-use crate::dynamic_table::{Table, TableCol};
+use crate::dynamic_table::{HasSchema, Table, TableCol};
 use crate::error::Error;
 use crate::key::KeyData;
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{KeyIndex, KeyIndexKind};
 use crate::tables::table_schema::{Key, TableSchema, TableSchemaBuilder};
 use crate::tables::TableRef;
-use weaver_ast::ast::{BinaryOp, Query, Select, Value, Where};
 
 #[derive(Debug)]
 pub struct QueryPlanFactory {
@@ -69,8 +72,20 @@ impl QueryPlanFactory {
         let mut emit = vec![];
         match query {
             Query::Select(Select {
-                from: table_ref, ..
-            }) => emit.push(self.table_ref(table_ref, plan_context)?),
+                from: Some(ast::FromClause(table_ref)),
+                ..
+            }) => match table_ref {
+                TableOrSubQuery::Table {
+                    schema, table_name, ..
+                } => match schema {
+                    None => emit.push(self.table_ref((None, table_name.as_ref()), plan_context)?),
+                    Some(schema) => emit.push((schema.to_string(), table_name.to_string())),
+                },
+                TableOrSubQuery::Select { .. } => {}
+                TableOrSubQuery::Multiple(_) => {}
+                TableOrSubQuery::JoinClause(_) => {}
+            },
+            _ => {}
         }
         Ok(emit)
     }
@@ -84,118 +99,309 @@ impl QueryPlanFactory {
     ) -> Result<QueryPlanNode, Error> {
         let tables = self.get_involved_tables(query, plan_context)?;
         debug!("collected tables: {:#?}", tables);
-
         let node = match query {
-            Query::Select(Select {
-                columns,
-                from: table_ref,
-                condition,
-                limit,
-                offset,
-            }) => error_span!("SELECT").in_scope(|| -> Result<QueryPlanNode, Error> {
-                let table_ref = self.table_ref(table_ref, plan_context)?;
-                trace!("getting table {:?}", table_ref);
-                let table = db.get_table(&table_ref)?;
-                trace!("table = {:?}", table);
-                let mut applicable_keys =
-                    match condition
-                        .as_ref()
-                        .map(|condition| -> Result<VecDeque<&Key>, Error> {
-                            let condition: HashSet<(String, String, String)> = condition
-                                .columns()
-                                .iter()
-                                .map(|c| self.column_ref(c, &tables, plan_context))
-                                .collect::<Result<_, _>>()?;
-                            debug!("columns used in condition: {condition:?}");
-                            Ok(table
-                                .schema()
-                                .keys()
-                                .iter()
-                                .filter_map(|key| {
-                                    debug!(
-                                        "checking if all of {:?} in condition columns {:?}",
-                                        key.columns(),
-                                        condition
-                                    );
-                                    if key.columns().iter().all(|column| {
-                                        condition.contains(&column_reference(&table, column))
-                                    }) {
-                                        Some(key)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect::<VecDeque<_>>())
-                        }) {
-                        None => VecDeque::default(),
-                        Some(res) => res?,
-                    };
-
-                if applicable_keys.is_empty() {
-                    applicable_keys.push_front(table.schema().primary_key()?);
-                }
-                let mut applicable_keys = Vec::from(applicable_keys);
-                applicable_keys.sort_by_cached_key(|key| {
-                    if key.primary() {
-                        -1_isize
-                    } else {
-                        key.columns().len() as isize
-                    }
-                });
-
-                let keys = applicable_keys
-                    .into_iter()
-                    .map(|key| self.to_key_index(key, condition.as_ref(), &tables, plan_context))
-                    .collect::<Result<Vec<_>, _>>()?
-                    .into_iter()
-                    .flatten()
-                    .collect();
-
-                Ok(QueryPlanNode {
-                    cost: f64::MAX,
-                    rows: u64::MAX,
-                    kind: QueryPlanKind::SelectByKey {
-                        table: table_ref.to_owned(),
-                        key_index: keys,
-                    },
-                    schema: TableSchemaBuilder::from(table.schema())
-                        .in_memory()
-                        .build()?,
-                })
-            }),
+            Query::Select(select) => self.select_to_plan_node(db, plan_context, &tables, select),
+            Query::Explain(_) => {
+                todo!("explain")
+            }
+            Query::QueryList(_) => {
+                todo!("query list")
+            }
         };
         node
     }
 
+    fn from_to_plan_node(
+        &self,
+        db: &DbSocket,
+        plan_context: Option<&WeaverProcessInfo>,
+        real_tables: &HashMap<TableRef, TableSchema>,
+        from: &FromClause,
+    ) -> Result<QueryPlanNode, Error> {
+        let from = &from.0;
+        self.table_or_sub_query_to_plan_node(db, plan_context, real_tables, from)
+    }
+
+    fn table_or_sub_query_to_plan_node(
+        &self,
+        db: &DbSocket,
+        plan_context: Option<&WeaverProcessInfo>,
+        real_tables: &HashMap<TableRef, TableSchema>,
+        from: &TableOrSubQuery,
+    ) -> Result<QueryPlanNode, Error> {
+        match from {
+            TableOrSubQuery::Table {
+                schema,
+                table_name,
+                alias,
+            } => {
+                let table_ref = self.table_ref(
+                    (schema.as_ref().map(|s| s.as_ref()), table_name.as_ref()),
+                    plan_context,
+                )?;
+                let mut table_schema = real_tables
+                    .get(&table_ref)
+                    .expect("could not get schema")
+                    .clone();
+
+                let (schema, table) = table_ref;
+
+                Ok(QueryPlanNode {
+                    cost: f64::MAX,
+                    rows: u64::MAX,
+                    kind: QueryPlanKind::LoadTable { schema, table },
+                    schema: table_schema,
+                    alias: alias.as_ref().map(|i| i.to_string()),
+                })
+            }
+            TableOrSubQuery::Select { select, alias } => {
+                let node = self.select_to_plan_node(db, plan_context, real_tables, select)?;
+                match alias {
+                    None => {
+                        Ok(node)
+                    }
+                    Some(alias) => {
+                        unimplemented!("select query aliasing");
+                    }
+                }
+            }
+            TableOrSubQuery::Multiple(_) => {
+                unimplemented!("FULL OUTER JOIN");
+            }
+            TableOrSubQuery::JoinClause(_) => {
+                unimplemented!("JOIN");
+            }
+        }
+    }
+
+    fn select_to_plan_node(
+        &self,
+        db: &DbSocket,
+        plan_context: Option<&WeaverProcessInfo>,
+        real_tables: &HashMap<TableRef, TableSchema>,
+        select: &Select,
+    ) -> Result<QueryPlanNode, Error> {
+        error_span!("SELECT").in_scope(|| -> Result<QueryPlanNode, Error> {
+            let Select {
+                columns,
+                from,
+                condition,
+                limit,
+                offset,
+            } = select;
+
+            match from {
+                None => {
+                    todo!("no from")
+                }
+                Some(from) => {
+                    let from_node = self.from_to_plan_node(db, plan_context, real_tables, from)?;
+
+                    let mut applicable_keys =
+                        match condition
+                            .as_ref()
+                            .map(|condition| -> Result<VecDeque<&Key>, Error> {
+                                let condition: HashSet<(String, String, String)> = condition
+                                    .columns()
+                                    .iter()
+                                    .map(|c| {
+                                        self.resolve_column_ref(to_col_ref(c), &real_tables, plan_context)
+                                    })
+                                    .collect::<Result<_, _>>()?;
+                                debug!("columns used in condition: {condition:?}");
+                                Ok(from_node
+                                    .schema()
+                                    .keys()
+                                    .iter()
+                                    .filter_map(|key| {
+                                        debug!(
+                                            "checking if all of {:?} in condition columns {:?}",
+                                            key.columns(),
+                                            condition
+                                        );
+                                        if key.columns().iter().all(|column| {
+                                            let column_ref = self.parse_column_ref(column);
+                                            let resolved = self.resolve_column_ref(column_ref, real_tables, plan_context).expect("could not resolve");
+                                            debug!("resolved key column: {resolved:?}");
+                                            debug!("does {condition:?} contain {resolved:?}?");
+                                            condition.contains(&resolved)
+                                        }) {
+                                            Some(key)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect::<VecDeque<_>>())
+                            }) {
+                            None => VecDeque::default(),
+                            Some(res) => res?,
+                        };
+
+                    if applicable_keys.is_empty() {
+                        applicable_keys.push_front(from_node.schema().primary_key()?);
+                    }
+                    let mut applicable_keys = Vec::from(applicable_keys);
+                    debug!("applicable keys: {applicable_keys:?}");
+                    applicable_keys.sort_by_cached_key(|key| {
+                        if key.primary() {
+                            -1_isize
+                        } else {
+                            key.columns().len() as isize
+                        }
+                    });
+
+                    let keys = applicable_keys
+                        .into_iter()
+                        .map(|key| {
+                            self.to_key_index(key, condition.as_ref(), &real_tables, plan_context)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?
+                        .into_iter()
+                        .flatten()
+                        .collect();
+
+                    debug!("keys: {:?}", keys);
+
+                    let schema = if columns.len() == 1 && matches!(columns[0], ResultColumn::Wildcard) {
+                        from_node.schema.clone()
+                    } else {
+                        let mut schema_builder = TableSchemaBuilder::new("*", format!("table_{}", rand::random::<u64>()));
+
+                        for result_column in columns {
+                            match result_column {
+                                ResultColumn::Wildcard => {
+                                    // all columns from previous node
+                                    for col in from_node.schema.columns() {
+                                        schema_builder.column_definition(col.clone());
+                                    }
+
+                                }
+                                ResultColumn::TableWildcard(table) => {
+
+                                }
+                                ResultColumn::Expr { expr, alias } => {
+                                    let name = match alias {
+                                        None => {}
+                                        Some(alias) => { alias.to_string() }
+                                    };
+                                    let non_null = match expr {
+                                        Expr::Column { schema_name, table_name, column_name } => {
+
+                                        }
+                                        _ => false,
+                                    };
+
+                                    schema_builder.column(name, , non_null, None, None);
+                                }
+                            }
+                        }
+                        schema_builder.build()?
+                    };
+
+
+
+                    Ok(QueryPlanNode {
+                        cost: f64::MAX,
+                        rows: u64::MAX,
+                        kind: QueryPlanKind::SelectByKey {
+                            to_select: Box::new(from_node),
+                            key_index: keys,
+                        },
+                        schema,
+                        alias: None,
+                    })
+                }
+            }
+        })
+    }
+
+    /// When given some conditional expression `cond` and a known `key`, we can get key indices to query against the table
+    /// in a more efficient manner than just doing an `all` search.
+    ///
+    /// This requires the `cond` condition follows certain patterns:
+    /// - `{column} = literal` (and reverse)
+    /// - `{column} < literal`
     pub fn to_key_index(
         &self,
         key: &Key,
-        where_: Option<&Where>,
+        cond: Option<&Expr>,
         involved_tables: &HashMap<TableRef, TableSchema>,
         ctx: Option<&WeaverProcessInfo>,
     ) -> Result<Vec<KeyIndex>, Error> {
-        match where_ {
+        debug!("attempting to get key indices from key: {key:?} and cond: {cond:?}");
+        match cond {
             None => Ok(vec![key.all()]),
             Some(cond) => match cond {
-                Where::Op(col, BinaryOp::Eq, Value::Literal(value)) => {
-                    let col = self.column_ref(col, involved_tables, ctx)?;
-                    if key.columns().len() == 1 && key.columns().contains(&col.2) {
-                        return Ok(vec![KeyIndex::new(
-                            key.name(),
-                            KeyIndexKind::One(KeyData::from([value.clone()])),
-                            None,
-                            None,
-                        )]);
+                Expr::Binary { left, op, right } => match op {
+                    BinaryOp::Eq
+                    | BinaryOp::Neq
+                    | BinaryOp::Greater
+                    | BinaryOp::Less
+                    | BinaryOp::GreaterEq
+                    | BinaryOp::LessEq => {
+                        let (col, const_v) = if left.is_const() && !right.is_const() {
+                            if let Expr::Column {
+                                schema_name,
+                                table_name,
+                                column_name,
+                            } = &**right
+                            {
+                                let col = (
+                                    schema_name.as_ref().map(|s| s.as_ref()),
+                                    table_name.as_ref().map(|s| s.as_ref()),
+                                    column_name.as_ref(),
+                                );
+                                (col, left)
+                            } else {
+                                return Ok(vec![]);
+                            }
+                        } else if right.is_const() && !left.is_const() {
+                            if let Expr::Column {
+                                schema_name,
+                                table_name,
+                                column_name,
+                            } = &**left
+                            {
+                                let col = (
+                                    schema_name.as_ref().map(|s| s.as_ref()),
+                                    table_name.as_ref().map(|s| s.as_ref()),
+                                    column_name.as_ref(),
+                                );
+                                (col, right)
+                            } else {
+                                return Ok(vec![]);
+                            }
+                        } else {
+                            return Ok(vec![]);
+                        };
+
+                        let col = self.resolve_column_ref(col, involved_tables, ctx)?;
+
+                        let Expr::Literal { literal: value } = &**const_v else {
+                            panic!("expr is constant but not a literal: {left:?}")
+                        };
+
+                        if key.columns().len() == 1 && key.columns().contains(&col.2) {
+                            return Ok(vec![KeyIndex::new(
+                                key.name(),
+                                KeyIndexKind::One(KeyData::from([value.clone()])),
+                                None,
+                                None,
+                            )]);
+                        }
+                        Ok(vec![])
                     }
-                    Ok(vec![])
-                }
-                Where::All(wheres) | Where::Any(wheres) => Ok(wheres
-                    .iter()
-                    .map(|where_| self.to_key_index(key, Some(where_), involved_tables, ctx))
-                    .collect::<Result<Vec<_>, _>>()?
-                    .into_iter()
-                    .flatten()
-                    .collect()),
+                    BinaryOp::And | BinaryOp::Or => self
+                        .to_key_index(key, Some(&*left), involved_tables, ctx)
+                        .and_then(|mut left| {
+                            self.to_key_index(key, Some(&*right), involved_tables, ctx)
+                                .map(|right| {
+                                    left.extend(right);
+                                    left
+                                })
+                        }),
+                    _ => Ok(vec![]),
+                },
                 _ => Ok(vec![]),
             },
         }
@@ -204,33 +410,41 @@ impl QueryPlanFactory {
     /// Convert to a table reference
     pub fn table_ref(
         &self,
-        tb_ref: impl AsRef<str>,
+        tb_ref: (Option<&str>, &str),
         ctx: Option<&WeaverProcessInfo>,
     ) -> Result<TableRef, Error> {
-        let tb_ref = tb_ref.as_ref().to_string();
         let in_use = ctx.and_then(|info| info.using.as_ref());
         trace!(
             "creating table ref from tb_ref {:?} and in_use {:?}",
             tb_ref,
             in_use
         );
-        match tb_ref.split_once('.') {
+        match tb_ref.0 {
             None => in_use
                 .ok_or(Error::UnQualifedTableWithoutInUseSchema)
-                .map(|schema| (schema.to_string(), tb_ref.to_string())),
-            Some((schema, table)) => Ok((schema.to_string(), table.to_string())),
+                .map(|schema| (schema.to_string(), tb_ref.1.to_string())),
+            Some(schema) => Ok((schema.to_string(), tb_ref.1.to_string())),
         }
     }
 
-    pub fn column_ref(
+    pub fn parse_column_ref<'a>(&self, col: &'a str) -> (Option<&'a str>, Option<&'a str>, &'a str) {
+        let split = col.split(".").collect::<Vec<_>>();
+        match &split[..] {
+            &[col] => (None, None, col),
+            &[table, col] => (None, Some(table), col),
+            &[schema, table, col] => (Some(schema), Some(table), col),
+            _ => panic!("column ref can not have more than three fields"),
+        }
+    }
+
+    pub fn resolve_column_ref(
         &self,
-        column_ref: impl AsRef<str>,
+        column_ref: (Option<&str>, Option<&str>, &str),
         involved_tables: &HashMap<TableRef, TableSchema>,
         ctx: Option<&WeaverProcessInfo>,
     ) -> Result<TableCol, Error> {
-        let split: Vec<&str> = column_ref.as_ref().split('.').collect();
-        match split.as_slice() {
-            &[col] => {
+        match column_ref {
+            (None, None, col) => {
                 debug!("finding column ?.?.{col}");
                 let mut positives = vec![];
                 for (table, schema) in involved_tables {
@@ -254,15 +468,15 @@ impl QueryPlanFactory {
                     }),
                 }
             }
-            &[table, col] => {
+            (None, Some(table), col) => {
                 debug!("finding column ?.{table}.{col}");
 
                 todo!()
             }
-            &[schema, table, col] => Ok((schema.to_string(), table.to_string(), col.to_string())),
-            _ => Err(Error::ParseError(
-                "column refernce can only have at most 3 segments".to_string(),
-            )),
+            (Some(schema), Some(table), col) => {
+                Ok((schema.to_string(), table.to_string(), col.to_string()))
+            }
+            _ => unreachable!("<name>.?.<name> should not be possible"),
         }
     }
 }
@@ -273,4 +487,11 @@ pub fn column_reference(table: &Table, column: &String) -> (String, String, Stri
         table.schema().name().to_string(),
         column.to_string(),
     )
+}
+
+pub fn to_col_ref(
+    input: &(Option<String>, Option<String>, String),
+) -> (Option<&str>, Option<&str>, &str) {
+    let (schema, table, column) = input;
+    (schema.as_deref(), table.as_deref(), column.as_str())
 }

@@ -22,14 +22,14 @@ impl<'a, I: Iterator<Item = Spanned<Token<'a>, usize, TokenError>>> LR1Parser<'a
         }
     }
 
-    fn parse(mut self) -> Result<Query, ParseQueryError<'a>> {
+    fn parse(mut self) -> Result<Query, ParseQueryError> {
         let mut buffer = vec![];
         let result: Result<Query, lalrpop_util::ParseError<usize, Token<'a>, TokenError>> =
             weaver_query::QueryParser::new().parse(
                 self.src,
                 (self.token_stream).inspect(|token| {
                     if let Ok((_, token, _)) = token {
-                        buffer.push(token.clone())
+                        buffer.push(token.to_string())
                     }
                 }),
             );
@@ -44,7 +44,7 @@ impl<'a, I: Iterator<Item = Spanned<Token<'a>, usize, TokenError>>> LR1Parser<'a
             ParseError::UnrecognizedToken {
                 token: (_, token, _),
                 expected,
-            } => ParseQueryError::UnexpectedToken(token, expected, buffer),
+            } => ParseQueryError::UnexpectedToken(token.to_string(), expected, buffer),
             ParseError::ExtraToken { .. } => {
                 todo!()
             }
@@ -64,7 +64,7 @@ impl<'a, I: Iterator<Item = Spanned<Token<'a>, usize, TokenError>>> LR1Parser<'a
 pub fn parse_query<'a, I: IntoIterator<Item = Spanned<Token<'a>, usize, TokenError>>>(
     src: &'a str,
     tokens: I,
-) -> Result<Query, ParseQueryError<'a>>
+) -> Result<Query, ParseQueryError>
 where
     <I as IntoIterator>::IntoIter: 'a,
 {

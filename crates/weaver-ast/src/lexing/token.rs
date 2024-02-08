@@ -1,4 +1,6 @@
 use std::borrow::Cow;
+use std::fmt::Formatter;
+use derive_more::Display;
 
 use nom::{Finish, Parser};
 use thiserror::Error;
@@ -29,9 +31,9 @@ pub enum Token<'a> {
     RParen,
     Colon,
     SemiColon,
+    QMark,
 
     Not,
-    Qmark,
     Star,
     Eq,
     Neq,
@@ -54,6 +56,12 @@ pub enum Token<'a> {
     Null,
 
     Eof,
+}
+
+impl Display for Token<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
 }
 
 pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;

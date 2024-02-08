@@ -27,10 +27,7 @@ pub static ROW_ID_COLUMN: Col<'static> = "@@ROW_ID";
 
 /// The main storage engine trait. Storage engines are provided
 /// per table.
-pub trait DynamicTable: Send + Sync {
-    /// Gets the defining schema
-    fn schema(&self) -> &TableSchema;
-
+pub trait DynamicTable: HasSchema + Send + Sync {
     /// The next auto-incremented value for a given column
     ///
     /// Auto incremented values be always be unique.
@@ -72,6 +69,11 @@ pub trait DynamicTable: Send + Sync {
 
     /// Delete by key
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error>;
+}
+
+pub trait HasSchema {
+    /// Gets the defining schema
+    fn schema(&self) -> &TableSchema;
 }
 
 #[derive(Debug, Error)]

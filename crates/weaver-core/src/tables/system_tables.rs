@@ -3,7 +3,7 @@
 
 use crate::data::row::Row;
 use crate::db::server::socket::DbSocket;
-use crate::dynamic_table::{Col, DynamicTable};
+use crate::dynamic_table::{Col, DynamicTable, HasSchema};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
 use crate::tables::table_schema::TableSchema;
@@ -39,10 +39,6 @@ impl SystemTable {
 }
 
 impl DynamicTable for SystemTable {
-    fn schema(&self) -> &TableSchema {
-        &self.table_schema
-    }
-
     fn auto_increment(&self, col: Col) -> i64 {
         unimplemented!("system tables shouldn't need auto increments")
     }
@@ -70,6 +66,12 @@ impl DynamicTable for SystemTable {
 
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
         unimplemented!("can not delete data from a system table")
+    }
+}
+
+impl HasSchema for SystemTable {
+    fn schema(&self) -> &TableSchema {
+        &self.table_schema
     }
 }
 

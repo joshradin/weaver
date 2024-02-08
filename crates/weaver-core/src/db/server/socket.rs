@@ -1,16 +1,15 @@
 use crate::cancellable_task::{CancellableTask, CancellableTaskHandle, Cancelled};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp, Packet, PacketId};
 use crate::db::server::processes::WeaverPid;
-use crate::dynamic_table::Table;
 use crate::error::Error;
+use crate::tables::shared_table::SharedTable;
 use crate::tables::TableRef;
-use crate::tx::{Tx, TxId};
-use crossbeam::channel::{unbounded, Receiver, RecvError, SendError, Sender, TryRecvError};
-use parking_lot::{Mutex, RwLock};
-use std::cell::RefCell;
+use crate::tx::Tx;
+use crossbeam::channel::{unbounded, Receiver, RecvError, Sender, TryRecvError};
+use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::hint;
 use std::sync::Arc;
-use std::{hint, thread};
 use tracing::{debug, error_span, trace, warn};
 
 pub type MainQueueItem = (Packet<DbReq>, Sender<Packet<DbResp>>);
@@ -120,7 +119,7 @@ impl DbSocket {
         }
     }
 
-    pub fn get_table(&self, (schema, table): &TableRef) -> Result<Arc<Table>, Error> {
+    pub fn get_table(&self, (schema, table): &TableRef) -> Result<SharedTable, Error> {
         let schema = schema.clone();
         let table = table.clone();
         let tx = Tx::default();

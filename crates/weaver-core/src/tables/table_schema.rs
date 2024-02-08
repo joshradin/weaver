@@ -424,6 +424,10 @@ pub struct TableSchemaBuilder {
 }
 
 impl TableSchemaBuilder {
+
+}
+
+impl TableSchemaBuilder {
     pub fn new(schema: impl AsRef<str>, name: impl AsRef<str>) -> Self {
         Self {
             schema: schema.as_ref().to_string(),
@@ -449,6 +453,11 @@ impl TableSchemaBuilder {
             auto_increment,
         )?);
         Ok(self)
+    }
+
+    pub fn column_definition(&mut self, column_definition: ColumnDefinition) -> &mut Self {
+        self.columns.push(column_definition);
+        self
     }
 
     /// Sets the primary key

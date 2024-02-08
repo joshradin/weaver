@@ -1,7 +1,7 @@
 //! An in-memory storage engine
 
 use crate::data::row::Row;
-use crate::dynamic_table::{Col, DynamicTable};
+use crate::dynamic_table::{Col, DynamicTable, HasSchema};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::PagedVec;
@@ -49,10 +49,6 @@ impl InMemoryTable {
 }
 
 impl DynamicTable for InMemoryTable {
-    fn schema(&self) -> &TableSchema {
-        self.0.schema()
-    }
-
     fn auto_increment(&self, col: Col) -> i64 {
         self.0.auto_increment(col)
     }
@@ -79,6 +75,12 @@ impl DynamicTable for InMemoryTable {
 
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
         self.0.delete(tx, key)
+    }
+}
+
+impl HasSchema for InMemoryTable {
+    fn schema(&self) -> &TableSchema {
+        self.0.schema()
     }
 }
 

@@ -1,18 +1,17 @@
 use fs2::FileExt;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
-use parking_lot::RwLock;
 use tracing::{debug, info};
 
 use crate::db::start_db::start_db;
 use crate::dynamic_table::{
-    storage_engine_factory, DynamicTable, EngineKey, StorageEngineFactory, Table,
+    storage_engine_factory, DynamicTable, EngineKey, HasSchema, StorageEngineFactory, Table,
 };
 use crate::error::Error;
 use crate::tables::file_table::BptfTableFactory;
+use crate::tables::shared_table::SharedTable;
 use crate::tables::table_schema::TableSchema;
 use crate::tables::InMemoryTable;
 use crate::tables::{file_table::B_PLUS_TREE_FILE_KEY, in_memory_table::IN_MEMORY_KEY};
@@ -27,7 +26,7 @@ pub struct WeaverDbCore {
     lock_file: Option<File>,
     engines: HashMap<EngineKey, Box<dyn StorageEngineFactory>>,
     default_engine: Option<EngineKey>,
-    open_tables: RwLock<HashMap<(String, String), Arc<Table>>>,
+    open_tables: RwLock<HashMap<(String, String), SharedTable>>,
     pub(crate) tx_coordinator: Option<TxCoordinator>,
 }
 
@@ -116,7 +115,7 @@ impl WeaverDbCore {
         } else {
             let mut open_tables = self.open_tables.write();
             let table: Table = Box::new(table);
-            open_tables.insert((schema, name), Arc::new(table));
+            open_tables.insert((schema, name), SharedTable::new(table));
             Ok(())
         }
     }
@@ -138,14 +137,14 @@ impl WeaverDbCore {
 
         open_tables.insert(
             (schema.schema().to_string(), schema.name().to_string()),
-            Arc::new(table),
+            SharedTable::new(table),
         );
 
         Ok(())
     }
 
     /// Gets a table, if preset. The table is responsible for handling shared-access
-    pub fn get_table(&self, schema: &str, name: &str) -> Option<Arc<Table>> {
+    pub fn get_table(&self, schema: &str, name: &str) -> Option<SharedTable> {
         self.open_tables
             .read()
             .get(&(schema.to_string(), name.to_string()))

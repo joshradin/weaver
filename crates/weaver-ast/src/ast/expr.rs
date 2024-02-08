@@ -205,26 +205,17 @@ impl Expr {
 }
 
 impl ReferencesCols for Expr {
-    fn columns(&self) -> HashSet<String> {
+    fn columns(&self) -> HashSet<(Option<String>, Option<String>, String)> {
         match self {
             Expr::Column {
                 schema_name,
                 table_name,
                 column_name,
-            } => {
-                let name = format!(
-                    "{}{}{column_name}",
-                    schema_name
-                        .as_ref()
-                        .map(|s| format!("{s}."))
-                        .unwrap_or_default(),
-                    table_name
-                        .as_ref()
-                        .map(|s| format!("{s}."))
-                        .unwrap_or_default(),
-                );
-                HashSet::from([name])
-            }
+            } => HashSet::from([(
+                schema_name.as_ref().map(ToString::to_string),
+                table_name.as_ref().map(ToString::to_string),
+                column_name.to_string(),
+            )]),
             Expr::Unary { op: _, expr: expr } => expr.columns(),
             Expr::Binary {
                 left: l,

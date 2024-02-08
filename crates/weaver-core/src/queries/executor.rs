@@ -1,13 +1,13 @@
 //! The mechanism responsible for executing queries
 
 use parking_lot::RwLock;
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 use tracing::{error, event, info};
 
 use crate::db::core::WeaverDbCore;
-use crate::dynamic_table::Table;
+use crate::dynamic_table::{HasSchema, Table};
 use crate::error::Error;
-use crate::queries::query_plan::{QueryPlan, QueryPlanKind};
+use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{OwnedRows, Rows, RowsExt};
 use crate::tables::InMemoryTable;
 use crate::tx::Tx;
@@ -35,48 +35,56 @@ impl QueryExecutor {
     pub fn execute(&self, tx: &Tx, plan: &QueryPlan) -> Result<OwnedRows, Error> {
         let root = plan.root();
         let core = self.core.upgrade().ok_or(Error::NoCoreAvailable)?;
-        let mut stack = vec![root];
         let mut output: Option<Table> = None;
         info!("executing query plan {plan:#?}");
 
-        while !stack.is_empty() {
-            let node = stack.pop().unwrap();
-            info!("executing node {:#?}", node);
-
-            match &node.kind {
-                QueryPlanKind::SelectByKey {
-                    table: (schema, name),
-                    key_index,
-                } => {
-                    let core = core.read();
-                    let table = core.get_table(schema, name).ok_or(Error::NoTableFound {
-                        table: name.to_string(),
-                        schema: schema.to_string(),
-                    })?;
-
-                    let read = table
-                        .read(tx, &key_index[0])?
-                        .map(|row| table.schema().public_only(row));
-                    let in_memory = match InMemoryTable::from_rows(table.schema().clone(), read) {
-                        Ok(table) => table,
-                        Err(e) => {
-                            error!("creating in memory table from select result failed: {e}");
-                            if let Error::BadColumnCount { .. } = &e {
-                                error!("table schema: {:#?}", table.schema())
-                            }
-                            return Err(e);
-                        }
-                    };
-                    output = Some(Box::new(in_memory));
-                }
-                QueryPlanKind::Project { .. } => {}
-            }
-        }
-
-        let final_table = output.expect("no table");
+        let final_table = self.execute_node(tx, root, &core)?;
         final_table.all(tx).map(|rows| {
             rows.map(|row| final_table.schema().public_only(row))
                 .to_owned()
         })
+    }
+
+    fn execute_node(
+        &self,
+        tx: &Tx,
+        node: &QueryPlanNode,
+        core: &Arc<RwLock<WeaverDbCore>>,
+    ) -> Result<Table, Error> {
+        match &node.kind {
+            QueryPlanKind::SelectByKey {
+                to_select,
+                key_index,
+            } => {
+                let table = self.execute_node(tx, to_select, core)?;
+
+                let read = table
+                    .read(tx, &key_index[0])?
+                    .map(|row| table.schema().public_only(row));
+                let in_memory = match InMemoryTable::from_rows(table.schema().clone(), read) {
+                    Ok(table) => table,
+                    Err(e) => {
+                        error!("creating in memory table from select result failed: {e}");
+                        if let Error::BadColumnCount { .. } = &e {
+                            error!("table schema: {:#?}", table.schema())
+                        }
+                        return Err(e);
+                    }
+                };
+                Ok(Box::new(in_memory))
+            }
+            QueryPlanKind::Project { .. } => {
+                todo!("projection")
+            }
+            QueryPlanKind::LoadTable { schema, table } => {
+                let core = core.read();
+
+                let table = core.get_table(schema, table).ok_or(Error::NoTableFound {
+                    table: table.to_string(),
+                    schema: schema.to_string(),
+                })?;
+                Ok(Box::new(table))
+            }
+        }
     }
 }

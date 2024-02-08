@@ -13,7 +13,7 @@ use tracing::{debug, info, trace};
 
 use crate::data::row::{OwnedRow, Row};
 use crate::data::types::Type;
-use crate::dynamic_table::{Col, DynamicTable, OwnedCol, Table};
+use crate::dynamic_table::{Col, DynamicTable, HasSchema, OwnedCol, Table};
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
 use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, Rows};
@@ -79,10 +79,6 @@ impl<P: Paged + Sync + Send> DynamicTable for UnbufferedTable<P>
 where
     Error: From<P::Err>,
 {
-    fn schema(&self) -> &TableSchema {
-        &self.schema
-    }
-
     fn auto_increment(&self, col: Col) -> i64 {
         let lock = self
             .auto_incremented
@@ -152,6 +148,15 @@ where
 
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
         todo!()
+    }
+}
+
+impl<P: Paged + Sync + Send> HasSchema for UnbufferedTable<P>
+where
+    Error: From<P::Err>,
+{
+    fn schema(&self) -> &TableSchema {
+        &self.schema
     }
 }
 

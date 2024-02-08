@@ -6,7 +6,7 @@ use crate::data::row::Row;
 use crate::data::types::Type;
 use crate::data::values::Literal;
 use crate::db::SYSTEM_SCHEMA;
-use crate::dynamic_table::{Col, DynamicTable, EngineKey};
+use crate::dynamic_table::{Col, DynamicTable, EngineKey, HasSchema};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
 use crate::tables::table_schema::TableSchema;
@@ -84,10 +84,6 @@ impl Default for UserTable {
 }
 
 impl DynamicTable for UserTable {
-    fn schema(&self) -> &TableSchema {
-        &self.in_memory.schema()
-    }
-
     fn auto_increment(&self, col: Col) -> i64 {
         todo!()
     }
@@ -114,6 +110,12 @@ impl DynamicTable for UserTable {
 
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
         todo!()
+    }
+}
+
+impl HasSchema for UserTable {
+    fn schema(&self) -> &TableSchema {
+        &self.in_memory.schema()
     }
 }
 
