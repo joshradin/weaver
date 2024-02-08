@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::str::FromStr;
 
-use nom::{Compare, Finish, InputLength, InputTake, IResult, Parser};
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{alpha1, alphanumeric1, char, digit1, one_of};
@@ -10,11 +9,12 @@ use nom::error::{Error, ErrorKind, FromExternalError, ParseError};
 use nom::multi::{many0_count, separated_list1};
 use nom::number::complete::recognize_float;
 use nom::sequence::{pair, preceded, tuple};
+use nom::{Compare, Finish, IResult, InputLength, InputTake, Parser};
 
 use utility::{ignore_case, ignore_whitespace};
 
-use crate::tokens::parsers::utility::binary1;
-use crate::tokens::token::Token;
+use crate::lexing::parsers::utility::binary1;
+use crate::lexing::token::Token;
 
 mod strings;
 mod utility;
@@ -40,15 +40,10 @@ pub fn token(source: &str, start: usize) -> nom::IResult<&str, (usize, Token, us
 
 fn ident(input: &str) -> IResult<&str, Token> {
     map(
-        recognize(
-
-                pair(
-                    alt((alpha1, tag("_"))),
-                    many0_count(alt((alphanumeric1, tag("_")))),
-                ),
-
-        )
-        ,
+        recognize(pair(
+            alt((alpha1, tag("_"))),
+            many0_count(alt((alphanumeric1, tag("_")))),
+        )),
         |r| Token::Ident(Cow::Borrowed(r)),
     )(input)
 }
@@ -58,7 +53,6 @@ fn keyword(input: &str) -> IResult<&str, Token> {
         value(Token::Select, ignore_case("select")),
         value(Token::From, ignore_case("from")),
         value(Token::On, ignore_case("on")),
-
         value(Token::Join, ignore_case("join")),
         value(Token::Left, ignore_case("left")),
         value(Token::Right, ignore_case("right")),
@@ -66,12 +60,15 @@ fn keyword(input: &str) -> IResult<&str, Token> {
         value(Token::Inner, ignore_case("inner")),
         value(Token::Full, ignore_case("full")),
         value(Token::Cross, ignore_case("cross")),
-
-
         value(Token::Where, ignore_case("where")),
         value(Token::As, ignore_case("as")),
+        value(Token::And, ignore_case("and")),
+        value(Token::Or, ignore_case("or")),
+        value(Token::Not, ignore_case("not")),
+        value(Token::Null, ignore_case("null")),
+        value(Token::Is, ignore_case("is")),
     ))
-        .parse(input)
+    .parse(input)
 }
 
 fn literal<'a>(input: &'a str) -> IResult<&str, Token> {
@@ -122,36 +119,36 @@ fn differentiate_number(input: &str) -> IResult<&str, Token> {
 
 fn op(input: &str) -> IResult<&str, Token> {
     alt((
-        map(char(','), |_| Token::Comma),
-        map(char('.'), |_| Token::Dot),
-        map(char('*'), |_| Token::Star),
-        map(char('='), |_| {
-            Token::Eq
-        }),
-        map(tag("<>"), |_| {
-            Token::Neq
-        }),
-        map(tag("!="), |_| {
-            Token::Neq
-        }),
-        map(char('('), |_| Token::LParen),
-        map(char(')'), |_| Token::RParen),
-
-        map(char(':'), |_| Token::Colon),
-        map(char(';'), |_| Token::SemiColon),
+        value(Token::Comma, char(',')),
+        value(Token::Dot, char('.')),
+        value(Token::Star, char('*')),
+        value(Token::Plus, char('+')),
+        value(Token::Minus, char('-')),
+        value(Token::Divide, char('/')),
+        value(Token::Eq, char('=')),
+        value(Token::Neq, tag("<>")),
+        value(Token::Neq, tag("!=")),
+        value(Token::Less, char('<')),
+        value(Token::LessEq, tag("<=")),
+        value(Token::Greater, char('>')),
+        value(Token::GreaterEq, tag(">=")),
+        value(Token::LParen, char('(')),
+        value(Token::RParen, char(')')),
+        value(Token::Colon, char(':')),
+        value(Token::SemiColon, char(';')),
     ))
-        .parse(input)
+    .parse(input)
 }
 
 #[cfg(test)]
 mod tests {
-    use nom::{Finish, IResult};
     use nom::branch::alt;
     use nom::combinator::recognize;
     use nom::multi::many0_count;
     use nom::sequence::pair;
+    use nom::{Finish, IResult};
 
-    use crate::tokens::{Token, Tokenizer};
+    use crate::lexing::{Token, Tokenizer};
 
     #[test]
     fn tokenize_eof() {

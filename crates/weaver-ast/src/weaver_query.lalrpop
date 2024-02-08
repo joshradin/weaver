@@ -1,4 +1,4 @@
-use crate::tokens::{Token, TokenError};
+use crate::lexing::{Token, TokenError};
 use crate::ast;
 
 use std::borrow::Cow;
@@ -68,37 +68,75 @@ JoinOperator: ast::JoinOperator = {
 }
 
 JoinConstraint: ast::JoinConstraint = {
-    "on" <e: Expr> => ast::JoinConstraint { on: e }
+    "on" <mut e: Expr> => { e.reduce(); ast::JoinConstraint { on: e }}
 }
 
 ResultColumn: ast::ResultColumn = {
     "*" => ast::ResultColumn::Wildcard,
     <table_name: Identifier> "." "*" => ast::ResultColumn::TableWildcard(table_name),
-    <e: Expr> <alias: ("as" <Identifier>)?> => ast::ResultColumn::Expr { expr: e, alias },
+    <mut e: Expr> <alias: ("as" <Identifier>)?> => {
+        let alias = match alias {
+            Some(alias) => Some(alias),
+            None => {
+                if e.is_const() {
+                    Some(ast::Identifier::from(e.to_string()))
+                } else {
+                    None
+                }
+            }
+        };
+        e.reduce();
+        ast::ResultColumn::Expr { expr: e, alias }
+    },
 }
 
 Expr: ast::Expr = {
     #[precedence(level="0")]
-    Literal => ast::Expr::Literal(<>),
+    Literal => ast::Expr::Literal{literal: <>},
      #[precedence(level="0")]
-    "?" => ast::Expr::BindParameter(None),
+    "?" => ast::Expr::BindParameter{ parameter: None} ,
      #[precedence(level="0")]
-    ":" <"int"> =>  ast::Expr::BindParameter(Some(<>)),
+    ":" <"int"> =>  ast::Expr::BindParameter{ parameter: Some(<>)},
      #[precedence(level="0")]
     <table_name: (<Table> ".")?> <column_name: Identifier> => ast::Expr::Column {
         schema_name: table_name.as_ref().and_then(|(schema, _)| schema.clone()), table_name: table_name.map(|t| t.1), column_name
     },
     #[precedence(level="1")]
-    #[assoc(side="left")]
-    <l: Expr> <op: BinaryOp> <r: Expr> => ast::Expr::Binary(Box::new(l), op, Box::new(r))
-}
+    "not" <e: Expr> => ast::Expr::Unary { op: ast::UnaryOp::Not, expr: Box::new(e) },
+    #[precedence(level="1")]
+    "-" <e: Expr> => ast::Expr::Unary { op: ast::UnaryOp::Negate, expr: Box::new(e) },
+    #[precedence(level="2")] #[assoc(side="left")]
+    <l: Expr> "*" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Multiply, right: Box::new(r) },
+    #[precedence(level="2")] #[assoc(side="left")]
+    <l: Expr> "/" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Divide, right: Box::new(r) },
 
-BinaryOp: ast::BinaryOp = {
-    "=" => ast::BinaryOp::Eq,
-    "!=" => ast::BinaryOp::Neq,
-//
-//    "<" => ast::BinaryOp::Eq,
-//    ">" => ast::BinaryOp::Eq,
+    #[precedence(level="3")] #[assoc(side="left")]
+    <l: Expr> "+" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Plus, right: Box::new(r) },
+    #[precedence(level="3")] #[assoc(side="left")]
+    <l: Expr> "-" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Minus, right: Box::new(r) },
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l: Expr> "=" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Eq, right: Box::new(r) },
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l: Expr> "!=" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Neq, right: Box::new(r) },
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l: Expr> "<" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Less, right: Box::new(r) },
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l: Expr> "<=" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::LessEq, right: Box::new(r) },
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l: Expr> ">" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Greater, right: Box::new(r) },
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l: Expr> ">=" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::GreaterEq, right: Box::new(r) },
+    #[precedence(level="4")]
+    <l: Expr> "is" "null" => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Eq, right: Box::new(ast::Expr::Literal{literal:ast::Literal::Null}) },
+    #[precedence(level="4")]
+    <l: Expr> "is" "not" "null" => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Neq, right: Box::new(ast::Expr::Literal{literal:ast::Literal::Null}) },
+
+    #[precedence(level="5")] #[assoc(side="left")]
+    <l: Expr> "and" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::And, right: Box::new(r) },
+
+    #[precedence(level="6")] #[assoc(side="left")]
+    <l: Expr> "or" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Or, right: Box::new(r) },
 }
 
 Literal: ast::Literal = {
@@ -106,6 +144,7 @@ Literal: ast::Literal = {
     "float" => ast::Literal::Float(<>),
     "bool" => ast::Literal::Boolean(<>),
     "string" => ast::Literal::String(<>.to_string()),
+    "null" => ast::Literal::Null,
 }
 #[inline]
 Table: (Option<ast::Identifier>, ast::Identifier) = {
@@ -142,6 +181,7 @@ extern {
         "bool" => Token::Boolean(<bool>),
         "string" => Token::String(<Cow<'input, str>>),
         "binary" => Token::Binary(<Cow<'input, [u8]>>),
+        "null" => Token::Null,
 
         "id" => Token::Ident(<Cow<'input, str>>),
 
@@ -158,10 +198,14 @@ extern {
         "cross" => Token::Cross,
 
         "as" => Token::As,
+        "is" => Token::Is,
 
-
+        "not" => Token::Not,
         "?" => Token::Qmark,
         "*" => Token::Star,
+        "+" => Token::Plus,
+        "-" => Token::Minus,
+        "/" => Token::Divide,
         "=" => Token::Eq,
         "!=" => Token::Neq,
         ":" => Token::Colon,
@@ -169,6 +213,13 @@ extern {
         "," => Token::Comma,
         "." => Token::Dot,
         "(" => Token::LParen,
-        ")" => Token::RParen
+        ")" => Token::RParen,
+        ">" => Token::Greater,
+        "<" => Token::Less,
+        ">=" => Token::GreaterEq,
+        "<=" => Token::LessEq,
+
+        "and" => Token::And,
+        "or" => Token::Or,
     }
 }

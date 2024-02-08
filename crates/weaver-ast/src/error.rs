@@ -1,5 +1,5 @@
 use crate::ast::Query;
-use crate::tokens::{Token, TokenError};
+use crate::lexing::{Token, TokenError};
 use thiserror::Error;
 
 /// A parse error
@@ -10,5 +10,5 @@ pub enum ParseQueryError<'a> {
     #[error("Unexpected token: {0:?}. (Expected: {1:?}, Consumed: {2:?})")]
     UnexpectedToken(Token<'a>, Vec<String>, Vec<Token<'a>>),
     #[error(transparent)]
-    TokenError(#[from] TokenError)
+    TokenError(#[from] TokenError),
 }

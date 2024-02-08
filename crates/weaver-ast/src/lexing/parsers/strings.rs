@@ -91,7 +91,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::tokens::parsers::strings::string_literal;
+    use crate::lexing::parsers::strings::string_literal;
     use nom::Finish;
     use std::borrow::Cow;
 

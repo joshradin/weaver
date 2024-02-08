@@ -6,20 +6,19 @@ use std::str::FromStr;
 use derive_more::{Display, From as FromDerive};
 use serde::{Deserialize, Serialize};
 
-pub use identifier::Identifier;
-pub use literal::Literal;
 pub use expr::*;
 pub use from::*;
+pub use identifier::Identifier;
+pub use literal::Literal;
+mod expr;
 mod identifier;
 mod literal;
-mod expr;
 
 mod from;
 
-
 /// The query type
 #[derive(Debug, Clone, Serialize, Deserialize, FromDerive)]
-#[serde(rename_all="camelCase")]
+#[serde(rename_all = "camelCase")]
 pub enum Query {
     Explain(Box<Query>),
     Select(Select),
@@ -49,7 +48,7 @@ impl Query {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all="camelCase")]
+#[serde(rename_all = "camelCase")]
 pub enum ResultColumn {
     #[serde(rename = "*")]
     Wildcard,
@@ -57,24 +56,11 @@ pub enum ResultColumn {
     #[serde(untagged)]
     Expr {
         expr: Expr,
-        alias: Option<Identifier>
-    }
+        alias: Option<Identifier>,
+    },
 }
 
 /// Some type that references columns
 pub trait ReferencesCols {
-
     fn columns(&self) -> HashSet<String>;
-}
-
-/// Operator for where clauses
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-#[serde(rename_all="camelCase")]
-pub enum BinaryOp {
-    Eq,
-    Neq,
-    Greater,
-    Less,
-    GreaterEq,
-    LessEq,
 }

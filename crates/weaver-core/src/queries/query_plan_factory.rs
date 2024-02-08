@@ -68,9 +68,9 @@ impl QueryPlanFactory {
     ) -> Result<Vec<TableRef>, Error> {
         let mut emit = vec![];
         match query {
-            Query::Select(Select { from: table_ref, .. }) => {
-                emit.push(self.table_ref(table_ref, plan_context)?)
-            }
+            Query::Select(Select {
+                from: table_ref, ..
+            }) => emit.push(self.table_ref(table_ref, plan_context)?),
         }
         Ok(emit)
     }
@@ -88,7 +88,7 @@ impl QueryPlanFactory {
         let node = match query {
             Query::Select(Select {
                 columns,
-                              from: table_ref,
+                from: table_ref,
                 condition,
                 limit,
                 offset,

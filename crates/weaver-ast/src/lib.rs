@@ -1,14 +1,13 @@
 use crate::ast::Query;
 use crate::error::ParseQueryError;
 use crate::parsing::parse_query;
-use crate::tokens::Tokenizer;
+use lexing::Tokenizer;
 
 pub mod ast;
 pub mod error;
-pub mod tokens;
+pub mod lexing;
 
 mod parsing;
-
 
 #[derive(Debug)]
 pub struct QueryParser();
@@ -40,6 +39,14 @@ mod tests {
         }
 
         #[test]
+        fn parse_expression() {
+            static QUERY: &str = "SELECT 2+3*5, 15 as value2, age;";
+            let mut query_parser = QueryParser::new();
+            let q = query_parser.parse(QUERY).expect("could not parse");
+            println!("{}", serde_json::to_string_pretty(&q).unwrap());
+        }
+
+        #[test]
         fn parse_joined() {
             static QUERY: &str = r"
             SELECT u.*, p.pid, florg.*
@@ -52,7 +59,7 @@ mod tests {
                 ;";
             let mut query_parser = QueryParser::new();
             let q = query_parser.parse(QUERY).expect("could not parse");
-            println!("{q:#?}");
+            println!("{}", serde_json::to_string_pretty(&q).unwrap());
         }
     }
 }

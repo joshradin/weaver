@@ -10,10 +10,7 @@ use nom::{
 pub fn ignore_whitespace<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(
     parser: F,
 ) -> impl FnMut(&'a str) -> IResult<&'a str, (usize, O), E> {
-    tuple((
-        map(multispace0, str::len),
-        parser
-    ))
+    tuple((map(multispace0, str::len), parser))
 }
 
 pub fn ignore_case<'a, Error: ParseError<&'a str>>(
