@@ -10,7 +10,7 @@ use crate::error::ParseQueryError;
 use crate::QueryParser;
 pub use expr::*;
 pub use from::*;
-pub use identifier::Identifier;
+pub use identifier::{Identifier, UnresolvedColumnRef};
 pub use literal::Literal;
 
 mod expr;
@@ -61,5 +61,5 @@ pub enum ResultColumn {
 
 /// Some type that references columns
 pub trait ReferencesCols {
-    fn columns(&self) -> HashSet<(Option<String>, Option<String>, String)>;
+    fn columns(&self) -> HashSet<UnresolvedColumnRef>;
 }

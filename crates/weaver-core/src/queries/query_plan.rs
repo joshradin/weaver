@@ -1,8 +1,9 @@
-use std::collections::HashMap;
 use crate::dynamic_table::HasSchema;
+use crate::queries::query_cost::Cost;
 use crate::rows::KeyIndex;
 use crate::tables::table_schema::{ColumnDefinition, TableSchema};
 use crate::tables::TableRef;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct QueryPlan {
@@ -22,27 +23,35 @@ impl QueryPlan {
 
 #[derive(Debug)]
 pub struct QueryPlanNode {
-    pub cost: f64,
+    pub cost: Cost,
     pub rows: u64,
     pub kind: QueryPlanKind,
     /// The table schema at this point
     pub schema: TableSchema,
-    pub alias: Option<String>
+    pub alias: Option<String>,
 }
 
 impl QueryPlanNode {
     /// Tries to find the plan node with a given alias. Aliases are shadowed.
     pub fn get_alias(&self, alias: impl AsRef<str>) -> Option<&QueryPlanNode> {
         let alias = alias.as_ref();
-        if self.alias.as_ref().map(|node_a| node_a == alias).unwrap_or(false) {
-            return Some(self)
+        if self
+            .alias
+            .as_ref()
+            .map(|node_a| node_a == alias)
+            .unwrap_or(false)
+        {
+            return Some(self);
         }
         match &self.kind {
-            QueryPlanKind::SelectByKey { to_select, .. } => {
-                to_select.get_alias(alias)
-            }
-            _ => None
+            QueryPlanKind::SelectByKey { to_select, .. } => to_select.get_alias(alias),
+            _ => None,
         }
+    }
+
+    /// Gets the actual cost of the query plan node
+    pub fn cost(&self) -> f64 {
+        self.cost.get_cost(self.rows as usize)
     }
 }
 
@@ -65,5 +74,5 @@ pub enum QueryPlanKind {
     Project {
         columns: Vec<usize>,
         node: Box<QueryPlanNode>,
-    }
+    },
 }

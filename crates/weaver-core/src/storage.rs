@@ -9,11 +9,13 @@ use std::string::FromUtf8Error;
 use thiserror::Error;
 
 mod abstraction;
-pub use abstraction::{Paged, PagedVec};
+pub use abstraction::{Pager, VecPager};
 pub mod b_plus_tree;
 pub mod cells;
+pub mod file_pager;
 pub mod ram_file;
-pub mod slotted_page;
+pub mod slotted_pager;
+pub mod virtual_pager;
 
 /// Gets the standard page size of 4096 bytes
 pub static PAGE_SIZE: usize = 2 << 11;

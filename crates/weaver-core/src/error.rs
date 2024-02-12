@@ -18,7 +18,7 @@ use crate::db::server::socket::MainQueueItem;
 use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError, TableCol};
 use crate::key::KeyData;
 use crate::storage::cells::PageId;
-use crate::storage::slotted_page::PageType;
+use crate::storage::slotted_pager::PageType;
 use crate::storage::{ReadDataError, WriteDataError};
 
 #[derive(Debug, thiserror::Error)]
@@ -122,6 +122,10 @@ pub enum Error {
     NotFound(KeyData),
     #[error(transparent)]
     QueryParseError(#[from] ParseQueryError),
+    #[error("Unknown cost key: {0:?}")]
+    UnknownCostKey(String),
+    #[error("Attempted to query the cost table, but it was not loaded")]
+    CostTableNotLoaded,
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {

@@ -26,10 +26,10 @@ pub mod handshake {
     use crate::access_control::auth::context::AuthContext;
     use crate::access_control::auth::LoginContext;
     use crate::access_control::users::User;
-    use crate::cnxn::stream::WeaverStream;
-    use crate::cnxn::RemoteDbResp;
     use crate::common::stream_support::{packet_read, packet_write, Stream};
     use crate::data::values::Literal;
+    use crate::db::server::cnxn::stream::WeaverStream;
+    use crate::db::server::cnxn::RemoteDbResp;
     use crate::db::server::layers::packets::{DbReqBody, DbResp};
     use crate::db::server::socket::DbSocket;
     use crate::error::Error;
@@ -51,9 +51,10 @@ pub mod handshake {
             let mut login_ctx: LoginContext = packet_read(stream.transport().as_mut().unwrap())?;
             debug!("received login context: {:#?}", login_ctx);
             let tx = db_socket.start_tx()?;
-            let query = Query::parse(
-                &format!(r#"select user, host from weaver.users where user = '{}'"#, login_ctx.user),
-            )
+            let query = Query::parse(&format!(
+                r#"select user, host from weaver.users where user = '{}'"#,
+                login_ctx.user
+            ))
             .expect("failed to parse");
 
             let resp = db_socket

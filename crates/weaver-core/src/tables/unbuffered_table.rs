@@ -18,7 +18,7 @@ use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
 use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, Rows};
 use crate::storage::b_plus_tree::BPlusTree;
-use crate::storage::{Paged, PagedVec};
+use crate::storage::{Pager, VecPager};
 use crate::tables::table_schema::{ColumnDefinition, TableSchema};
 use crate::tx::{Tx, TxId, TX_ID_COLUMN};
 
@@ -27,14 +27,14 @@ struct RowId(u64);
 
 /// An in memory table
 #[derive(Debug)]
-pub struct UnbufferedTable<P: Paged + Sync + Send> {
+pub struct UnbufferedTable<P: Pager + Sync + Send> {
     schema: TableSchema,
     main_buffer: BPlusTree<P>,
     auto_incremented: HashMap<OwnedCol, OnceLock<AtomicI64>>,
     row_id: AtomicI64,
 }
 
-impl<P: Paged + Sync + Send> UnbufferedTable<P> {
+impl<P: Pager + Sync + Send> UnbufferedTable<P> {
     /// Creates a new, empty in memory table
     pub fn new(mut schema: TableSchema, paged: P, transactional: bool) -> Result<Self, Error>
     where
@@ -75,7 +75,7 @@ impl<P: Paged + Sync + Send> UnbufferedTable<P> {
     }
 }
 
-impl<P: Paged + Sync + Send> DynamicTable for UnbufferedTable<P>
+impl<P: Pager + Sync + Send> DynamicTable for UnbufferedTable<P>
 where
     Error: From<P::Err>,
 {
@@ -151,7 +151,7 @@ where
     }
 }
 
-impl<P: Paged + Sync + Send> HasSchema for UnbufferedTable<P>
+impl<P: Pager + Sync + Send> HasSchema for UnbufferedTable<P>
 where
     Error: From<P::Err>,
 {
@@ -160,7 +160,7 @@ where
     }
 }
 
-impl<P: Paged + Sync + Send> UnbufferedTable<P>
+impl<P: Pager + Sync + Send> UnbufferedTable<P>
 where
     Error: From<P::Err>,
 {

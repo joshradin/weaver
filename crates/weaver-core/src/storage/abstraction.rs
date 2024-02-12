@@ -15,14 +15,14 @@ use crate::common::track_dirty::Mad;
 use crate::storage::{ReadResult, StorageBackedData, WriteResult, PAGE_SIZE};
 
 /// Allows for getting pages of a fix size
-pub trait Paged {
+pub trait Pager {
     type Page<'a>: Page<'a>
     where
         Self: 'a;
     type PageMut<'a>: PageMut<'a>
     where
         Self: 'a;
-    type Err: Error + Into<crate::error::Error> + 'static;
+    type Err: Error + Into<crate::error::Error> + Send + Sync + 'static;
 
     /// Gets the size of pages that are allocated by this paged type
     fn page_size(&self) -> usize;
@@ -228,19 +228,19 @@ where
 
 /// An implementation over pages
 #[derive(Debug)]
-pub struct PagedVec {
+pub struct VecPager {
     pages: RwLock<Vec<Arc<RwLock<Box<[u8]>>>>>,
     usage: RwLock<HashMap<usize, Arc<AtomicI32>>>,
     page_len: usize,
 }
 
-impl Default for PagedVec {
+impl Default for VecPager {
     fn default() -> Self {
         Self::new(PAGE_SIZE)
     }
 }
 
-impl PagedVec {
+impl VecPager {
     /// Creates a new vec-paged with a given page len
     pub fn new(page_len: usize) -> Self {
         Self {
@@ -251,7 +251,7 @@ impl PagedVec {
     }
 }
 
-impl Paged for PagedVec {
+impl Pager for VecPager {
     type Page<'a> = SharedPage<'a>;
     type PageMut<'a> = SharedPageMut<'a>;
 

@@ -1,6 +1,6 @@
+use derive_more::Display;
 use std::borrow::Cow;
 use std::fmt::Formatter;
-use derive_more::Display;
 
 use nom::{Finish, Parser};
 use thiserror::Error;

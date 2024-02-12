@@ -20,9 +20,9 @@ use tracing::{debug_span, trace};
 /// A tcp stream that connects to a
 #[derive(Debug)]
 pub struct WeaverStream<T: Stream> {
-    pub(super) peer_addr: Option<SocketAddr>,
-    pub(super) local_addr: Option<SocketAddr>,
-    pub(super) socket: Option<Transport<T>>,
+    pub(crate) peer_addr: Option<SocketAddr>,
+    pub(crate) local_addr: Option<SocketAddr>,
+    pub(crate) socket: Option<Transport<T>>,
     localhost: bool,
     user: OnceLock<User>,
 }
@@ -44,7 +44,7 @@ impl<T: Stream> WeaverStream<T> {
     }
 
     /// Login using a given login context
-    pub(super) fn login(mut self, context: LoginContext) -> Result<WeaverStream<T>, Error> {
+    pub(crate) fn login(mut self, context: LoginContext) -> Result<WeaverStream<T>, Error> {
         handshake_client(&mut self)?;
         Ok(client_auth(self, context)?)
     }

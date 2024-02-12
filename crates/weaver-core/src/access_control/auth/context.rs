@@ -2,8 +2,8 @@
 
 use crate::access_control::auth::error::{AuthInitError, AuthInitErrorKind};
 use crate::access_control::auth::secured::Secured;
-use crate::cnxn::transport::Transport;
 use crate::common::stream_support::Stream;
+use crate::db::server::cnxn::transport::Transport;
 use crate::error::Error;
 use openssl::pkey::{PKey, Private};
 use openssl::rsa::Rsa;

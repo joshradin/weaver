@@ -5,7 +5,7 @@ use std::thread::JoinHandle;
 
 use crossbeam::channel::{bounded, Sender};
 use eyre::{eyre, Report};
-use log::{debug, error};
+use log::{debug, error, warn};
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::init::AuthConfig;
 use weaver_core::access_control::auth::LoginContext;
@@ -25,7 +25,7 @@ pub fn start_server(
     let socket_path = in_path.join("weaverdb.socket");
     let mut weaver = WeaverDb::new(
         num_workers.into().unwrap_or(1),
-        WeaverDbCore::new()?,
+        WeaverDbCore::with_path(in_path)?,
         AuthConfig {
             key_store: in_path.join("keys"),
             force_recreate: false,
@@ -38,7 +38,7 @@ pub fn start_server(
         let recv = recv;
         let _weaver = weaver;
         let _ = recv.recv();
-        println!("shutting down weaver");
+        warn!("shutting down weaver");
         Ok(())
     });
     Ok(WeaverDbInstance {

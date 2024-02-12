@@ -43,10 +43,11 @@ fn main() -> eyre::Result<()> {
         }
     };
 
-
-    let query = Query::parse(r"
+    let query = Query::parse(
+        r"
     select * from system.process
-    ")?;
+    ",
+    )?;
 
     let (rows, duration) = connection.query(&query)?;
     write_rows(stdout(), rows, duration)?;

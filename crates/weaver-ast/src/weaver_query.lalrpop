@@ -99,8 +99,22 @@ Expr: ast::Expr = {
      #[precedence(level="0")]
     ":" <"int"> =>  ast::Expr::BindParameter{ parameter: Some(<>)},
      #[precedence(level="0")]
-    <table_name: (<Table> ".")?> <column_name: Identifier> => ast::Expr::Column {
-        schema_name: table_name.as_ref().and_then(|(schema, _)| schema.clone()), table_name: table_name.map(|t| t.1), column_name
+    <table_name: (<Table> ".")?> <column_name: Identifier> => {
+        let column_ref = match table_name {
+            Some((Some(schema), table)) => {
+                ast::UnresolvedColumnRef::with_schema(schema, table, column_name)
+            }
+            Some((None, table)) => {
+                ast::UnresolvedColumnRef::with_table(table, column_name)
+            }
+            None => {
+                ast::UnresolvedColumnRef::with_column(column_name)
+            }
+            _ => unreachable!()
+        };
+        ast::Expr::Column {
+            column: column_ref
+        }
     },
     #[precedence(level="1")]
     "not" <e: Expr> => ast::Expr::Unary { op: ast::UnaryOp::Not, expr: Box::new(e) },

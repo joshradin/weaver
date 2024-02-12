@@ -1,8 +1,8 @@
 use crate::ast::Query;
 use crate::error::ParseQueryError;
+use crate::lexing::Token;
 use crate::parsing::parse_query;
 use lexing::Tokenizer;
-use crate::lexing::Token;
 
 pub mod ast;
 pub mod error;
@@ -23,15 +23,18 @@ impl QueryParser {
     pub fn parse(&mut self, query: &str) -> Result<Query, ParseQueryError> {
         let tokenizer = Tokenizer::new(query);
         match parse_query(query, tokenizer) {
-            Err(ParseQueryError::Incomplete(buffer,expected)) => {
+            Err(ParseQueryError::Incomplete(buffer, expected)) => {
                 if expected.contains(&String::from("\";\"")) {
                     let tokenizer = Tokenizer::new(query);
-                    parse_query(query, tokenizer.into_iter().chain([Ok((0, Token::SemiColon, 0))]))
+                    parse_query(
+                        query,
+                        tokenizer.into_iter().chain([Ok((0, Token::SemiColon, 0))]),
+                    )
                 } else {
                     Err(ParseQueryError::Incomplete(expected, buffer))
                 }
             }
-            other => other
+            other => other,
         }
     }
 }

@@ -2,7 +2,6 @@
 pub use weaver_ast::ast;
 pub mod access_control;
 pub mod cancellable_task;
-pub mod cnxn;
 pub mod common;
 pub mod conversion;
 pub mod data;
@@ -16,3 +15,5 @@ pub mod rows;
 pub mod storage;
 pub mod tables;
 pub mod tx;
+
+pub use db::server::cnxn;

@@ -14,24 +14,24 @@ use tracing::{error, instrument, trace, warn};
 use crate::data::row::OwnedRow;
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
-use crate::storage::abstraction::Paged;
+use crate::storage::abstraction::Pager;
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
-use crate::storage::slotted_page::{PageType, SlottedPageAllocator};
+use crate::storage::slotted_pager::{PageType, SlottedPager};
 use crate::storage::{ReadDataError, WriteDataError};
 
 /// A BPlusTree that uses a given pager
-pub struct BPlusTree<P: Paged> {
-    allocator: Arc<SlottedPageAllocator<P>>,
+pub struct BPlusTree<P: Pager> {
+    allocator: Arc<SlottedPager<P>>,
     /// determined initially by scanning up parents
     root: RwLock<Option<PageId>>,
 }
 
-impl<P: Paged> Debug for BPlusTree<P> {
+impl<P: Pager> Debug for BPlusTree<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut mapping = BTreeMap::new();
         let guard = &self.allocator;
         for i in 0..guard.len() {
-            if let Ok(page) = Paged::get(&**guard, i) {
+            if let Ok(page) = Pager::get(&**guard, i) {
                 mapping.insert(
                     page.page_id(),
                     (page.page_type(), page.parent(), page.all()),
@@ -45,15 +45,15 @@ impl<P: Paged> Debug for BPlusTree<P> {
     }
 }
 
-impl<P: Paged> BPlusTree<P>
+impl<P: Pager> BPlusTree<P>
 where
     Error: From<P::Err>,
 {
     /// Creates a new bplus tree around a pager
     pub fn new(pager: P) -> Self {
-        let mut allocator = SlottedPageAllocator::new(pager);
+        let mut allocator = SlottedPager::new(pager);
         let root = if allocator.len() > 0 {
-            let mut ptr = Paged::get(&allocator, 0)
+            let mut ptr = Pager::get(&allocator, 0)
                 .unwrap_or_else(|_| panic!("should not fail because len > 0"));
             while let Some(parent) = ptr.parent() {
                 ptr = allocator
@@ -745,18 +745,18 @@ mod tests {
     use crate::data::serde::deserialize_data_untyped;
     use crate::data::types::Type;
     use crate::data::values::Literal;
-    use crate::storage::abstraction::PagedVec;
+    use crate::storage::abstraction::VecPager;
 
     use super::*;
 
     #[test]
     fn create_b_plus_tree() {
-        let _ = BPlusTree::new(PagedVec::new(1028));
+        let _ = BPlusTree::new(VecPager::new(1028));
     }
 
     #[test]
     fn insert_into_b_plus_tree() {
-        let btree = BPlusTree::new(PagedVec::new(128));
+        let btree = BPlusTree::new(VecPager::new(128));
         btree.insert([1], [1, 2, 3]).expect("could not insert");
         let raw = btree.get(&[1].into()).unwrap().unwrap();
         /* trace!("raw: {:x?}", raw); */
@@ -769,7 +769,7 @@ mod tests {
 
     #[test]
     fn insert_into_b_plus_tree_many() {
-        let btree = BPlusTree::new(PagedVec::new(180));
+        let btree = BPlusTree::new(VecPager::new(180));
 
         const MAX: i64 = 256;
         for i in 0..MAX {
@@ -795,7 +795,7 @@ mod tests {
 
     #[test]
     fn insert_into_b_plus_tree_many_rand_string() {
-        let btree = BPlusTree::new(PagedVec::new(1028));
+        let btree = BPlusTree::new(VecPager::new(1028));
 
         const MAX: i64 = 512;
         let mut strings = vec![];
@@ -829,7 +829,7 @@ mod tests {
 
     #[test]
     fn insert_into_b_plus_tree_many_inc_string() {
-        let btree = BPlusTree::new(PagedVec::new(4096));
+        let btree = BPlusTree::new(VecPager::new(4096));
 
         const MAX: i64 = 512;
         let mut strings = vec![];
@@ -859,7 +859,7 @@ mod tests {
 
     #[test]
     fn insert_into_b_plus_tree_many_rand() {
-        let btree = BPlusTree::new(PagedVec::new(2048));
+        let btree = BPlusTree::new(VecPager::new(2048));
         for i in 1..=(1024) {
             if let Err(e) = btree.insert(
                 [rand::thread_rng().gen_range(-256000..=256000)],
@@ -875,7 +875,7 @@ mod tests {
 
     #[test]
     fn insert_into_b_plus_tree_many_rand_floats() {
-        let btree = BPlusTree::new(PagedVec::new(2048));
+        let btree = BPlusTree::new(VecPager::new(2048));
         let mut rng = rand::thread_rng();
         for i in 1..=(1024) {
             let k = rng.gen_range(-1000.0..1000.0);

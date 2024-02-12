@@ -19,8 +19,10 @@ use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::tcp::WeaverTcpListener;
 use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::common::stream_support::Stream;
+use crate::db::core::fs::load_schema;
 use crate::db::core::WeaverDbCore;
-use crate::db::server::init_system_tables::init_system_tables;
+use crate::db::server::init::system::init_system_tables;
+use crate::db::server::init::weaver::init_weaver_schema;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
 use crate::db::server::layers::{Layer, Layers};
@@ -34,6 +36,7 @@ use crate::queries::executor::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
 use crate::tx::coordinator::TxCoordinator;
+use crate::tx::Tx;
 use weaver_ast::ast::Query;
 
 use super::layers::packets::{IntoDbResponse, Packet};
@@ -71,6 +74,7 @@ impl WeaverDb {
         shard: WeaverDbCore,
         auth_config: AuthConfig,
     ) -> Result<Self, Error> {
+        let path = shard.path().to_path_buf();
         let auth_context = init_auth_context(&auth_config)?;
         let inner = Arc::new_cyclic(move |weak| {
             let mut shard = shard;
@@ -167,7 +171,24 @@ impl WeaverDb {
         });
 
         let mut db = WeaverDb { shared: inner };
+        // initializes system tables
         init_system_tables(&mut db)?;
+        // initialize or load weaver schema
+        let weaver_schema_dir = path.join("weaver");
+        if weaver_schema_dir.exists() {
+            if !weaver_schema_dir.is_dir() {
+                panic!("weaver must be a directory")
+            }
+            let socket = db.connect();
+            let _ = socket
+                .send(DbReq::on_core(|core, _| {
+                    load_schema(core, weaver_schema_dir)
+                }))
+                .join()??
+                .to_result()?;
+        } else {
+            init_weaver_schema(&mut db)?;
+        }
         Ok(db)
     }
 
@@ -195,13 +216,14 @@ impl WeaverDb {
 
     pub fn to_plan<'a>(
         &self,
+        tx: &Tx,
         query: &Query,
         plan_context: impl Into<Option<&'a WeaverProcessInfo>>,
     ) -> Result<QueryPlan, Error> {
         info!("query to plan");
         let factory = QueryPlanFactory::new(self.weak());
         debug!("created query factory: {:?}", factory);
-        let plan = factory.to_plan(query, plan_context)?;
+        let plan = factory.to_plan(tx, query, plan_context)?;
         warn!("plan optimization not yet implemented");
 
         Ok(plan)
@@ -371,7 +393,7 @@ impl WeaverDb {
             DbReqBody::OnServer(cb) => (cb)(self, cancel_recv),
             DbReqBody::Ping => Ok(DbResp::Pong),
             DbReqBody::TxQuery(tx, ref query) => {
-                let ref plan = match self.to_plan(query, ctx.as_ref()).map_err(|e| {
+                let ref plan = match self.to_plan(&tx, query, ctx.as_ref()).map_err(|e| {
                     error!("creating plan resulted in error: {}", e);
                     e
                 }) {

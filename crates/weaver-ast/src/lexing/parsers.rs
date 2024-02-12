@@ -79,9 +79,6 @@ fn literal<'a>(input: &'a str) -> IResult<&str, Token> {
         })(input);
         token
     };
-
-    println!("checking literal: {input:?}");
-
     match input.chars().next().unwrap() {
         '0'..='9' => map_parser(
             alt((

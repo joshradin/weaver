@@ -5,17 +5,18 @@ use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, StorageEngineFactory, Table};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
-use crate::storage::ram_file::PagedFile;
+use crate::storage::file_pager::FilePager;
 use crate::tables::table_schema::TableSchema;
 use crate::tables::unbuffered_table::UnbufferedTable;
 use crate::tx::Tx;
 use std::path::{Path, PathBuf};
+use tracing::debug;
 
 pub const B_PLUS_TREE_FILE_KEY: &'static str = "weaveBPTF";
 
-/// A table stored in a [PagedFile]
+/// A table stored in a [FilePager]
 #[derive(Debug)]
-pub struct BptfTable(UnbufferedTable<PagedFile>);
+pub struct BptfTable(UnbufferedTable<FilePager>);
 
 impl BptfTable {
     /// Creates a table ifile
@@ -80,7 +81,10 @@ impl BptfTableFactory {
 }
 
 impl StorageEngineFactory for BptfTableFactory {
-    fn open(&self, schema: &TableSchema, _core: &WeaverDbCore) -> Result<Table, Error> {
+    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, Error> {
+        let file_location = core.path().join(schema.schema()).join(schema.name());
+        debug!("opening Bptf table at {file_location:?} if present...");
+
         todo!()
     }
 }

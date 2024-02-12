@@ -6,8 +6,8 @@ use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::time::Duration;
 
 use crate::access_control::users::User;
-use crate::cnxn::stream::WeaverStream;
-use crate::cnxn::transport::{StreamSniffer, Transport};
+use crate::db::server::cnxn::stream::WeaverStream;
+use crate::db::server::cnxn::transport::{StreamSniffer, Transport};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 

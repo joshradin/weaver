@@ -7,7 +7,7 @@ use weaver_core::data::row::Row;
 use weaver_core::data::values::Literal;
 use weaver_core::key::KeyData;
 use weaver_core::storage::b_plus_tree::BPlusTree;
-use weaver_core::storage::PagedVec;
+use weaver_core::storage::VecPager;
 
 fn insert_rand(count: usize) {
     insert(
@@ -29,7 +29,7 @@ fn insert<V: Into<Literal>, I: IntoIterator<Item = V>>(iter: I) {
         .with_thread_names(true)
         .try_init();
 
-    let temp = PagedVec::new(4096);
+    let temp = VecPager::new(4096);
     let mut btree = BPlusTree::new(temp);
 
     let mut keys = vec![];

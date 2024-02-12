@@ -423,9 +423,7 @@ pub struct TableSchemaBuilder {
     engine: Option<EngineKey>,
 }
 
-impl TableSchemaBuilder {
-
-}
+impl TableSchemaBuilder {}
 
 impl TableSchemaBuilder {
     pub fn new(schema: impl AsRef<str>, name: impl AsRef<str>) -> Self {
@@ -455,7 +453,7 @@ impl TableSchemaBuilder {
         Ok(self)
     }
 
-    pub fn column_definition(&mut self, column_definition: ColumnDefinition) -> &mut Self {
+    pub fn column_definition(mut self, column_definition: ColumnDefinition) -> Self {
         self.columns.push(column_definition);
         self
     }

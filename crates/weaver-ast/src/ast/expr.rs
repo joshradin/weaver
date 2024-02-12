@@ -6,17 +6,15 @@ use std::fmt::{Debug, Formatter};
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
+use crate::ast::identifier::UnresolvedColumnRef;
 use crate::ast::literal::Binary;
-use crate::ast::{Identifier, Literal, ReferencesCols};
+use crate::ast::{Literal, ReferencesCols};
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Expr {
-    #[serde(rename_all = "camelCase")]
     Column {
-        schema_name: Option<Identifier>,
-        table_name: Option<Identifier>,
-        column_name: Identifier,
+        column: UnresolvedColumnRef,
     },
     Literal {
         literal: Literal,
@@ -38,23 +36,8 @@ pub enum Expr {
 impl Display for Expr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Column {
-                schema_name,
-                table_name,
-                column_name,
-            } => {
-                write!(
-                    f,
-                    "{}{}{column_name}",
-                    schema_name
-                        .as_ref()
-                        .map(|s| format!("{s}."))
-                        .unwrap_or_default(),
-                    table_name
-                        .as_ref()
-                        .map(|s| format!("{s}."))
-                        .unwrap_or_default()
-                )
+            Expr::Column { column } => {
+                write!(f, "{}", column)
             }
             Expr::Literal { literal } => {
                 write!(f, "{}", literal)
@@ -205,17 +188,9 @@ impl Expr {
 }
 
 impl ReferencesCols for Expr {
-    fn columns(&self) -> HashSet<(Option<String>, Option<String>, String)> {
+    fn columns(&self) -> HashSet<UnresolvedColumnRef> {
         match self {
-            Expr::Column {
-                schema_name,
-                table_name,
-                column_name,
-            } => HashSet::from([(
-                schema_name.as_ref().map(ToString::to_string),
-                table_name.as_ref().map(ToString::to_string),
-                column_name.to_string(),
-            )]),
+            Expr::Column { column } => HashSet::from([column.clone()]),
             Expr::Unary { op: _, expr: expr } => expr.columns(),
             Expr::Binary {
                 left: l,

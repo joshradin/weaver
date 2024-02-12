@@ -4,20 +4,20 @@ use crate::data::row::Row;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
-use crate::storage::PagedVec;
+use crate::storage::VecPager;
 use crate::tables::table_schema::TableSchema;
 use crate::tables::unbuffered_table::UnbufferedTable;
 use crate::tx::{Tx, TX_ID_COLUMN};
 use derive_more::Deref;
 
 #[derive(Debug, Deref)]
-pub struct InMemoryTable(UnbufferedTable<PagedVec>);
+pub struct InMemoryTable(UnbufferedTable<VecPager>);
 
 impl InMemoryTable {
     pub fn new(schema: TableSchema) -> Result<Self, Error> {
         Ok(InMemoryTable(UnbufferedTable::new(
             schema,
-            PagedVec::default(),
+            VecPager::default(),
             true,
         )?))
     }
@@ -25,7 +25,7 @@ impl InMemoryTable {
     pub fn non_transactional(schema: TableSchema) -> Result<Self, Error> {
         Ok(InMemoryTable(UnbufferedTable::new(
             schema,
-            PagedVec::default(),
+            VecPager::default(),
             false,
         )?))
     }
