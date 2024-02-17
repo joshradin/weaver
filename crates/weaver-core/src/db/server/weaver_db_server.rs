@@ -19,8 +19,7 @@ use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::tcp::WeaverTcpListener;
 use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::common::stream_support::Stream;
-use crate::db::core::fs::load_schema;
-use crate::db::core::WeaverDbCore;
+use crate::db::core::{bootstrap, WeaverDbCore};
 use crate::db::server::init::system::init_system_tables;
 use crate::db::server::init::weaver::init_weaver_schema;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
@@ -175,20 +174,19 @@ impl WeaverDb {
         init_system_tables(&mut db)?;
         // initialize or load weaver schema
         let weaver_schema_dir = path.join("weaver");
-        if weaver_schema_dir.exists() {
+        if !weaver_schema_dir.exists() {
             if !weaver_schema_dir.is_dir() {
                 panic!("weaver must be a directory")
             }
             let socket = db.connect();
             let _ = socket
-                .send(DbReq::on_core(|core, _| {
-                    load_schema(core, weaver_schema_dir)
+                .send(DbReq::on_core(move |core, _| {
+                    bootstrap(core, &weaver_schema_dir)
                 }))
                 .join()??
                 .to_result()?;
-        } else {
-            init_weaver_schema(&mut db)?;
         }
+        init_weaver_schema(&mut db)?;
         Ok(db)
     }
 

@@ -34,7 +34,9 @@ pub struct UnbufferedTable<P: Pager + Sync + Send> {
     row_id: AtomicI64,
 }
 
-impl<P: Pager + Sync + Send> UnbufferedTable<P> {
+impl<P: Pager + Sync + Send> UnbufferedTable<P>
+    where
+        Error: From<P::Err>,{
     /// Creates a new, empty in memory table
     pub fn new(mut schema: TableSchema, paged: P, transactional: bool) -> Result<Self, Error>
     where
@@ -56,7 +58,7 @@ impl<P: Pager + Sync + Send> UnbufferedTable<P> {
         }
 
         let auto_incremented = schema
-            .columns()
+            .all_columns()
             .iter()
             .filter_map(|f| f.auto_increment().map(|i| (f.name(), i)))
             .map(|(col, i)| (col.to_owned(), OnceLock::new()))
@@ -73,7 +75,36 @@ impl<P: Pager + Sync + Send> UnbufferedTable<P> {
     pub fn schema(&self) -> &TableSchema {
         &self.schema
     }
+
+    fn all_rows(&self, tx: &Tx) -> Result<OwnedRows, Error> {
+        self.main_buffer
+            .all()?
+            .into_iter()
+            .map(|bytes| self.schema.decode(&bytes))
+            .filter(|row| {
+                if let Ok(row) = row {
+                    let tx_id = self
+                        .schema
+                        .column_index(TX_ID_COLUMN)
+                        .and_then(|tx_col| row.get(tx_col))
+                        .and_then(|tx| tx.int_value())
+                        .map(|tx| TxId::from(tx));
+                    let can_see = tx_id.map(|ref i| tx.can_see(i)).unwrap_or(true);
+                    trace!(
+                        "checking if row {:?} (tx_id: {tx_id:?}) can be seen by tx {} -> {can_see}",
+                        row,
+                        tx
+                    );
+                    can_see
+                } else {
+                    true
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(|rows| OwnedRows::new(self.schema.clone(), rows))
+    }
 }
+
 
 impl<P: Pager + Sync + Send> DynamicTable for UnbufferedTable<P>
 where
@@ -120,8 +151,33 @@ where
         if key_def.primary() {
             match key.kind() {
                 KeyIndexKind::All => Ok(Box::new(self.all_rows(tx)?)),
-                KeyIndexKind::Range { .. } => {
-                    todo!()
+                KeyIndexKind::Range { low, high } => {
+                    let rows = self.main_buffer.range(KeyDataRange(low.clone(), high.clone()))?
+                        .into_iter()
+                        .map(|bytes| self.schema.decode(&bytes))
+                        .filter(|row: &Result<OwnedRow, Error>| {
+                            if let Ok(row) = row {
+                                println!("row: {row:?}");
+                                let tx_id = self
+                                    .schema
+                                    .column_index(TX_ID_COLUMN)
+                                    .and_then(|tx_col| row.get(tx_col))
+                                    .and_then(|tx| tx.int_value())
+                                    .map(|tx| TxId::from(tx));
+                                let can_see = tx_id.map(|ref i| tx.can_see(i)).unwrap_or(true);
+                                trace!(
+                            "checking if row {:?} (tx_id: {tx_id:?}) can be seen by tx {} -> {can_see}",
+                            row,
+                            tx
+                        );
+                                can_see
+                            } else {
+                                true
+                            }
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                        .map(|rows| OwnedRows::new(self.schema.clone(), rows))?;
+                    Ok(Box::new(rows))
                 }
                 KeyIndexKind::One(id) => Ok(todo!()),
             }
@@ -157,38 +213,5 @@ where
 {
     fn schema(&self) -> &TableSchema {
         &self.schema
-    }
-}
-
-impl<P: Pager + Sync + Send> UnbufferedTable<P>
-where
-    Error: From<P::Err>,
-{
-    fn all_rows(&self, tx: &Tx) -> Result<OwnedRows, Error> {
-        self.main_buffer
-            .all()?
-            .into_iter()
-            .map(|bytes| self.schema.decode(&bytes))
-            .filter(|row| {
-                if let Ok(row) = row {
-                    let tx_id = self
-                        .schema
-                        .column_index(TX_ID_COLUMN)
-                        .and_then(|tx_col| row.get(tx_col))
-                        .and_then(|tx| tx.int_value())
-                        .map(|tx| TxId::from(tx));
-                    let can_see = tx_id.map(|ref i| tx.can_see(i)).unwrap_or(true);
-                    trace!(
-                        "checking if row {:?} (tx_id: {tx_id:?}) can be seen by tx {} -> {can_see}",
-                        row,
-                        tx
-                    );
-                    can_see
-                } else {
-                    true
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map(|rows| OwnedRows::new(self.schema.clone(), rows))
     }
 }

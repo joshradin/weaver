@@ -4,10 +4,11 @@ use tracing::level_filters::LevelFilter;
 use weaver_core::access_control::auth::init::AuthConfig;
 use weaver_core::data::row::Row;
 use weaver_core::data::types::Type;
-use weaver_core::data::values::Literal;
+use weaver_core::data::values::DbVal;
 use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::layers::packets::{DbReqBody, DbResp, IntoDbResponse};
 use weaver_core::db::server::WeaverDb;
+use weaver_core::dynamic_table::DynamicTable;
 use weaver_core::error::Error;
 use weaver_core::rows::Rows;
 use weaver_core::tables::table_schema::TableSchema;
@@ -30,13 +31,13 @@ fn transactions_in_memory() -> Result<(), Error> {
                     .column("name", Type::String(u16::MAX), true, None, None)?
                     .build()?;
                 db.open_table(schema)?;
-                let table = db.get_table("default", "in_mem").unwrap();
+                let table = db.get_open_table("default", "in_mem").unwrap();
                 {
                     let tx1 = db.start_transaction();
                     table
                         .insert(
                             &tx1,
-                            Row::from([Literal::Integer(0), Literal::from("Hello".to_string())]),
+                            Row::from([DbVal::Integer(0), DbVal::from("Hello".to_string())]),
                         )
                         .expect("could not insert");
 
@@ -44,7 +45,7 @@ fn transactions_in_memory() -> Result<(), Error> {
                     table
                         .insert(
                             &tx2,
-                            Row::from([Literal::Integer(1), Literal::from("Hello".to_string())]),
+                            Row::from([DbVal::Integer(1), DbVal::from("Hello".to_string())]),
                         )
                         .expect("could not insert");
 

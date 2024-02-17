@@ -11,7 +11,7 @@ use weaver_ast::error::ParseQueryError;
 use crate::access_control::auth::error::AuthInitError;
 use crate::cancellable_task::Cancelled;
 use crate::data::types::Type;
-use crate::data::values::Literal;
+use crate::data::values::DbVal;
 use crate::db::server::layers::packets::{DbResp, IntoDbResponse};
 use crate::db::server::processes::WeaverPid;
 use crate::db::server::socket::MainQueueItem;
@@ -19,6 +19,7 @@ use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError, TableCol};
 use crate::key::KeyData;
 use crate::storage::cells::PageId;
 use crate::storage::slotted_pager::PageType;
+use crate::storage::virtual_pager::VirtualPagerError;
 use crate::storage::{ReadDataError, WriteDataError};
 
 #[derive(Debug, thiserror::Error)]
@@ -26,7 +27,7 @@ pub enum Error {
     #[error("Illegal auto increment: {reason}")]
     IllegalAutoIncrement { reason: String },
     #[error("Unexpected value of type found. (expected {expected:?}, received: {actual:?})")]
-    TypeError { expected: Type, actual: Literal },
+    TypeError { expected: Type, actual: DbVal },
     #[error("Illegal definition for column {col:?}: {reason}")]
     IllegalColumnDefinition { col: OwnedCol, reason: Box<Error> },
     #[error("Expected {expected} columns, but found {actual}")]
@@ -126,6 +127,9 @@ pub enum Error {
     UnknownCostKey(String),
     #[error("Attempted to query the cost table, but it was not loaded")]
     CostTableNotLoaded,
+
+    #[error(transparent)]
+    VirtualPagerError(#[from] VirtualPagerError),
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {

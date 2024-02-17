@@ -1,7 +1,7 @@
 //! Transactions
 
 use std::collections::BTreeSet;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
 use crossbeam::channel::{bounded, Receiver, Sender};
@@ -24,7 +24,6 @@ pub static TX_ID_COLUMN: Col<'static> = "@@TX_ID";
 
 /// The id of the a transaction
 #[derive(
-    Debug,
     Default,
     Ord,
     PartialOrd,
@@ -40,6 +39,12 @@ pub static TX_ID_COLUMN: Col<'static> = "@@TX_ID";
     Display,
 )]
 pub struct TxId(u64);
+
+impl Debug for TxId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TxId({})", self.0)
+    }
+}
 
 impl TxId {
     /// Checks if this id would be visible within a transaction
@@ -82,6 +87,7 @@ pub struct Tx {
 
     lock: Arc<Mutex<()>>,
 }
+
 
 impl Tx {
     /// Gets the identifier of this transaction

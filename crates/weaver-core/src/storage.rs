@@ -16,6 +16,7 @@ pub mod file_pager;
 pub mod ram_file;
 pub mod slotted_pager;
 pub mod virtual_pager;
+pub mod encrypted_pager;
 
 /// Gets the standard page size of 4096 bytes
 pub static PAGE_SIZE: usize = 2 << 11;

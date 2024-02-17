@@ -45,6 +45,9 @@ fs2 = "0.4.3"
 weaver-ast = { version = "0.0.0", path = "../weaver-ast" }
 ptree = { version = "0.4.0", default-features = false }
 rayon = "1.8.1"
+lru = "0.12.2"
+md5 = "0.7.0"
+chacha20poly1305 = { version = "0.10.1", features = ["std"] }
 
 
 [dev-dependencies]

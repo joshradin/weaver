@@ -9,7 +9,7 @@ use weaver_ast::ast;
 /// A single value within a row
 #[derive(Clone, Deserialize, Serialize, From)]
 #[serde(untagged)]
-pub enum Literal {
+pub enum DbVal {
     String(String, u16),
     Binary(Vec<u8>, u16),
     Integer(i64),
@@ -18,7 +18,7 @@ pub enum Literal {
     Null,
 }
 
-impl Literal {
+impl DbVal {
     /// If this is an int value, returns as an int
     pub fn int_value(&self) -> Option<i64> {
         if let Self::Integer(i) = self {
@@ -30,12 +30,12 @@ impl Literal {
 
     pub fn value_type(&self) -> Option<Type> {
         Some(match self {
-            &Literal::String(_, max_len) => Type::String(max_len),
-            &Literal::Binary(_, max_len) => Type::Binary(max_len),
-            Literal::Integer(_) => Type::Integer,
-            Literal::Boolean(_) => Type::Boolean,
-            Literal::Float(_) => Type::Float,
-            Literal::Null => {
+            &DbVal::String(_, max_len) => Type::String(max_len),
+            &DbVal::Binary(_, max_len) => Type::Binary(max_len),
+            DbVal::Integer(_) => Type::Integer,
+            DbVal::Boolean(_) => Type::Boolean,
+            DbVal::Float(_) => Type::Float,
+            DbVal::Null => {
                 return None;
             }
         })
@@ -50,102 +50,102 @@ impl Literal {
     }
 }
 
-impl AsRef<Literal> for Literal {
-    fn as_ref(&self) -> &Literal {
+impl AsRef<DbVal> for DbVal {
+    fn as_ref(&self) -> &DbVal {
         self
     }
 }
-impl From<ast::Literal> for Literal {
+impl From<ast::Literal> for DbVal {
     fn from(value: ast::Literal) -> Self {
         match value {
-            ast::Literal::String(s) => Literal::String(s.to_string(), u16::MAX),
-            ast::Literal::Integer(i) => Literal::Integer(i),
-            ast::Literal::Float(f) => Literal::Float(f),
-            ast::Literal::Boolean(b) => Literal::Boolean(b),
-            ast::Literal::Binary(binary) => Literal::Binary(binary.into(), u16::MAX),
-            ast::Literal::Null => Literal::Null,
+            ast::Literal::String(s) => DbVal::String(s.to_string(), u16::MAX),
+            ast::Literal::Integer(i) => DbVal::Integer(i),
+            ast::Literal::Float(f) => DbVal::Float(f),
+            ast::Literal::Boolean(b) => DbVal::Boolean(b),
+            ast::Literal::Binary(binary) => DbVal::Binary(binary.into(), u16::MAX),
+            ast::Literal::Null => DbVal::Null,
         }
     }
 }
-impl From<&str> for Literal {
+impl From<&str> for DbVal {
     fn from(value: &str) -> Self {
         Self::string(value, None)
     }
 }
 
-impl From<&String> for Literal {
+impl From<&String> for DbVal {
     fn from(value: &String) -> Self {
         Self::string(value, None)
     }
 }
 
-impl From<String> for Literal {
+impl From<String> for DbVal {
     fn from(value: String) -> Self {
         Self::string(value, None)
     }
 }
-impl Display for Literal {
+impl Display for DbVal {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::String(s, _) => {
+            DbVal::String(s, _) => {
                 write!(f, "{s}")
             }
-            Literal::Binary(b, _) => {
+            DbVal::Binary(b, _) => {
                 write!(
                     f,
                     "{}",
                     b.iter().map(|s| format!("{:x}", s)).collect::<String>()
                 )
             }
-            Literal::Integer(i) => {
+            DbVal::Integer(i) => {
                 write!(f, "{i}")
             }
-            Literal::Boolean(b) => {
+            DbVal::Boolean(b) => {
                 write!(f, "{b}")
             }
-            Literal::Float(fl) => {
+            DbVal::Float(fl) => {
                 write!(f, "{fl}")
             }
-            Literal::Null => {
+            DbVal::Null => {
                 write!(f, "null")
             }
         }
     }
 }
 
-impl Debug for Literal {
+impl Debug for DbVal {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::String(s, _) => {
+            DbVal::String(s, _) => {
                 write!(f, "{s:?}")
             }
-            Literal::Binary(b, _) => {
+            DbVal::Binary(b, _) => {
                 write!(
                     f,
                     "b\"{}\"",
                     b.iter().map(|s| format!("{:x}", s)).collect::<String>()
                 )
             }
-            Literal::Integer(i) => {
+            DbVal::Integer(i) => {
                 write!(f, "{i}_i64")
             }
-            Literal::Boolean(b) => {
+            DbVal::Boolean(b) => {
                 write!(f, "{b}")
             }
-            Literal::Float(fl) => {
+            DbVal::Float(fl) => {
                 write!(f, "{fl}_f64")
             }
-            Literal::Null => {
+            DbVal::Null => {
                 write!(f, "null")
             }
         }
     }
 }
 
-impl PartialEq for Literal {
+impl PartialEq for DbVal {
     fn eq(&self, other: &Self) -> bool {
-        use crate::data::Literal::Null;
-        use Literal::*;
+        use crate::data::DbVal::Null;
+        use DbVal::*;
         match (self, other) {
             (String(l, _), String(r, _)) => l == r,
             (Binary(l, _), Binary(r, _)) => l == r,
@@ -158,12 +158,12 @@ impl PartialEq for Literal {
     }
 }
 
-impl Eq for Literal {}
+impl Eq for DbVal {}
 
-impl PartialOrd for Literal {
+impl PartialOrd for DbVal {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use crate::data::Literal::Null;
-        use Literal::*;
+        use crate::data::DbVal::Null;
+        use DbVal::*;
         let emit = Some(match (self, other) {
             (String(l, l_max_len), String(r, r_max_len)) => l.cmp(&r),
             (Binary(l, _), Binary(r, _)) => l.cmp(r),
@@ -179,22 +179,22 @@ impl PartialOrd for Literal {
     }
 }
 
-impl Hash for Literal {
+impl Hash for DbVal {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Literal::String(s, _) => s.hash(state),
-            Literal::Binary(s, _) => s.hash(state),
-            Literal::Integer(s) => s.hash(state),
-            Literal::Boolean(s) => s.hash(state),
-            Literal::Float(f) => u64::from_be_bytes(f.to_be_bytes()).hash(state),
-            Literal::Null => ().hash(state),
+            DbVal::String(s, _) => s.hash(state),
+            DbVal::Binary(s, _) => s.hash(state),
+            DbVal::Integer(s) => s.hash(state),
+            DbVal::Boolean(s) => s.hash(state),
+            DbVal::Float(f) => u64::from_be_bytes(f.to_be_bytes()).hash(state),
+            DbVal::Null => ().hash(state),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::data::values::Literal;
+    use crate::data::values::DbVal;
     use crate::key::KeyData;
     use std::collections::BTreeSet;
 

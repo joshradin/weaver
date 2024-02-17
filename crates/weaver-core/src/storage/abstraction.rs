@@ -3,13 +3,15 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
+use std::mem::size_of;
 use std::slice::SliceIndex;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
+use crate::common::hex_dump::HexDump;
 
 use crate::common::track_dirty::Mad;
 use crate::storage::{ReadResult, StorageBackedData, WriteResult, PAGE_SIZE};
@@ -30,6 +32,7 @@ pub trait Pager {
     /// Gets the page at a given index, returns an error if not possible for
     /// whatever reason
     fn get(&self, index: usize) -> Result<Self::Page<'_>, Self::Err>;
+
     fn get_mut(&self, index: usize) -> Result<Self::PageMut<'_>, Self::Err>;
 
     /// Creates a new page, returning mutable reference to the page and the index
@@ -67,6 +70,17 @@ pub trait PageMut<'a>: Page<'a> {
     /// Gets a mutable reference to this page as slice
     fn as_mut_slice(&mut self) -> &mut [u8];
 
+    /// Writes a u64 value at an offset
+    ///
+    /// # Panic
+    /// Will be panic if offset + value >= len
+    fn write_u64(&mut self, value: u64, offset: usize) {
+        let mut slice = self
+            .get_mut(offset..(offset + size_of::<u64>()))
+            .expect("will overflow off page");
+        slice.copy_from_slice(&value.to_be_bytes());
+    }
+
     /// Returns a mutable raw pointer to the beginning of the page
     ///
     /// Usage of this pointer can only used in unsafe mechanisms
@@ -91,6 +105,14 @@ where
     fn len(&self) -> usize;
     /// Gets this page as a slice
     fn as_slice(&self) -> &[u8];
+
+    /// Reads a u64 value at an index if no overflow occurs
+    fn read_u64(&self, offset: usize) -> Option<u64> {
+        let slice = self.get(offset..(offset + size_of::<u64>()))?;
+        let buf: [u8; size_of::<u64>()] = slice.try_into().unwrap();
+        Some(u64::from_be_bytes(buf))
+    }
+
     /// Returns a raw pointer to the beginning of the page.
     ///
     /// Usage of this pointer can only used in unsafe blocks
@@ -227,11 +249,21 @@ where
 }
 
 /// An implementation over pages
-#[derive(Debug)]
 pub struct VecPager {
     pages: RwLock<Vec<Arc<RwLock<Box<[u8]>>>>>,
     usage: RwLock<HashMap<usize, Arc<AtomicI32>>>,
     page_len: usize,
+}
+
+impl Debug for VecPager {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VecPager")
+            .field("page_len", &self.page_len)
+            .field("pages", &self.pages.read().iter()
+                .map(|page| HexDump::new(page.read().to_vec()))
+                .collect::<Vec<_>>())
+            .finish()
+    }
 }
 
 impl Default for VecPager {
@@ -273,7 +305,7 @@ impl Pager for VecPager {
                     None
                 }
             })
-            .expect("can not get immutable usage");
+            .unwrap_or_else(|_| panic!("can not get immutable usage, already in read usage"));
 
         Ok(SharedPage {
             buffer: page,
@@ -314,7 +346,6 @@ impl Pager for VecPager {
         let old = std::mem::replace(&mut pages[index], new);
         let mut buff = old.write();
         buff.fill(0);
-        dbg!(&buff);
         Ok(())
     }
 

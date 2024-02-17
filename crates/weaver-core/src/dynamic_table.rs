@@ -4,7 +4,7 @@ use crate::data::row::Row;
 use crate::db::core::WeaverDbCore;
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
-use crate::tables::file_table::B_PLUS_TREE_FILE_KEY;
+use crate::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
 use crate::tables::in_memory_table::IN_MEMORY_KEY;
 use crate::tables::system_tables::SYSTEM_TABLE_KEY;
 use crate::tables::table_schema::TableSchema;
@@ -136,6 +136,16 @@ pub struct EngineKey(String);
 impl EngineKey {
     pub fn new<S: AsRef<str>>(s: S) -> Self {
         Self(s.as_ref().to_string())
+    }
+
+    /// The "basic" engine key
+    pub fn basic() -> Self {
+        Self::new(B_PLUS_TREE_FILE_KEY)
+    }
+
+    /// An in memory table key. These are for volatile tables
+    pub fn in_memory() -> Self {
+        Self::new(IN_MEMORY_KEY)
     }
 }
 

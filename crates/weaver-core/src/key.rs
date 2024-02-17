@@ -1,6 +1,6 @@
 use crate::data::row::{OwnedRow, Row};
 use crate::data::types::Type;
-use crate::data::values::Literal;
+use crate::data::values::DbVal;
 use derive_more::From;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
@@ -54,7 +54,7 @@ impl<'a> AsRef<Row<'a>> for KeyData {
 }
 
 impl IntoIterator for KeyData {
-    type Item = Literal;
+    type Item = DbVal;
     type IntoIter = <Row<'static> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -63,7 +63,7 @@ impl IntoIterator for KeyData {
 }
 
 impl<'a> IntoIterator for &'a KeyData {
-    type Item = &'a Literal;
+    type Item = &'a DbVal;
     type IntoIter = <&'a OwnedRow as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -233,7 +233,7 @@ fn compare_bounds<T: Ord>(b1: &Bound<T>, b2: &Bound<T>) -> Ordering {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::values::Literal;
+    use crate::data::values::DbVal;
     use crate::key::{KeyData, KeyDataRange};
     use std::collections::{BTreeSet, HashSet};
     use std::ops::Bound;
@@ -241,33 +241,33 @@ mod tests {
     #[test]
     fn order_keys() {
         let mut btree = BTreeSet::<KeyData>::new();
-        btree.insert(KeyData::from([Literal::Float(4.0)]));
-        btree.insert(KeyData::from([Literal::Float(1.0)]));
+        btree.insert(KeyData::from([DbVal::Float(4.0)]));
+        btree.insert(KeyData::from([DbVal::Float(1.0)]));
 
         let b = btree.iter().collect::<Vec<_>>();
-        assert_eq!(&*b[0][0], &Literal::Float(1.0));
-        assert_eq!(&*b[1][0], &Literal::Float(4.0));
+        assert_eq!(&*b[0][0], &DbVal::Float(1.0));
+        assert_eq!(&*b[1][0], &DbVal::Float(4.0));
     }
 
     #[test]
     fn key_in_range() {
         let range = KeyDataRange::from(
-            KeyData::from([Literal::Float(1.0)])..=KeyData::from([Literal::Float(4.0)]),
+            KeyData::from([DbVal::Float(1.0)])..=KeyData::from([DbVal::Float(4.0)]),
         );
-        assert!(!range.contains(&KeyData::from([Literal::Float(f64::MIN)])));
-        assert!(range.contains(&KeyData::from([Literal::Float(1.0)])));
-        assert!(range.contains(&KeyData::from([Literal::Float(2.0)])));
-        assert!(range.contains(&KeyData::from([Literal::Float(4.0)])));
-        assert!(!range.contains(&KeyData::from([Literal::Float(f64::MAX)])));
+        assert!(!range.contains(&KeyData::from([DbVal::Float(f64::MIN)])));
+        assert!(range.contains(&KeyData::from([DbVal::Float(1.0)])));
+        assert!(range.contains(&KeyData::from([DbVal::Float(2.0)])));
+        assert!(range.contains(&KeyData::from([DbVal::Float(4.0)])));
+        assert!(!range.contains(&KeyData::from([DbVal::Float(f64::MAX)])));
     }
 
     #[test]
     fn hash_keys() {
         let mut hash_set = HashSet::<KeyData>::new();
-        hash_set.insert(KeyData::from([Literal::Float(4.0)]));
-        hash_set.insert(KeyData::from([Literal::Float(1.0)]));
+        hash_set.insert(KeyData::from([DbVal::Float(4.0)]));
+        hash_set.insert(KeyData::from([DbVal::Float(1.0)]));
 
-        assert!(hash_set.contains(&KeyData::from([Literal::Float(4.0)])));
-        assert!(hash_set.contains(&KeyData::from([Literal::Float(1.0)])));
+        assert!(hash_set.contains(&KeyData::from([DbVal::Float(4.0)])));
+        assert!(hash_set.contains(&KeyData::from([DbVal::Float(1.0)])));
     }
 }

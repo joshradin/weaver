@@ -2,11 +2,11 @@
 
 use std::collections::VecDeque;
 
-/// Creates an iterator where each batch is of a given sioze
+/// Creates an iterator where each batch is of a given size
 pub fn to_batches<T, I: IntoIterator<Item = T>>(
     batch_size: usize,
     iter: I,
-) -> Batches<T, I::IntoIter> {
+) -> Batches<I::IntoIter> {
     Batches {
         iterator: iter.into_iter(),
         batch_size,
@@ -17,7 +17,7 @@ pub fn to_batches<T, I: IntoIterator<Item = T>>(
 pub fn to_n_batches<T, I: IntoIterator<Item = T>>(
     batches: usize,
     iter: I,
-) -> Batches<T, <Vec<T> as IntoIterator>::IntoIter> {
+) -> Batches<<Vec<T> as IntoIterator>::IntoIter> {
     let iter = iter.into_iter().fuse();
     let mut all = match iter.size_hint() {
         (_, Some(max)) => Vec::with_capacity(max),
@@ -31,12 +31,12 @@ pub fn to_n_batches<T, I: IntoIterator<Item = T>>(
 }
 
 #[derive(Debug)]
-pub struct Batches<T, I: Iterator<Item = T>> {
+pub struct Batches<I: Iterator> {
     iterator: I,
     batch_size: usize,
 }
 
-impl<T, I: Iterator<Item = T>> Iterator for Batches<T, I> {
+impl<T, I: Iterator<Item = T>> Iterator for Batches<I> {
     type Item = Batch<T>;
 
     fn next(&mut self) -> Option<Self::Item> {

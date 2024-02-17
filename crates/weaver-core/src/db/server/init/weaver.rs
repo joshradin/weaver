@@ -13,7 +13,7 @@ use crate::db::server::layers::packets::DbReq;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::EngineKey;
 use crate::error::Error;
-use crate::tables::file_table::B_PLUS_TREE_FILE_KEY;
+use crate::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
 use crate::tables::table_schema::TableSchema;
 
 pub fn init_weaver_schema(db: &mut WeaverDb) -> Result<(), Error> {

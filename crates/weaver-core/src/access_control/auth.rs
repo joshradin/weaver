@@ -27,7 +27,7 @@ pub mod handshake {
     use crate::access_control::auth::LoginContext;
     use crate::access_control::users::User;
     use crate::common::stream_support::{packet_read, packet_write, Stream};
-    use crate::data::values::Literal;
+    use crate::data::values::DbVal;
     use crate::db::server::cnxn::stream::WeaverStream;
     use crate::db::server::cnxn::RemoteDbResp;
     use crate::db::server::layers::packets::{DbReqBody, DbResp};
@@ -77,8 +77,8 @@ pub mod handshake {
             debug!("row = {row:?}");
             let auth_string = &row[2];
             match auth_string.as_ref() {
-                Literal::Null => {}
-                Literal::String(str, _) => {
+                DbVal::Null => {}
+                DbVal::String(str, _) => {
                     todo!("password authentication")
                 }
                 _ => {

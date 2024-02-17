@@ -2,7 +2,7 @@
 
 use crate::data::row::{OwnedRow, Row};
 use crate::key::KeyData;
-use crate::tables::table_schema::TableSchema;
+use crate::tables::table_schema::{ColumnizedRow, TableSchema};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fmt::{Debug, Formatter};
@@ -71,7 +71,6 @@ pub enum KeyIndexKind {
 pub trait Rows<'t> {
     fn schema(&self) -> &TableSchema;
     fn next(&mut self) -> Option<Row<'t>>;
-
     fn map<F: Fn(Row<'t>) -> Row<'t>>(self, callback: F) -> MappedRows<'t, Self, F>
     where
         Self: Sized,
@@ -135,12 +134,30 @@ impl OwnedRows {
         }
     }
 
+    pub fn iter(&self) -> impl Iterator<Item=&OwnedRow> {
+        self.rows.iter()
+    }
+
+    pub fn columnized(&self) -> impl Iterator<Item=ColumnizedRow<'_>> {
+        let gen = ColumnizedRow::generator(self.schema());
+        self.rows.iter().map(move |row| gen(row))
+    }
+
     /// Retains all rows that match a predicate
     pub fn retain<F>(&mut self, predicate: F)
     where
         F: Fn(&Row) -> bool,
     {
         self.rows.retain(|row| predicate(row.as_ref()))
+    }
+}
+
+impl IntoIterator for OwnedRows {
+    type Item = OwnedRow;
+    type IntoIter = <VecDeque<OwnedRow> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.rows.into_iter()
     }
 }
 

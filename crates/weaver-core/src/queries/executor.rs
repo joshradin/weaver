@@ -79,10 +79,7 @@ impl QueryExecutor {
             QueryPlanKind::LoadTable { schema, table } => {
                 let core = core.read();
 
-                let table = core.get_table(schema, table).ok_or(Error::NoTableFound {
-                    table: table.to_string(),
-                    schema: schema.to_string(),
-                })?;
+                let table = core.get_open_table(schema, table)?;
                 Ok(Box::new(table))
             }
         }

@@ -15,28 +15,28 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::data::types::Type;
-use crate::data::values::Literal;
+use crate::data::values::DbVal;
 
 /// A row of data
 #[derive(PartialEq, Eq, PartialOrd, Hash)]
-pub struct Row<'a>(Box<[Cow<'a, Literal>]>);
+pub struct Row<'a>(Box<[Cow<'a, DbVal>]>);
 
 impl<'a> Row<'a> {
     /// Creates a new, empty row of a given length.
     ///
     /// All entries are initialized to Null
     pub fn new(len: usize) -> Self {
-        Self::from(vec![Literal::Null; len])
+        Self::from(vec![DbVal::Null; len])
     }
 
-    pub fn get(&self, index: usize) -> Option<&Cow<'a, Literal>> {
+    pub fn get(&self, index: usize) -> Option<&Cow<'a, DbVal>> {
         self.0.get(index)
     }
 
     /// Gets a slice of the data
     pub fn slice<I>(&self, range: I) -> Row<'a>
     where
-        I: SliceIndex<[Cow<'a, Literal>], Output = [Cow<'a, Literal>]>,
+        I: SliceIndex<[Cow<'a, DbVal>], Output = [Cow<'a, DbVal>]>,
     {
         Self::from(self.0[range].to_vec())
     }
@@ -44,7 +44,7 @@ impl<'a> Row<'a> {
     /// Gets a slice of the data if all values are within range
     pub fn try_slice<I>(&self, range: I) -> Option<Row<'a>>
     where
-        I: SliceIndex<[Cow<'a, Literal>], Output = [Cow<'a, Literal>]>,
+        I: SliceIndex<[Cow<'a, DbVal>], Output = [Cow<'a, DbVal>]>,
     {
         self.0.get(range).map(|values| Self::from(values.to_vec()))
     }
@@ -58,7 +58,7 @@ impl<'a> Row<'a> {
     pub fn iter(&self) -> RowRefIter<'a, '_> {
         self.0.iter()
     }
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Cow<'a, Literal>> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Cow<'a, DbVal>> {
         self.0.iter_mut()
     }
 
@@ -125,7 +125,7 @@ impl<'de> Visitor<'de> for RowVisitor {
         A: SeqAccess<'de>,
     {
         let mut vec = vec![];
-        while let Some(ele) = seq.next_element::<Literal>()? {
+        while let Some(ele) = seq.next_element::<DbVal>()? {
             vec.push(ele)
         }
         Ok(Row::from(vec))
@@ -138,14 +138,14 @@ impl<'a> From<OwnedRow> for Row<'a> {
     }
 }
 
-impl<'a> From<Vec<Cow<'a, Literal>>> for Row<'a> {
-    fn from(value: Vec<Cow<'a, Literal>>) -> Self {
+impl<'a> From<Vec<Cow<'a, DbVal>>> for Row<'a> {
+    fn from(value: Vec<Cow<'a, DbVal>>) -> Self {
         Self(value.into_boxed_slice())
     }
 }
 
-impl From<Vec<Literal>> for Row<'_> {
-    fn from(value: Vec<Literal>) -> Self {
+impl From<Vec<DbVal>> for Row<'_> {
+    fn from(value: Vec<DbVal>) -> Self {
         Self(
             value
                 .into_iter()
@@ -156,7 +156,7 @@ impl From<Vec<Literal>> for Row<'_> {
     }
 }
 
-impl<V: Into<Literal>, const N: usize> From<[V; N]> for Row<'_> {
+impl<V: Into<DbVal>, const N: usize> From<[V; N]> for Row<'_> {
     fn from(value: [V; N]) -> Self {
         Self::from(
             value
@@ -167,20 +167,20 @@ impl<V: Into<Literal>, const N: usize> From<[V; N]> for Row<'_> {
     }
 }
 
-impl From<Box<[Literal]>> for Row<'_> {
-    fn from(value: Box<[Literal]>) -> Self {
+impl From<Box<[DbVal]>> for Row<'_> {
+    fn from(value: Box<[DbVal]>) -> Self {
         Self::from(value.into_vec())
     }
 }
 
-impl<'a> From<Box<[Cow<'a, Literal>]>> for Row<'a> {
-    fn from(value: Box<[Cow<'a, Literal>]>) -> Self {
+impl<'a> From<Box<[Cow<'a, DbVal>]>> for Row<'a> {
+    fn from(value: Box<[Cow<'a, DbVal>]>) -> Self {
         Self(value)
     }
 }
 
-impl<'a> From<&'a [Literal]> for Row<'a> {
-    fn from(value: &'a [Literal]) -> Self {
+impl<'a> From<&'a [DbVal]> for Row<'a> {
+    fn from(value: &'a [DbVal]) -> Self {
         Self(
             value
                 .iter()
@@ -191,8 +191,8 @@ impl<'a> From<&'a [Literal]> for Row<'a> {
     }
 }
 
-impl<'a> From<&'a [Cow<'a, Literal>]> for Row<'a> {
-    fn from(value: &'a [Cow<'a, Literal>]) -> Self {
+impl<'a> From<&'a [Cow<'a, DbVal>]> for Row<'a> {
+    fn from(value: &'a [Cow<'a, DbVal>]) -> Self {
         Self(
             value
                 .iter()
@@ -205,7 +205,7 @@ impl<'a> From<&'a [Cow<'a, Literal>]> for Row<'a> {
 
 impl<'a, T> FromIterator<T> for Row<'a>
 where
-    Cow<'a, Literal>: From<T>,
+    Cow<'a, DbVal>: From<T>,
 {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self(
@@ -218,7 +218,7 @@ where
 }
 
 impl<'a> Index<usize> for Row<'a> {
-    type Output = Cow<'a, Literal>;
+    type Output = Cow<'a, DbVal>;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
@@ -226,7 +226,7 @@ impl<'a> Index<usize> for Row<'a> {
 }
 
 impl<'a> Index<RangeTo<usize>> for Row<'a> {
-    type Output = [Cow<'a, Literal>];
+    type Output = [Cow<'a, DbVal>];
 
     fn index(&self, index: RangeTo<usize>) -> &Self::Output {
         &self.0[index]
@@ -234,7 +234,7 @@ impl<'a> Index<RangeTo<usize>> for Row<'a> {
 }
 
 impl<'a> Index<RangeToInclusive<usize>> for Row<'a> {
-    type Output = [Cow<'a, Literal>];
+    type Output = [Cow<'a, DbVal>];
 
     fn index(&self, index: RangeToInclusive<usize>) -> &Self::Output {
         &self.0[index]
@@ -242,14 +242,14 @@ impl<'a> Index<RangeToInclusive<usize>> for Row<'a> {
 }
 
 impl<'a> Index<RangeFull> for Row<'a> {
-    type Output = [Cow<'a, Literal>];
+    type Output = [Cow<'a, DbVal>];
 
     fn index(&self, index: RangeFull) -> &Self::Output {
         &self.0[index]
     }
 }
 impl<'a> Index<RangeFrom<usize>> for Row<'a> {
-    type Output = [Cow<'a, Literal>];
+    type Output = [Cow<'a, DbVal>];
 
     fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
         &self.0[index]
@@ -257,7 +257,7 @@ impl<'a> Index<RangeFrom<usize>> for Row<'a> {
 }
 
 impl<'a> Index<RangeInclusive<usize>> for Row<'a> {
-    type Output = [Cow<'a, Literal>];
+    type Output = [Cow<'a, DbVal>];
 
     fn index(&self, index: RangeInclusive<usize>) -> &Self::Output {
         &self.0[index]
@@ -286,11 +286,11 @@ impl<'a> PartialEq<OwnedRow> for Row<'a> {
 
 #[derive(Debug)]
 pub struct RowIter {
-    values: VecDeque<Literal>,
+    values: VecDeque<DbVal>,
 }
 
 impl Iterator for RowIter {
-    type Item = Literal;
+    type Item = DbVal;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.values.pop_front()
@@ -298,7 +298,7 @@ impl Iterator for RowIter {
 }
 
 impl<'a> IntoIterator for Row<'a> {
-    type Item = Literal;
+    type Item = DbVal;
     type IntoIter = RowIter;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -308,10 +308,10 @@ impl<'a> IntoIterator for Row<'a> {
     }
 }
 
-pub type RowRefIter<'a, 'b> = <&'b [Cow<'a, Literal>] as IntoIterator>::IntoIter;
+pub type RowRefIter<'a, 'b> = <&'b [Cow<'a, DbVal>] as IntoIterator>::IntoIter;
 
 impl<'a, 'b: 'a> IntoIterator for &'b Row<'a> {
-    type Item = &'b Cow<'a, Literal>;
+    type Item = &'b Cow<'a, DbVal>;
     type IntoIter = RowRefIter<'a, 'b>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -348,7 +348,7 @@ impl<'a> From<Row<'a>> for OwnedRow {
             .into_boxed_slice()))
     }
 }
-impl<V: Into<Literal>, const N: usize> From<[V; N]> for OwnedRow {
+impl<V: Into<DbVal>, const N: usize> From<[V; N]> for OwnedRow {
     fn from(value: [V; N]) -> Self {
         Row::from(
             value
@@ -408,11 +408,11 @@ impl Debug for OwnedRow {
 }
 
 pub struct OwnedRowRefIter<'a> {
-    values: VecDeque<&'a Literal>,
+    values: VecDeque<&'a DbVal>,
 }
 
 impl<'a> Iterator for OwnedRowRefIter<'a> {
-    type Item = &'a Literal;
+    type Item = &'a DbVal;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.values.pop_front()
@@ -420,7 +420,7 @@ impl<'a> Iterator for OwnedRowRefIter<'a> {
 }
 
 impl<'a> IntoIterator for &'a OwnedRow {
-    type Item = &'a Literal;
+    type Item = &'a DbVal;
     type IntoIter = OwnedRowRefIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -433,7 +433,7 @@ impl<'a> IntoIterator for &'a OwnedRow {
 #[cfg(test)]
 mod tests {
     use crate::data::row::Row;
-    use crate::data::values::Literal;
+    use crate::data::values::DbVal;
 
     #[test]
     fn slice_row() {
@@ -449,11 +449,11 @@ mod tests {
         assert_eq!(
             as_row,
             Row::from([
-                Literal::Integer(1),
-                Literal::Integer(2),
-                Literal::Integer(3),
-                Literal::Integer(4),
-                Literal::Null
+                DbVal::Integer(1),
+                DbVal::Integer(2),
+                DbVal::Integer(3),
+                DbVal::Integer(4),
+                DbVal::Null
             ])
         )
     }

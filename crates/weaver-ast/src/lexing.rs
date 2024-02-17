@@ -26,8 +26,7 @@ impl<'a> Tokenizer<'a> {
                 code,
             },
         )?;
-        let len = r - l;
-        self.consumed += l + len;
+        self.consumed = r;
         self.src = rest;
         Ok((l, token, r))
     }

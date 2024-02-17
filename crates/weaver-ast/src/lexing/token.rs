@@ -97,12 +97,38 @@ SELECT user, password, grants FROM users
             assert!(token.0 >= i);
             assert!(token.2 >= token.0);
             let spanned = &query[token.0..token.2];
-            println!("{} => tok kind: {:?}", spanned, token);
             if let (_, Token::Ident(ident), _) = &token {
                 assert_eq!(spanned, ident);
             }
 
             i = token.2;
+        }
+    }
+
+    #[test]
+    fn accurate_spans() {
+        let names = ["josh", "chris", "jordan", "jon", "desi", "seth"];
+        let joined = names.join("  ,  ");
+        let mut tokenizer = Tokenizer::new(&joined);
+        let mut name_iter = names.iter();
+        loop {
+            let (l, name, r) = tokenizer.next().expect("could not get next ident");
+            let Token::Ident(ident) = name else {
+                panic!("expected ident token")
+            };
+            let expected_name = name_iter.next().expect("should have next name");
+            assert_eq!(&*ident, *expected_name, "value in ident should be same");
+            let name_from_span = &joined[l..r];
+            assert_eq!(
+                name_from_span, *expected_name,
+                "name from span should be same"
+            );
+
+            match tokenizer.next().expect("tokenization failed") {
+                (_, Token::Comma, _) => continue,
+                (_, Token::Eof, _) => break,
+                (_, other, _) => panic!("unexpected token: {other:?}"),
+            }
         }
     }
 }

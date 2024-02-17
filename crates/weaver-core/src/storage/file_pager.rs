@@ -9,11 +9,13 @@ use crate::storage::abstraction::{Page, PageMut};
 use crate::storage::{Pager, PAGE_SIZE};
 use parking_lot::RwLock;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::io;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
+use crate::common::hex_dump::HexDump;
 
 /// Provides a paged abstraction over a [RandomAccessFile]
 #[derive(Debug)]
@@ -76,12 +78,12 @@ impl Pager for FilePager {
                     None
                 }
             })
-            .map_err(|_| {
+            .map_err(|used| {
                 Error::caused_by(
                     "Failed to get page",
                     io::Error::new(
                         ErrorKind::WouldBlock,
-                        format!("Would block, page at offset {} already in use", offset),
+                        format!("Would block, page at offset {} already in use (used: {used})", offset),
                     ),
                 )
             })?;
@@ -124,12 +126,12 @@ impl Pager for FilePager {
         let token = usage_map.entry(offset).or_default().clone();
         token
             .compare_exchange(0, -1, Ordering::SeqCst, Ordering::Relaxed)
-            .map_err(|_| {
+            .map_err(|val| {
                 Error::caused_by(
                     "Failed to get page",
                     io::Error::new(
                         ErrorKind::WouldBlock,
-                        format!("Would block, page at offset {} already in use", offset),
+                        format!("Would block, page at offset {} already in use (used: {val})", offset),
                     ),
                 )
             })?;
@@ -173,7 +175,6 @@ impl Pager for FilePager {
     fn free(&self, index: usize) -> Result<(), Self::Err> {
         let mut old = self.get_mut(index)?;
         old.as_mut_slice().fill(0);
-        dbg!(&old);
         Ok(())
     }
 
@@ -192,6 +193,12 @@ pub struct FilePage {
     usage_token: Arc<AtomicI32>,
 }
 
+impl Drop for FilePage {
+    fn drop(&mut self) {
+        self.usage_token.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 impl<'a> Page<'a> for FilePage {
     fn len(&self) -> usize {
         self.buf.len()
@@ -201,14 +208,23 @@ impl<'a> Page<'a> for FilePage {
     }
 }
 
+
+
 /// A page from a random access fille
-#[derive(Debug)]
 pub struct FilePageMut {
     file: Arc<RwLock<RandomAccessFile>>,
     usage_token: Arc<AtomicI32>,
     buffer: Mad<Box<[u8]>>,
     offset: u64,
     len: u64,
+}
+
+impl Debug for FilePageMut {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FilePageMut")
+            .field("buffer", &HexDump::new(&*self.buffer))
+        .finish()
+    }
 }
 
 impl<'a> PageMut<'a> for FilePageMut {

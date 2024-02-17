@@ -1,5 +1,5 @@
 //! Tables are a collection of data
-pub mod file_table;
+pub mod bpt_file_table;
 pub mod in_memory_table;
 pub mod lss_table;
 pub mod shared_table;

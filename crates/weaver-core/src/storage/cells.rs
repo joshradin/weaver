@@ -1,13 +1,14 @@
 //! Cells are parts of slotted pages, and are used to store data that we know can be variable in size
 //! and shape.
 
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::io::Write;
 use std::mem::size_of;
 
 use bitfield::bitfield;
 use derive_more::{Display, From};
 use std::num::NonZeroU32;
+use crate::common::pretty_bytes::PrettyBytes;
 
 use crate::data::row::OwnedRow;
 use crate::data::serde::{deserialize_data_typed, serialize_data_typed, serialize_data_untyped};
@@ -74,7 +75,7 @@ impl Cell {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct KeyCell {
     /// The size of the key
     key_size: u32,
@@ -82,6 +83,15 @@ pub struct KeyCell {
     page_id: u32,
     /// The key bytes
     bytes: Box<[u8]>,
+}
+
+impl Debug for KeyCell {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KeyCell")
+            .field("page_id", &self.page_id)
+            .field("bytes", &PrettyBytes(&self.bytes))
+            .finish()
+    }
 }
 
 impl Display for KeyCell {
@@ -151,13 +161,23 @@ impl StorageBackedData for KeyCell {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct KeyValueCell {
     flags: Flags,
     key_size: u32,
     value_size: u32,
     key: Box<[u8]>,
     data_record: Box<[u8]>,
+}
+
+impl Debug for KeyValueCell {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KeyValueCell")
+         .field("flags", &self.flags)
+         .field("key", &PrettyBytes(&self.key))
+         .field("record", &PrettyBytes(&self.data_record))
+         .finish()
+    }
 }
 
 impl KeyValueCell {

@@ -19,7 +19,9 @@ use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
 use crate::storage::slotted_pager::{PageType, SlottedPager};
 use crate::storage::{ReadDataError, WriteDataError};
 
-/// A BPlusTree that uses a given pager
+/// A BPlusTree that uses a given pager.
+///
+/// This is used for primary indices.
 pub struct BPlusTree<P: Pager> {
     allocator: Arc<SlottedPager<P>>,
     /// determined initially by scanning up parents
@@ -115,7 +117,7 @@ where
         let mut page = self.allocator.get_mut(page_id).expect("no page found");
         match page.insert(cell.clone()) {
             Ok(()) => Ok(false),
-            Err(Error::WriteDataError(WriteDataError::InsufficientSpace)) => {
+            Err(Error::WriteDataError(WriteDataError::AllocationFailed { .. })) => {
                 // insufficient space requires a split
                 let id = page.page_id();
                 drop(page);
@@ -744,7 +746,7 @@ mod tests {
 
     use crate::data::serde::deserialize_data_untyped;
     use crate::data::types::Type;
-    use crate::data::values::Literal;
+    use crate::data::values::DbVal;
     use crate::storage::abstraction::VecPager;
 
     use super::*;
@@ -808,8 +810,8 @@ mod tests {
             strings.push(s.clone());
 
             if let Err(e) = btree.insert(
-                [Literal::string(s.clone(), 16)],
-                [Literal::from(s), (2 * i).into()],
+                [DbVal::string(s.clone(), 16)],
+                [DbVal::from(s), (2 * i).into()],
             ) {
                 btree.print().expect("could not print");
                 panic!("error occurred: {e}");
@@ -837,7 +839,7 @@ mod tests {
             let s: String = i.to_string();
             strings.push(s.clone());
 
-            if let Err(e) = btree.insert([s.clone()], [Literal::from(s)]) {
+            if let Err(e) = btree.insert([s.clone()], [DbVal::from(s)]) {
                 btree.print().expect("could not print");
                 panic!("error occurred: {e}");
             }

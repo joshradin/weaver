@@ -10,15 +10,16 @@ use crate::dynamic_table::{
     storage_engine_factory, DynamicTable, EngineKey, HasSchema, StorageEngineFactory, Table,
 };
 use crate::error::Error;
-use crate::tables::file_table::BptfTableFactory;
+use crate::tables::bpt_file_table::BptfTableFactory;
 use crate::tables::shared_table::SharedTable;
 use crate::tables::table_schema::TableSchema;
 use crate::tables::InMemoryTable;
-use crate::tables::{file_table::B_PLUS_TREE_FILE_KEY, in_memory_table::IN_MEMORY_KEY};
+use crate::tables::{bpt_file_table::B_PLUS_TREE_FILE_KEY, in_memory_table::IN_MEMORY_KEY};
 use crate::tx::coordinator::TxCoordinator;
 use crate::tx::Tx;
 
-pub mod fs;
+mod bootstrap;
+pub use bootstrap::bootstrap;
 
 /// A db core. Represents some part of a distributed db
 pub struct WeaverDbCore {
@@ -36,8 +37,17 @@ impl Default for WeaverDbCore {
     }
 }
 impl WeaverDbCore {
+    /// Creates a new weaver core in the current directory
     pub fn new() -> Result<Self, Error> {
         Self::with_path(std::env::current_dir()?)
+    }
+
+    #[cfg(test)]
+    pub fn in_temp_dir() -> Result<(tempfile::TempDir, Self), Error>{
+        use tempfile::TempDir;
+        let tempdir = TempDir::new()?;
+        Self::with_path(tempdir.as_ref())
+            .map(|core| (tempdir, core))
     }
 
     /// Opens the weaver db core at the given paths.
@@ -119,6 +129,8 @@ impl WeaverDbCore {
             Ok(())
         }
     }
+
+    /// Adds a table by a given schema
     pub fn open_table(&self, schema: &TableSchema) -> Result<(), Error> {
         if self
             .open_tables
@@ -143,12 +155,29 @@ impl WeaverDbCore {
         Ok(())
     }
 
-    /// Gets a table, if preset. The table is responsible for handling shared-access
-    pub fn get_table(&self, schema: &str, name: &str) -> Option<SharedTable> {
+    /// Gets a table, if open. The table is responsible for handling shared-access.
+    ///
+    /// This method is not responsible for opening tables.
+    pub fn get_open_table(&self, schema: &str, name: &str) -> Result<SharedTable, Error> {
         self.open_tables
             .read()
             .get(&(schema.to_string(), name.to_string()))
             .cloned()
+            .ok_or_else(|| Error::NoTableFound {
+                table: name.to_string(),
+                schema: schema.to_string(),
+            })
+    }
+
+    /// Closes a table
+    pub fn close_table(&self, schema: &str, name: &str) -> Result<(), Error> {
+        self.open_tables.write()
+            .remove(&(schema.to_string(), name.to_string()))
+            .map(|_| ())
+            .ok_or(Error::NoTableFound {
+                table: name.to_string(),
+                schema: schema.to_string(),
+            })
     }
 
     /// Gets the path this weaver db is open in

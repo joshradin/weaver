@@ -6,7 +6,7 @@ use serde::{Serialize, Serializer};
 
 use crate::data::row::Row;
 use crate::data::types::Type;
-use crate::data::values::Literal;
+use crate::data::values::DbVal;
 use crate::storage::ReadDataError;
 
 /// Serializes data
@@ -29,7 +29,7 @@ impl DataSerializer {
         self.bytes
     }
 
-    pub fn serialize(&mut self, value: &Literal) {
+    pub fn serialize(&mut self, value: &DbVal) {
         if self.mode == SerdeMode::Typed {
             let kind = value.value_type();
             match kind {
@@ -41,28 +41,28 @@ impl DataSerializer {
                 }
             }
         } else {
-            self.bytes.push(if value == &Literal::Null { 0 } else { 1 })
+            self.bytes.push(if value == &DbVal::Null { 0 } else { 1 })
         }
 
         match value {
-            Literal::String(string, _) => {
+            DbVal::String(string, _) => {
                 self.bytes.extend((string.len() as u32).to_be_bytes());
                 self.bytes.extend(string.bytes());
             }
-            Literal::Binary(blob, _) => {
+            DbVal::Binary(blob, _) => {
                 self.bytes.extend((blob.len() as u32).to_be_bytes());
                 self.bytes.extend(blob);
             }
-            Literal::Integer(integer) => {
+            DbVal::Integer(integer) => {
                 self.bytes.extend(integer.to_be_bytes());
             }
-            Literal::Boolean(b) => {
+            DbVal::Boolean(b) => {
                 self.bytes.push(*b as u8);
             }
-            Literal::Float(float) => {
+            DbVal::Float(float) => {
                 self.bytes.extend(float.to_be_bytes());
             }
-            Literal::Null => {}
+            DbVal::Null => {}
         }
     }
 
@@ -123,7 +123,7 @@ impl DataDeserializer {
     pub fn finish<I: IntoIterator<Item = Type>>(
         self,
         iter: I,
-    ) -> Result<Vec<Literal>, ReadDataError> {
+    ) -> Result<Vec<DbVal>, ReadDataError> {
         let mut buffer = &self.data_buffer[..];
 
         let mut output = vec![];
@@ -162,34 +162,34 @@ impl DataDeserializer {
                     let (rest, bytes) = parse_byte_string(buffer).finish()?;
                     buffer = rest;
                     let s = String::from_utf8(Vec::from(bytes))?;
-                    output.push(Literal::String(s, max));
+                    output.push(DbVal::String(s, max));
                 }
                 Some(Type::Binary(max)) => {
                     let (rest, bytes) = parse_byte_string(buffer).finish()?;
                     buffer = rest;
-                    output.push(Literal::Binary(Vec::from(bytes), max));
+                    output.push(DbVal::Binary(Vec::from(bytes), max));
                 }
                 Some(Type::Integer) => {
                     let (rest, bytes) =
                         take::<_, _, nom::error::Error<_>>(8_usize)(buffer).finish()?;
                     buffer = rest;
                     let buffer: [u8; 8] = bytes.try_into().unwrap();
-                    output.push(Literal::Integer(i64::from_be_bytes(buffer)))
+                    output.push(DbVal::Integer(i64::from_be_bytes(buffer)))
                 }
                 Some(Type::Boolean) => {
                     let (rest, bytes) =
                         take::<_, _, nom::error::Error<_>>(1_usize)(buffer).finish()?;
-                    output.push(Literal::Boolean(bytes[0] == 1))
+                    output.push(DbVal::Boolean(bytes[0] == 1))
                 }
                 Some(Type::Float) => {
                     let (rest, bytes) =
                         take::<_, _, nom::error::Error<_>>(8_usize)(buffer).finish()?;
                     buffer = rest;
                     let buffer: [u8; 8] = bytes.try_into().unwrap();
-                    output.push(Literal::Float(f64::from_be_bytes(buffer)))
+                    output.push(DbVal::Float(f64::from_be_bytes(buffer)))
                 }
                 None => {
-                    output.push(Literal::Null);
+                    output.push(DbVal::Null);
                 }
             }
         }
@@ -245,14 +245,14 @@ fn u32_parser<'a, E: ParseError<&'a [u8]>>(
     })
 }
 
-pub fn serialize_data_typed<'a, V: AsRef<Literal>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
+pub fn serialize_data_typed<'a, V: AsRef<DbVal>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
     let mut serializer = DataSerializer::new(SerdeMode::Typed);
     for value in data {
         serializer.serialize(value.as_ref());
     }
     serializer.finish()
 }
-pub fn serialize_data_untyped<'a, V: AsRef<Literal>, I: IntoIterator<Item = V>>(
+pub fn serialize_data_untyped<'a, V: AsRef<DbVal>, I: IntoIterator<Item = V>>(
     data: I,
 ) -> Vec<u8> {
     let mut serializer = DataSerializer::new(SerdeMode::Untyped);
@@ -262,7 +262,7 @@ pub fn serialize_data_untyped<'a, V: AsRef<Literal>, I: IntoIterator<Item = V>>(
     serializer.finish()
 }
 
-pub fn deserialize_data_typed<B: AsRef<[u8]>>(data: B) -> Result<Vec<Literal>, ReadDataError> {
+pub fn deserialize_data_typed<B: AsRef<[u8]>>(data: B) -> Result<Vec<DbVal>, ReadDataError> {
     let mut deserializer = DataDeserializer::new(SerdeMode::Typed);
     deserializer.deserialize(data);
     deserializer.finish([])
@@ -271,7 +271,7 @@ pub fn deserialize_data_typed<B: AsRef<[u8]>>(data: B) -> Result<Vec<Literal>, R
 pub fn deserialize_data_untyped<'a, B: AsRef<[u8]>, I: IntoIterator<Item = Type>>(
     data: B,
     types: I,
-) -> Result<Vec<Literal>, ReadDataError> {
+) -> Result<Vec<DbVal>, ReadDataError> {
     let mut deserializer = DataDeserializer::new(SerdeMode::Untyped);
     deserializer.deserialize(data);
     deserializer.finish(types)
@@ -286,7 +286,7 @@ mod tests {
         parse_byte_string, serialize_data_typed, serialize_data_untyped, DataSerializer, SerdeMode,
     };
     use crate::data::types::Type;
-    use crate::data::values::Literal;
+    use crate::data::values::DbVal;
     use crate::key::KeyData;
 
     #[test]
@@ -310,9 +310,9 @@ mod tests {
     #[test]
     fn deserialize_data_typed() {
         let row = Row::from([
-            Literal::from(15),
-            Literal::Null,
-            Literal::from("hello, world!"),
+            DbVal::from(15),
+            DbVal::Null,
+            DbVal::from("hello, world!"),
         ]);
         let serialized = serialize_data_typed(&row);
         let read = super::deserialize_data_typed(&serialized).expect("could not deserialize");
@@ -323,9 +323,9 @@ mod tests {
     #[test]
     fn deserialize_data_untyped() {
         let row = Row::from([
-            Literal::from(15),
-            Literal::Null,
-            Literal::from("hello, world!"),
+            DbVal::from(15),
+            DbVal::Null,
+            DbVal::from("hello, world!"),
         ]);
         let types = row.types();
         let serialized = serialize_data_untyped(&row);

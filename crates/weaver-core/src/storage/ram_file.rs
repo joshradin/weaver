@@ -1,8 +1,10 @@
+use std::fmt::{Debug, Formatter};
 use std::fs::{File, Metadata};
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::ops::Index;
 use std::path::Path;
 use std::{io, iter};
+use crate::common::hex_dump::{HexDump, HexDumpConfig};
 
 use crate::storage::abstraction::{Page, PageMut, PageMutWithHeader, Pager};
 
@@ -13,12 +15,22 @@ use crate::storage::abstraction::{Page, PageMut, PageMutWithHeader, Pager};
 /// when it's required.
 ///
 /// It will also only flush to the file and modify if it's written to.
-#[derive(Debug)]
 pub struct RandomAccessFile {
     file: File,
     buffer: Vec<u8>,
     dirty: bool,
     length: u64,
+}
+
+impl Debug for RandomAccessFile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RandomAccessFile")
+            .field("file", &self.file)
+            .field("dirty", &self.dirty)
+            .field("length", &self.length)
+            .field("buffer", &HexDump(&self.buffer, HexDumpConfig { start_index: 0, ..Default::default()}))
+            .finish()
+    }
 }
 
 impl RandomAccessFile {
@@ -155,10 +167,7 @@ impl TryFrom<File> for RandomAccessFile {
 mod tests {
     use tempfile::tempfile;
 
-    use crate::storage::abstraction::{Page, PageMut};
-    use crate::storage::file_pager::{FilePageMut, FilePager};
-
-    use super::{Pager, RandomAccessFile};
+    use super::RandomAccessFile;
 
     #[test]
     fn write_to_ram_file() {
@@ -169,5 +178,54 @@ mod tests {
         let mut buffer = [0; 16];
         let read = ram.read(0, &mut buffer).expect("could not read");
         assert_eq!(&buffer[..read as usize], &test);
+    }
+
+    #[test]
+    fn debug_file() {
+        let temp = tempfile().expect("could not create tempfile");
+        let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
+
+        ram.write(
+            0,
+            br#"
+Lorem ipsum dolor sit amet,
+consectetur adipiscing elit. Integer
+efficitur purus non orci pellentesque,
+vitae varius nisi lobortis. Nam ac
+congue nisi. Morbi vel dolor est. Proin
+eget tortor tempus, lobortis orci at,
+sodales urna. Donec vulputate convallis
+tortor eu dictum. Vivamus nec rhoncus
+odio. Integer risus est, venenatis ut
+faucibus id, ultricies eu orci. Nullam
+tortor tellus, dignissim sit amet ante
+eu, tempus luctus velit.
+
+Proin est erat, viverra sit amet dictum
+eget, imperdiet in sem. Duis aliquam
+pellentesque metus, vel pretium sapien
+tristique id. Fusce ut ultricies
+turpis, venenatis sagittis augue. Morbi
+malesuada eros ut dolor congue
+porttitor. Sed in ornare nisi, at
+tristique elit. Praesent non lectus non
+lectus efficitur cursus. Duis
+pellentesque tortor mauris. Vivamus
+sapien quam, varius ac facilisis ut,
+molestie eu ligula. Ut non metus dolor.
+Cras efficitur dictum viverra. Aenean
+lectus diam, dictum sed velit at,
+interdum interdum ligula. Aliquam nulla
+mauris, aliquam a tempus dapibus,
+ullamcorper sit amet nibh. Vestibulum
+ultrices id quam sed maximus. Etiam
+pellentesque, mi et malesuada bibendum,
+orci tellus elementum nisi, tempus
+aliquet magna lorem ac dolor.
+        "#,
+        )
+        .expect("could not write");
+
+        println!("ram: {ram:#?}");
     }
 }

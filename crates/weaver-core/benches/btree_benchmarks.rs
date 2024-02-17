@@ -5,7 +5,7 @@ use rand::{thread_rng, Rng};
 use std::iter;
 use tempfile::tempfile;
 use weaver_core::data::row::Row;
-use weaver_core::data::values::Literal;
+use weaver_core::data::values::DbVal;
 use weaver_core::key::KeyData;
 use weaver_core::storage::b_plus_tree::BPlusTree;
 use weaver_core::storage::VecPager;
@@ -19,7 +19,7 @@ fn insert_rand(count: usize, page_len: usize) -> BPlusTree<VecPager> {
     )
 }
 
-fn insert_rand_with<V: Into<Literal>, F: Fn(&mut ThreadRng) -> V>(
+fn insert_rand_with<V: Into<DbVal>, F: Fn(&mut ThreadRng) -> V>(
     count: usize,
     page_len: usize,
     prod: F,
@@ -28,7 +28,7 @@ fn insert_rand_with<V: Into<Literal>, F: Fn(&mut ThreadRng) -> V>(
     insert((0..count).into_iter().map(|_| prod(&mut rng)), page_len)
 }
 
-fn insert<V: Into<Literal>, I: IntoIterator<Item = V>>(
+fn insert<V: Into<DbVal>, I: IntoIterator<Item = V>>(
     iter: I,
     page_len: usize,
 ) -> BPlusTree<VecPager> {
