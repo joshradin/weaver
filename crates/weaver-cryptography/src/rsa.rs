@@ -1,33 +1,32 @@
 //! Provides RSA
 
+
 use pkcs8::der::zeroize::Zeroizing;
 use pkcs8::LineEnding;
 use rand::thread_rng;
-use rsa::{
-    Pkcs1v15Encrypt,
-    pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey}, RsaPrivateKey, RsaPublicKey,
-};
+use rsa::{BigUint, Pkcs1v15Encrypt, pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey}, RsaPrivateKey, RsaPublicKey};
+use rsa::traits::PublicKeyParts;
 
 use crate::{PrivateKey, Provider, PublicKey, Result};
 
 /// Rsa provider for cryptography
-pub struct RsaProvider;
+pub struct RsaProvider { bit_size: usize }
 
 impl RsaProvider {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(bit_size: usize) -> Self {
+        Self { bit_size }
     }
 }
 
 impl Provider for RsaProvider {
-    fn name(&self) -> &'static str {
-        todo!()
+    fn name(&self) -> String {
+        format!("rsa-{}", self.bit_size)
     }
 
-    fn generate(&self, block_size: usize) -> Result<Box<dyn PrivateKey>> {
+    fn generate(&self) -> Result<Box<dyn PrivateKey>> {
         Ok(Box::new(RsaPrivateKey::new(
-            &mut rand::thread_rng(),
-            block_size,
+            &mut thread_rng(),
+            self.bit_size,
         )?))
     }
 
@@ -46,44 +45,67 @@ impl Provider for RsaProvider {
 }
 
 impl PublicKey for RsaPublicKey {
-    fn encrypt(&self, buffer: &[u8]) -> Result<Vec<u8>> {
-        todo!()
+    fn block_size(&self) -> usize {
+        self.n().bits()
     }
 
-    fn to_pem(&self, password: Option<&[u8]>) -> Result<Zeroizing<String>> {
-        todo!()
+
+    fn encrypt(&self, msg: &[u8]) -> Result<Vec<u8>> {
+        Ok(self.encrypt(&mut thread_rng(), Pkcs1v15Encrypt, msg)?)
     }
 
-    fn to_der(&self, password: Option<&[u8]>) -> Result<Zeroizing<Vec<u8>>> {
-        todo!()
+    fn to_public_pem(&self) -> Result<String> {
+        Ok(self.to_public_key_pem(LineEnding::LF)?)
+    }
+
+    fn to_public_der(&self) -> Result<Vec<u8>> {
+        Ok(self.to_public_key_der()?.as_bytes().to_vec())
     }
 }
 
 impl PublicKey for RsaPrivateKey {
-    fn encrypt(&self, buffer: &[u8]) -> Result<Vec<u8>> {
-        Ok(self
-            .to_public_key()
-            .encrypt(&mut thread_rng(), Pkcs1v15Encrypt, buffer)?)
+    fn block_size(&self) -> usize {
+        self.to_public_key().block_size()
     }
 
-    fn to_pem(&self, password: Option<&[u8]>) -> Result<Zeroizing<String>> {
+
+    fn encrypt(&self, msg: &[u8]) -> Result<Vec<u8>> {
+        Ok(self
+            .to_public_key()
+            .encrypt(&mut thread_rng(), Pkcs1v15Encrypt, msg)?)
+    }
+
+    fn to_public_pem(&self) -> Result<String> {
+        PublicKey::to_public_pem(&self.to_public_key())
+    }
+
+    fn to_public_der(&self) -> Result<Vec<u8>> {
+        PublicKey::to_public_der(&self.to_public_key())
+    }
+}
+
+impl PrivateKey for RsaPrivateKey {
+    fn to_public_key(&self) -> Box<dyn PublicKey> {
+        Box::new(self.to_public_key())
+    }
+
+
+    fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
+        Ok(RsaPrivateKey::decrypt(self, Pkcs1v15Encrypt, ciphertext)?)
+    }
+
+    fn to_private_pem(&self, password: Option<&[u8]>) -> Result<Zeroizing<String>> {
         Ok(match password {
             None => { self.to_pkcs8_pem(LineEnding::LF)? }
             Some(password) => { self.to_pkcs8_encrypted_pem(&mut thread_rng(), password, LineEnding::LF)? }
         })
     }
 
-    fn to_der(&self, password: Option<&[u8]>) -> Result<Zeroizing<Vec<u8>>> {
+    fn to_private_der(&self, password: Option<&[u8]>) -> Result<Zeroizing<Vec<u8>>> {
         Ok(match password {
             None => { self.to_pkcs8_der()?.to_bytes() }
             Some(password) => { self.to_pkcs8_encrypted_der(&mut thread_rng(), password)?.to_bytes() }
         })
-    }
-}
-
-impl PrivateKey for RsaPrivateKey {
-    fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
-        Ok(RsaPrivateKey::decrypt(self, Pkcs1v15Encrypt, ciphertext)?)
     }
 }
 
@@ -94,8 +116,8 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt() {
-        let provider = RsaProvider::new();
-        let private_key = provider.generate(256).unwrap();
+        let provider = RsaProvider::new(256);
+        let private_key = provider.generate().unwrap();
 
         let message = private_key
             .decrypt(
@@ -109,11 +131,11 @@ mod tests {
 
     #[test]
     fn password_protected() {
-        let provider = RsaProvider::new();
+        let provider = RsaProvider::new(256);
         let password = Some(b"hunter2" as &[u8]);
         let private_key_der = {
-            let private_key = provider.generate(2048).unwrap();
-            private_key.to_der(password).expect("could not get private key")
+            let private_key = provider.generate().unwrap();
+            private_key.to_private_der(password).expect("could not get private key")
         };
 
         let _private_key = provider.read_private(&*private_key_der, password)

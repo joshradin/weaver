@@ -1220,6 +1220,7 @@ dependencies = [
  "num-iter",
  "num-traits",
  "rand",
+ "serde",
  "smallvec",
  "zeroize",
 ]
@@ -2380,7 +2381,9 @@ name = "weaver-cryptography"
 version = "0.0.0"
 dependencies = [
  "aead",
+ "cfg-if",
  "chacha20poly1305",
+ "num-bigint-dig",
  "once_cell",
  "pkcs8",
  "rand",

@@ -130,6 +130,8 @@ pub enum Error {
 
     #[error(transparent)]
     VirtualPagerError(#[from] VirtualPagerError),
+    #[error(transparent)]
+    CryptographyError(#[from] weaver_cryptography::Error),
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {
