@@ -18,7 +18,7 @@ use tracing::trace;
 use crate::common::consistent_hasher::SeededHasherBuilder;
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
-use crate::storage::abstraction::{Page, PageMut};
+use crate::storage::paging::traits::{Page, PageMut};
 use crate::storage::Pager;
 
 /// A virtual paged table provides a level of indirection
@@ -555,7 +555,7 @@ impl VirtualPagerError {
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::virtual_pager::VirtualPagerTable;
+    use crate::storage::paging::virtual_pager::VirtualPagerTable;
     use crate::storage::{Pager, VecPager};
     use std::collections::HashMap;
 

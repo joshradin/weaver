@@ -3,20 +3,20 @@
 use crate::storage::cells::PageId;
 use nom::error::Error;
 use nom::ErrorConvert;
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::io::Write;
 use std::string::FromUtf8Error;
 use thiserror::Error;
 
-mod abstraction;
-pub use abstraction::{Pager, VecPager};
+pub use paging::traits::{Pager, VecPager};
+use std::io;
+use std::fs::Metadata;
+
 pub mod b_plus_tree;
 pub mod cells;
-pub mod file_pager;
 pub mod ram_file;
-pub mod slotted_pager;
-pub mod virtual_pager;
-pub mod encrypted_pager;
+
+pub mod paging;
 
 /// Gets the standard page size of 4096 bytes
 pub static PAGE_SIZE: usize = 2 << 11;
@@ -168,4 +168,20 @@ impl StorageBackedData for str {
     fn write(&self, buf: &mut [u8]) -> WriteResult<usize> {
         self.as_bytes().write(buf)
     }
+}
+
+pub trait StorageFile {
+    fn metadata(&self) -> io::Result<Metadata>;
+    /// Sets the new length of the file, either extending it or truncating it
+    fn set_len(&mut self, len: u64) -> io::Result<()>;
+    /// Write data at a given offset
+    fn write(&mut self, offset: u64, data: &[u8]) -> io::Result<()>;
+    /// Read data at given offset into a buffer
+    fn read(&self, offset: u64, buffer: &mut [u8]) -> io::Result<u64>;
+    /// Read an exact amount of data, returning an error if this can't be done
+    fn read_exact(&self, offset: u64, len: u64) -> io::Result<Vec<u8>>;
+    /// Gets the length of the random access file
+    fn len(&self) -> u64;
+    fn flush(&mut self) -> io::Result<()>;
+    fn sync(&mut self) -> io::Result<()>;
 }

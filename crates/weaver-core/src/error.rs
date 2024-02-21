@@ -18,8 +18,8 @@ use crate::db::server::socket::MainQueueItem;
 use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError, TableCol};
 use crate::key::KeyData;
 use crate::storage::cells::PageId;
-use crate::storage::slotted_pager::PageType;
-use crate::storage::virtual_pager::VirtualPagerError;
+use crate::storage::paging::slotted_pager::PageType;
+use crate::storage::paging::virtual_pager::VirtualPagerError;
 use crate::storage::{ReadDataError, WriteDataError};
 
 #[derive(Debug, thiserror::Error)]
@@ -130,8 +130,6 @@ pub enum Error {
 
     #[error(transparent)]
     VirtualPagerError(#[from] VirtualPagerError),
-    #[error(transparent)]
-    CryptographyError(#[from] weaver_cryptography::Error),
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {

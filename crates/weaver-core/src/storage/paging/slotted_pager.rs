@@ -15,7 +15,7 @@ use parking_lot::{Mutex, RwLock};
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
-use crate::storage::abstraction::{
+use crate::storage::paging::traits::{
     Page, PageMut, PageMutWithHeader, PageWithHeader, Pager, SplitPage,
 };
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
@@ -912,7 +912,7 @@ impl StorageBackedData for PageType {
 /// Provides an allocator for slotted pages
 #[derive(Debug)]
 pub struct SlottedPager<P: Pager> {
-    paged: P,
+    base_pager: P,
     next_page_id: AtomicU32,
     free_list: RwLock<VecDeque<usize>>,
     page_id_to_index: RwLock<BTreeMap<PageId, usize>>,
@@ -923,7 +923,7 @@ impl<P: Pager> SlottedPager<P> {
     pub fn new(paged: P) -> Self {
         let mut paged = if paged.len() * paged.page_size() == paged.reserved() {
             Self {
-                paged,
+                base_pager: paged,
                 next_page_id: AtomicU32::new(1),
                 free_list: Default::default(),
                 page_id_to_index: Default::default(),
@@ -945,7 +945,7 @@ impl<P: Pager> SlottedPager<P> {
                 }
             }
             Self {
-                paged,
+                base_pager: paged,
                 next_page_id: Default::default(),
                 free_list: Default::default(),
                 page_id_to_index: Default::default(),
@@ -987,7 +987,7 @@ impl<P: Pager> SlottedPager<P> {
         &self,
         page_type: PageType,
     ) -> Result<(SlottedPageMut<P::PageMut<'_>>, usize), P::Err> {
-        let (mut new, index) = self.new()?;
+        let (mut new, index) = Pager::new(self)?;
         new.header.to_mut().set_page_type(page_type);
         self.page_id_to_index.write().insert(new.page_id(), index);
         Ok((new, index))
@@ -1158,25 +1158,25 @@ impl<P: Pager> Pager for SlottedPager<P> {
     type Err = P::Err;
 
     fn page_size(&self) -> usize {
-        self.paged.page_size()
+        self.base_pager.page_size()
     }
 
     fn get(&self, index: usize) -> Result<Self::Page<'_>, Self::Err> {
-        let page = self.paged.get(index)?;
+        let page = self.base_pager.get(index)?;
         Ok(make_slotted(page))
     }
 
     fn get_mut(&self, index: usize) -> Result<Self::PageMut<'_>, Self::Err> {
-        let page = self.paged.get_mut(index)?;
+        let page = self.base_pager.get_mut(index)?;
         Ok(make_slotted_mut(page))
     }
 
     fn new(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
         let id = self.next_page_id();
         let (zeroed_page, index) = if let Some(index) = self.free_list.write().pop_front() {
-            (self.paged.get_mut(index)?, index)
+            (self.base_pager.get_mut(index)?, index)
         } else {
-            self.paged.new()?
+            self.base_pager.new()?
         };
         let header = SlottedPageHeader::new(id);
         let page = SplitPage::new(zeroed_page, size_of_val(&header));
@@ -1201,15 +1201,15 @@ impl<P: Pager> Pager for SlottedPager<P> {
     }
 
     fn free(&self, index: usize) -> Result<(), Self::Err> {
-        self.paged.free(index)?;
+        self.base_pager.free(index)?;
         self.free_list.write().push_back(index);
         Ok(())
     }
 
     fn len(&self) -> usize {
-        (0..self.paged.len())
+        (0..self.base_pager.len())
             .filter_map(|index| {
-                let page = self.paged.get(index).ok();
+                let page = self.base_pager.get(index).ok();
                 page
             })
             .filter(|s| Self::has_magic(s))
@@ -1217,7 +1217,7 @@ impl<P: Pager> Pager for SlottedPager<P> {
     }
 
     fn reserved(&self) -> usize {
-        self.paged.reserved()
+        self.base_pager.reserved()
     }
 }
 
@@ -1232,11 +1232,11 @@ mod tests {
     use crate::data::values::DbVal;
     use crate::error::Error;
     use crate::key::KeyData;
-    use crate::storage::abstraction::{Pager, VecPager};
+    use crate::storage::paging::traits::{Pager, VecPager};
     use crate::storage::cells::{Cell, KeyCell, PageId};
-    use crate::storage::file_pager::FilePager;
+    use crate::storage::paging::file_pager::FilePager;
     use crate::storage::ram_file::RandomAccessFile;
-    use crate::storage::slotted_pager::{PageType, SlottedPageHeader, SlottedPager};
+    use crate::storage::paging::slotted_pager::{PageType, SlottedPageHeader, SlottedPager};
     use crate::storage::WriteDataError;
 
     #[test]
@@ -1268,7 +1268,7 @@ mod tests {
     fn reuse_slotted_page_after_free_file() {
         let temp = tempfile().expect("could not create file");
         let file = RandomAccessFile::with_file(temp).expect("could not create RAFile");
-        let mut slotted_pager = SlottedPager::new(FilePager::with_page_len(file, 1028));
+        let mut slotted_pager = SlottedPager::new(FilePager::with_file_and_page_len(file, 1028));
         {
             let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
             let slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
@@ -1391,7 +1391,7 @@ mod tests {
         }
 
         assert_eq!(
-            slotted_pager.paged.len(),
+            slotted_pager.base_pager.len(),
             1,
             "only one page should've been allocated"
         );

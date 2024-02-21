@@ -8,15 +8,15 @@ use std::ops::Bound;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use ptree::{write_tree, TreeBuilder};
+use ptree::{write_tree, TreeBuilder, print_tree};
 use tracing::{error, instrument, trace, warn};
 
 use crate::data::row::OwnedRow;
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
-use crate::storage::abstraction::Pager;
+use crate::storage::paging::traits::Pager;
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
-use crate::storage::slotted_pager::{PageType, SlottedPager};
+use crate::storage::paging::slotted_pager::{PageType, SlottedPager};
 use crate::storage::{ReadDataError, WriteDataError};
 
 /// A BPlusTree that uses a given pager.
@@ -139,7 +139,12 @@ where
         let (mut split_page, _) = allocator.new_with_type(page_type)?;
         split_page.set_right_sibling(page_id);
         split_page.set_left_sibling(page.left_sibling());
+        if let Some(left_sibling) = page.left_sibling(){
+            let mut left_sibling_page = allocator.get_mut(left_sibling)?;
+            left_sibling_page.set_right_sibling(split_page.page_id());
+        }
         page.set_left_sibling(split_page.page_id());
+
 
         let full_count = page.count();
         if full_count == 0 {
@@ -642,8 +647,7 @@ where
             self.print_(root, &mut builder, None)?;
         }
         let built = builder.build();
-        let mut vec = vec![];
-        write_tree(&built, &mut vec)?;
+        print_tree(&built)?;
         /* trace!("{}", String::from_utf8_lossy(&vec)); */
         Ok(())
     }
@@ -658,7 +662,7 @@ where
         Ok(())
     }
 
-    pub fn print_(
+    fn print_(
         &self,
         page_id: PageId,
         builder: &mut TreeBuilder,
@@ -666,10 +670,12 @@ where
     ) -> Result<(), Error> {
         let page = self.allocator.get(page_id)?;
         builder.begin_child(format!(
-            "({:?}) {:?}. nodes {}",
+            "({:?}) {:?}. nodes {} (l: {:?}, r: {:?})",
             page.page_type(),
             page.page_id(),
-            self.nodes(page_id)?
+            self.nodes(page_id)?,
+            page.left_sibling(),
+            page.right_sibling()
         ));
         match page.page_type() {
             PageType::Key => {
@@ -743,11 +749,14 @@ fn to_ranges(cells: Vec<Cell>) -> Vec<(KeyDataRange, Cell)> {
 mod tests {
     use rand::distributions::Alphanumeric;
     use rand::Rng;
+    use tempfile::tempfile;
 
     use crate::data::serde::deserialize_data_untyped;
     use crate::data::types::Type;
     use crate::data::values::DbVal;
-    use crate::storage::abstraction::VecPager;
+    use crate::storage::paging::traits::VecPager;
+    use crate::storage::paging::file_pager::FilePager;
+    use crate::storage::ram_file::RandomAccessFile;
 
     use super::*;
 
@@ -767,6 +776,31 @@ mod tests {
         assert_eq!(&read[0], &1.into());
         assert_eq!(&read[1], &2.into());
         assert_eq!(&read[2], &3.into());
+    }
+
+    #[test]
+    fn recover_state_from_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("btree");
+        {
+            let btree = BPlusTree::new(FilePager::open_or_create(&path).unwrap());
+            const MAX: i64 = 256;
+            for i in 0..MAX {
+                if let Err(e) = btree.insert([i], [1 + i, 2 * i]) {
+                    btree.print().expect("could not print");
+                    panic!("error occurred on loop {i}: {e}");
+                }
+            }
+        }
+        {
+            let btree = BPlusTree::new(FilePager::open(&path).unwrap());
+            assert_eq!(btree.all().expect("could not get all").len(), 256);
+            const MAX: i64 = 256;
+            for i in 0..MAX {
+                let v = btree.get(&KeyData::from([i])).unwrap();
+                assert!(matches!(v, Some(_)), "should have id")
+            }
+        }
     }
 
     #[test]

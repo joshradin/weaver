@@ -2,12 +2,6 @@
 //!
 //! This pager wraps around a [`RandomAccessFile`](RandomAccessFile)
 
-use super::ram_file::RandomAccessFile;
-use crate::common::track_dirty::Mad;
-use crate::error::Error;
-use crate::storage::abstraction::{Page, PageMut};
-use crate::storage::{Pager, PAGE_SIZE};
-use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::io;
@@ -15,7 +9,15 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
+
+use parking_lot::RwLock;
+
 use crate::common::hex_dump::HexDump;
+use crate::common::track_dirty::Mad;
+use crate::error::Error;
+use crate::storage::paging::traits::{Page, PageMut};
+use crate::storage::ram_file::RandomAccessFile;
+use crate::storage::{PAGE_SIZE, Pager, StorageFile};
 
 /// Provides a paged abstraction over a [RandomAccessFile]
 #[derive(Debug)]
@@ -29,16 +31,46 @@ impl FilePager {
     /// Creates a new paged file
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let path = path.as_ref();
-        let ram = RandomAccessFile::create(path)?;
-        Ok(Self::with_page_len(ram, PAGE_SIZE))
+        let ram = RandomAccessFile::open(path)?;
+        Ok(Self::with_file_and_page_len(ram, PAGE_SIZE))
     }
+
     /// Creates a new paged file
-    pub fn with_page_len(file: RandomAccessFile, page_len: usize) -> Self {
+    pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let path = path.as_ref();
+        let ram = RandomAccessFile::create(path)?;
+        Ok(Self::with_file_and_page_len(ram, PAGE_SIZE))
+    }
+
+    /// Creates a new paged file
+    pub fn open_or_create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let path = path.as_ref();
+        let ram = RandomAccessFile::open_or_create(path)?;
+        Ok(Self::with_file_and_page_len(ram, PAGE_SIZE))
+    }
+
+    /// Creates a new paged file
+    pub fn with_file_and_page_len(file: RandomAccessFile, page_len: usize) -> Self {
+        let current_file_len = file.len() as usize;
+        let pages = current_file_len.div_ceil(page_len);
+        let usage_map = HashMap::from_iter((0..pages).into_iter().map(|i| (i, Default::default())));
+
         Self {
             raf: Arc::new(RwLock::new(file)),
-            usage_map: Default::default(),
+            usage_map: Arc::new(RwLock::new(usage_map)),
             page_len,
         }
+    }
+
+    /// Creates a new paged file
+    pub fn with_file(file: RandomAccessFile) -> Self {
+        Self::with_file_and_page_len(file, PAGE_SIZE)
+    }
+}
+
+impl From<RandomAccessFile> for FilePager {
+    fn from(value: RandomAccessFile) -> Self {
+        Self::with_file(value)
     }
 }
 
@@ -83,7 +115,10 @@ impl Pager for FilePager {
                     "Failed to get page",
                     io::Error::new(
                         ErrorKind::WouldBlock,
-                        format!("Would block, page at offset {} already in use (used: {used})", offset),
+                        format!(
+                            "Would block, page at offset {} already in use (used: {used})",
+                            offset
+                        ),
                     ),
                 )
             })?;
@@ -131,7 +166,10 @@ impl Pager for FilePager {
                     "Failed to get page",
                     io::Error::new(
                         ErrorKind::WouldBlock,
-                        format!("Would block, page at offset {} already in use (used: {val})", offset),
+                        format!(
+                            "Would block, page at offset {} already in use (used: {val})",
+                            offset
+                        ),
                     ),
                 )
             })?;
@@ -208,8 +246,6 @@ impl<'a> Page<'a> for FilePage {
     }
 }
 
-
-
 /// A page from a random access fille
 pub struct FilePageMut {
     file: Arc<RwLock<RandomAccessFile>>,
@@ -223,7 +259,7 @@ impl Debug for FilePageMut {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FilePageMut")
             .field("buffer", &HexDump::new(&*self.buffer))
-        .finish()
+            .finish()
     }
 }
 
@@ -257,17 +293,18 @@ impl Drop for FilePageMut {
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::abstraction::{Page, PageMut};
-    use crate::storage::file_pager::{FilePageMut, FilePager};
+    use tempfile::tempfile;
+
+    use crate::storage::paging::traits::{Page, PageMut};
+    use crate::storage::paging::file_pager::{FilePageMut, FilePager};
     use crate::storage::ram_file::RandomAccessFile;
     use crate::storage::Pager;
-    use tempfile::tempfile;
 
     #[test]
     fn paged() {
         let temp = tempfile().expect("could not create tempfile");
         let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
-        let mut paged = FilePager::with_page_len(ram, 4096);
+        let mut paged = FilePager::with_file_and_page_len(ram, 4096);
         let (mut page, index): (FilePageMut, _) = paged.new().unwrap();
         let slice = page.get_mut(..128).unwrap();
         slice[..6].copy_from_slice(&[0, 1, 2, 3, 4, 5]);
