@@ -43,11 +43,10 @@ impl WeaverDbCore {
     }
 
     #[cfg(test)]
-    pub fn in_temp_dir() -> Result<(tempfile::TempDir, Self), Error>{
+    pub fn in_temp_dir() -> Result<(tempfile::TempDir, Self), Error> {
         use tempfile::TempDir;
         let tempdir = TempDir::new()?;
-        Self::with_path(tempdir.as_ref())
-            .map(|core| (tempdir, core))
+        Self::with_path(tempdir.as_ref()).map(|core| (tempdir, core))
     }
 
     /// Opens the weaver db core at the given paths.
@@ -171,7 +170,8 @@ impl WeaverDbCore {
 
     /// Closes a table
     pub fn close_table(&self, schema: &str, name: &str) -> Result<(), Error> {
-        self.open_tables.write()
+        self.open_tables
+            .write()
             .remove(&(schema.to_string(), name.to_string()))
             .map(|_| ())
             .ok_or(Error::NoTableFound {

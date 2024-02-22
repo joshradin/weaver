@@ -4,20 +4,23 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::{Debug, Formatter};
+use std::io::Write;
 use std::marker::PhantomData;
 use std::mem::size_of;
 use std::slice::SliceIndex;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
+use indexmap::IndexMap;
 
-use parking_lot::RwLock;
 use crate::common::hex_dump::HexDump;
+use parking_lot::RwLock;
 
 use crate::common::track_dirty::Mad;
+use crate::monitoring::{Monitor, monitor_fn, Monitorable, Stats};
 use crate::storage::{ReadResult, StorageBackedData, WriteResult, PAGE_SIZE};
 
 /// Allows for getting pages of a fix size
-pub trait Pager {
+pub trait Pager : Monitorable {
     type Page<'a>: Page<'a>
     where
         Self: 'a;
@@ -51,6 +54,9 @@ pub trait Pager {
 
     /// Gets the total length of the memory reserved space, in bytes, of the paged object
     fn reserved(&self) -> usize;
+
+    /// Flushes the pager
+    fn flush(&self) -> Result<(), Self::Err> { Ok(()) }
 
     fn iter(&self) -> impl Iterator<Item = Result<(Self::Page<'_>, usize), Self::Err>> + '_ {
         (0..self.len())
@@ -259,9 +265,15 @@ impl Debug for VecPager {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("VecPager")
             .field("page_len", &self.page_len)
-            .field("pages", &self.pages.read().iter()
-                .map(|page| HexDump::new(page.read().to_vec()))
-                .collect::<Vec<_>>())
+            .field(
+                "pages",
+                &self
+                    .pages
+                    .read()
+                    .iter()
+                    .map(|page| HexDump::new(page.read().to_vec()))
+                    .collect::<Vec<_>>(),
+            )
             .finish()
     }
 }
@@ -280,6 +292,14 @@ impl VecPager {
             usage: Default::default(),
             page_len,
         }
+    }
+}
+
+impl Monitorable for VecPager {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        Box::new(monitor_fn("VecPager", || {
+            Stats::Dict(IndexMap::new())
+        }))
     }
 }
 

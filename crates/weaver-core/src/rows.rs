@@ -134,11 +134,11 @@ impl OwnedRows {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=&OwnedRow> {
+    pub fn iter(&self) -> impl Iterator<Item = &OwnedRow> {
         self.rows.iter()
     }
 
-    pub fn columnized(&self) -> impl Iterator<Item=ColumnizedRow<'_>> {
+    pub fn columnized(&self) -> impl Iterator<Item = ColumnizedRow<'_>> {
         let gen = ColumnizedRow::generator(self.schema());
         self.rows.iter().map(move |row| gen(row))
     }

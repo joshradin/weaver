@@ -31,7 +31,6 @@ pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<()
     let ref weaver_tables_schema = weaver_tables_schema()?;
     core.open_table(weaver_tables_schema)?;
 
-
     todo!("bootstrapping")
 }
 

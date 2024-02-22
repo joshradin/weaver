@@ -96,6 +96,15 @@ impl TableSchema {
         &self.keys
     }
 
+    /// Gets all non-primary keys
+    pub fn secondary_keys(&self) -> Vec<&Key> {
+        if let Ok(primary) = self.primary_key() {
+            self.keys.iter().filter(|key| key != &primary).collect()
+        } else {
+            self.keys.iter().collect()
+        }
+    }
+
     /// Gets the index of a column.
     ///
     /// Returns `None` if not present
@@ -118,7 +127,7 @@ impl TableSchema {
         self.keys
             .iter()
             .find(|key| key.primary())
-            .or_else(|| self.keys.iter().find(|key| key.unique && key.non_null))
+            .or_else(|| self.keys.iter().find(|key| key.primary_eligible()))
             .ok_or(Error::NoPrimaryKey)
     }
 

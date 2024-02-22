@@ -88,7 +88,6 @@ pub struct Tx {
     lock: Arc<Mutex<()>>,
 }
 
-
 impl Tx {
     /// Gets the identifier of this transaction
     pub fn id(&self) -> TxId {

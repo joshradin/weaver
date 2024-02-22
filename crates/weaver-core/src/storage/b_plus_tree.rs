@@ -5,18 +5,21 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter};
 use std::io::Write;
 use std::ops::Bound;
-use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, atomic, OnceLock};
+use std::time::Instant;
 
-use parking_lot::RwLock;
-use ptree::{write_tree, TreeBuilder, print_tree};
+use parking_lot::{Mutex, RwLock};
+use ptree::{print_tree, write_tree, TreeBuilder};
 use tracing::{error, instrument, trace, warn};
 
 use crate::data::row::OwnedRow;
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
-use crate::storage::paging::traits::Pager;
+use crate::monitoring::{Monitor, Monitorable, Stats};
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
 use crate::storage::paging::slotted_pager::{PageType, SlottedPager};
+use crate::storage::paging::traits::Pager;
 use crate::storage::{ReadDataError, WriteDataError};
 
 /// A BPlusTree that uses a given pager.
@@ -26,6 +29,7 @@ pub struct BPlusTree<P: Pager> {
     allocator: Arc<SlottedPager<P>>,
     /// determined initially by scanning up parents
     root: RwLock<Option<PageId>>,
+    monitor: OnceLock<BPlusTreeMonitor>,
 }
 
 impl<P: Pager> Debug for BPlusTree<P> {
@@ -70,7 +74,12 @@ where
         Self {
             allocator: Arc::new(allocator),
             root: RwLock::new(root),
+            monitor: OnceLock::new(),
         }
+    }
+
+    pub fn allocator(&self) -> &impl Pager {
+        self.allocator.as_ref()
     }
 
     /// Inserts into bplus tree.
@@ -116,7 +125,12 @@ where
     fn insert_cell(&self, cell: Cell, page_id: PageId) -> Result<bool, Error> {
         let mut page = self.allocator.get_mut(page_id).expect("no page found");
         match page.insert(cell.clone()) {
-            Ok(()) => Ok(false),
+            Ok(()) => {
+                if let Some(monitor) = self.monitor.get() {
+                    monitor.inserts.fetch_add(1, atomic::Ordering::Relaxed);
+                }
+                Ok(false)
+            },
             Err(Error::WriteDataError(WriteDataError::AllocationFailed { .. })) => {
                 // insufficient space requires a split
                 let id = page.page_id();
@@ -139,12 +153,11 @@ where
         let (mut split_page, _) = allocator.new_with_type(page_type)?;
         split_page.set_right_sibling(page_id);
         split_page.set_left_sibling(page.left_sibling());
-        if let Some(left_sibling) = page.left_sibling(){
+        if let Some(left_sibling) = page.left_sibling() {
             let mut left_sibling_page = allocator.get_mut(left_sibling)?;
             left_sibling_page.set_right_sibling(split_page.page_id());
         }
         page.set_left_sibling(split_page.page_id());
-
 
         let full_count = page.count();
         if full_count == 0 {
@@ -217,6 +230,9 @@ where
             Ok(())
         };
         self.verify_integrity();
+        if let Some(monitor) = self.monitor.get() {
+            monitor.splits.fetch_add(1, atomic::Ordering::Relaxed);
+        }
         emit
     }
 
@@ -274,6 +290,9 @@ where
     /// Only returns an error if something went wrong trying to find the data, and returns `Ok(None` if no
     /// problems occurred but an associated record was not present.
     pub fn get(&self, key_data: &KeyData) -> Result<Option<Box<[u8]>>, Error> {
+        if let Some(monitor) = self.monitor.get() {
+            monitor.reads.fetch_add(1, atomic::Ordering::Relaxed);
+        }
         let leaf = self.find_leaf(key_data, false)?;
         let allocator = &self.allocator;
         let leaf = allocator.get(leaf)?;
@@ -330,6 +349,10 @@ where
                 vec.extend(page_cells);
             }
             Ok(vec)
+        }).inspect(|cells| {
+            if let Some(monitor) = self.monitor.get() {
+                monitor.reads.fetch_add(cells.len(), atomic::Ordering::Relaxed);
+            }
         })
     }
 
@@ -673,7 +696,7 @@ where
             "({:?}) {:?}. nodes {} (l: {:?}, r: {:?})",
             page.page_type(),
             page.page_id(),
-            self.nodes(page_id)?,
+            self.nodes_from_page(page_id)?,
             page.left_sibling(),
             page.right_sibling()
         ));
@@ -715,20 +738,42 @@ where
     }
 
     /// Gets the number of nodes
-    pub fn nodes(&self, page_id: PageId) -> Result<usize, Error> {
+    pub fn nodes_from_page(&self, page_id: PageId) -> Result<usize, Error> {
         let page = self.allocator.get(page_id)?;
         match page.page_type() {
             PageType::Key => Ok(page
                 .all()?
                 .into_iter()
                 .filter_map(Cell::into_key_cell)
-                .map(|cell| self.nodes(cell.page_id()))
+                .map(|cell| self.nodes_from_page(cell.page_id()))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
                 .sum::<usize>()
                 + 1),
             PageType::KeyValue => Ok(1),
         }
+    }
+
+    pub fn nodes(&self) -> Result<usize, Error> {
+        let root = self.root.read().clone();
+        if let Some(root) = root {
+            self.nodes_from_page(root)
+        } else {
+            Ok(0)
+        }
+    }
+}
+
+impl<P: Pager> Monitorable for BPlusTree<P> {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        Box::new(
+            self.monitor
+                .get_or_init(|| {
+                    let monitor = self.allocator.monitor();
+                    BPlusTreeMonitor::new(monitor)
+                })
+                .clone(),
+        )
     }
 }
 
@@ -745,18 +790,71 @@ fn to_ranges(cells: Vec<Cell>) -> Vec<(KeyDataRange, Cell)> {
         .collect()
 }
 
+#[derive(Clone)]
+struct BPlusTreeMonitor {
+    pager_monitor: Arc<Mutex<Box<dyn Monitor>>>,
+    start_time: Instant,
+    reads: Arc<AtomicUsize>,
+    inserts: Arc<AtomicUsize>,
+    updates: Arc<AtomicUsize>,
+    deletes: Arc<AtomicUsize>,
+    splits: Arc<AtomicUsize>
+}
+
+impl Debug for BPlusTreeMonitor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UnbufferedTableMonitor")
+            .finish_non_exhaustive()
+    }
+}
+
+impl BPlusTreeMonitor {
+    fn new(pager: Box<dyn Monitor>) -> Self {
+        Self {
+            pager_monitor: Arc::new(Mutex::new(pager)),
+            start_time: Instant::now(),
+            reads: Arc::new(Default::default()),
+            inserts: Arc::new(Default::default()),
+            updates: Arc::new(Default::default()),
+            deletes: Arc::new(Default::default()),
+            splits: Arc::new(Default::default()),
+        }
+    }
+}
+
+impl Monitor for BPlusTreeMonitor {
+    fn name(&self) -> &str {
+        "BPlusTree"
+    }
+    fn stats(&mut self) -> Stats {
+        let elapsed = self.start_time.elapsed().as_secs_f64();
+        let r = self.reads.load(std::sync::atomic::Ordering::Relaxed) as f64 / elapsed;
+        let w = self.inserts.load(std::sync::atomic::Ordering::Relaxed) as f64 / elapsed;
+        let u = self.updates.load(std::sync::atomic::Ordering::Relaxed) as f64 / elapsed;
+        let d = self.deletes.load(std::sync::atomic::Ordering::Relaxed) as f64 / elapsed;
+        let splits = self.splits.load(std::sync::atomic::Ordering::Relaxed) as f64 / elapsed;
+
+        Stats::from_iter([
+            ("pager", self.pager_monitor.lock().stats()),
+            ("reads", Stats::Throughput(r)),
+            ("writes", Stats::Throughput(w)),
+            ("updates", Stats::Throughput(u)),
+            ("deletes", Stats::Throughput(d)),
+            ("splits", Stats::Throughput(splits)),
+        ])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rand::distributions::Alphanumeric;
     use rand::Rng;
-    use tempfile::tempfile;
 
     use crate::data::serde::deserialize_data_untyped;
     use crate::data::types::Type;
     use crate::data::values::DbVal;
-    use crate::storage::paging::traits::VecPager;
     use crate::storage::paging::file_pager::FilePager;
-    use crate::storage::ram_file::RandomAccessFile;
+    use crate::storage::paging::traits::VecPager;
 
     use super::*;
 

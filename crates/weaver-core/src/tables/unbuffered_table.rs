@@ -1,14 +1,16 @@
 //! An in-memory storage engine
 
-use once_cell::sync::Lazy;
 use std::cell::RefCell;
-use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
+use std::collections::btree_map::Entry;
+use std::fmt::{Debug, Formatter};
 use std::ops::Bound::{Excluded, Unbounded};
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+use std::time::Instant;
 
-use parking_lot::RwLock;
+use once_cell::sync::Lazy;
+use parking_lot::{Mutex, RwLock};
 use tracing::{debug, info, trace};
 
 use crate::data::row::{OwnedRow, Row};
@@ -16,32 +18,44 @@ use crate::data::types::Type;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, OwnedCol, Table};
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
+use crate::monitoring::{Monitor, monitor_fn, Monitorable, MonitorCollector, Stats};
 use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, Rows};
-use crate::storage::b_plus_tree::BPlusTree;
 use crate::storage::{Pager, VecPager};
+use crate::storage::b_plus_tree::BPlusTree;
+use crate::storage::paging::buffered_pager::BufferedPager;
+use crate::storage::paging::virtual_pager::{VirtualPager, VirtualPagerTable};
 use crate::tables::table_schema::{ColumnDefinition, TableSchema};
-use crate::tx::{Tx, TxId, TX_ID_COLUMN};
+use crate::tx::{Tx, TX_ID_COLUMN, TxId};
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
 struct RowId(u64);
 
-/// An in memory table
-#[derive(Debug)]
+const MAIN_ROOT: u8 = 0;
+const SECONDARY_ROOT: u8 = 1;
+
+/// An in memory table that immediately flushes to storage
 pub struct UnbufferedTable<P: Pager + Sync + Send> {
     schema: TableSchema,
-    main_buffer: BPlusTree<P>,
+    main_buffer: BPlusTree<VirtualPager<u8, BufferedPager<P>>>,
     auto_incremented: HashMap<OwnedCol, OnceLock<AtomicI64>>,
     row_id: AtomicI64,
 }
 
-impl<P: Pager + Sync + Send> UnbufferedTable<P>
-    where
-        Error: From<P::Err>,{
+impl<P: Pager + Sync + Send> Debug for UnbufferedTable<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UnbufferedTable")
+            .field("schema", &self.schema)
+            .field("primary_index_nodes", &self.main_buffer.nodes().unwrap_or(0))
+            .field("auto_incremented", &self.auto_incremented)
+            .field("row_id", &self.row_id)
+            .finish()
+    }
+}
+
+
+impl<P: Pager + Sync + Send> UnbufferedTable<P> {
     /// Creates a new, empty in memory table
-    pub fn new(mut schema: TableSchema, paged: P, transactional: bool) -> Result<Self, Error>
-    where
-        Error: From<P::Err>,
-    {
+    pub fn new(mut schema: TableSchema, paged: P, transactional: bool) -> Result<Self, Error> {
         if transactional
             && !schema
                 .sys_columns()
@@ -57,6 +71,9 @@ impl<P: Pager + Sync + Send> UnbufferedTable<P>
             )?)?;
         }
 
+        let virtual_pager_table = VirtualPagerTable::<u8, _>::new(BufferedPager::new(paged))?;
+        let root = virtual_pager_table.get_or_init(MAIN_ROOT)?;
+
         let auto_incremented = schema
             .all_columns()
             .iter()
@@ -65,7 +82,7 @@ impl<P: Pager + Sync + Send> UnbufferedTable<P>
             .collect();
         Ok(Self {
             schema,
-            main_buffer: BPlusTree::new(paged),
+            main_buffer: BPlusTree::new(root),
             auto_incremented,
             row_id: Default::default(),
         })
@@ -105,6 +122,16 @@ impl<P: Pager + Sync + Send> UnbufferedTable<P>
     }
 }
 
+impl<P: Pager + Sync + Send> Monitorable for UnbufferedTable<P> {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        let mut monitor_collector = MonitorCollector::new();
+        monitor_collector.push_monitorable(&self.main_buffer);
+
+        Box::new(monitor_fn("UnbufferedTable", move || {
+            monitor_collector.all()
+        }))
+    }
+}
 
 impl<P: Pager + Sync + Send> DynamicTable for UnbufferedTable<P>
 where
@@ -215,3 +242,4 @@ where
         &self.schema
     }
 }
+

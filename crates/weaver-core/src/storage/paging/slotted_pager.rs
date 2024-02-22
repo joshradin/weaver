@@ -15,10 +15,11 @@ use parking_lot::{Mutex, RwLock};
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
+use crate::monitoring::{Monitor, Monitorable};
+use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
 use crate::storage::paging::traits::{
     Page, PageMut, PageMutWithHeader, PageWithHeader, Pager, SplitPage,
 };
-use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
 
 impl StorageBackedData for Option<PageId> {
@@ -333,7 +334,8 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
         let Some(CellPtr {
             slot: _,
             cell: cell_ptr,
-        }) = self.alloc(cell_len) else {
+        }) = self.alloc(cell_len)
+        else {
             return Err(WriteDataError::AllocationFailed {
                 page_id: self.page_id().as_u32(),
                 size: cell_len,
@@ -1152,6 +1154,12 @@ fn make_slotted_mut<'a, P: PageMut<'a>>(page: P) -> SlottedPageMut<'a, P> {
     SlottedPageMut { shared: output }
 }
 
+impl<P: Pager> Monitorable for SlottedPager<P> {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        self.base_pager.monitor()
+    }
+}
+
 impl<P: Pager> Pager for SlottedPager<P> {
     type Page<'a> = SlottedPage<'a, P::Page<'a>> where P : 'a;
     type PageMut<'a> = SlottedPageMut<'a, P::PageMut<'a>> where P : 'a;
@@ -1232,11 +1240,11 @@ mod tests {
     use crate::data::values::DbVal;
     use crate::error::Error;
     use crate::key::KeyData;
-    use crate::storage::paging::traits::{Pager, VecPager};
     use crate::storage::cells::{Cell, KeyCell, PageId};
     use crate::storage::paging::file_pager::FilePager;
-    use crate::storage::ram_file::RandomAccessFile;
     use crate::storage::paging::slotted_pager::{PageType, SlottedPageHeader, SlottedPager};
+    use crate::storage::paging::traits::{Pager, VecPager};
+    use crate::storage::ram_file::RandomAccessFile;
     use crate::storage::WriteDataError;
 
     #[test]

@@ -1,11 +1,11 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock, Weak};
 use std::thread;
 use std::thread::JoinHandle;
 
-use crossbeam::channel::{Sender, unbounded};
+use crossbeam::channel::{unbounded, Sender};
 use parking_lot::{Mutex, RwLock};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use tracing::{debug, error, error_span, info, info_span, trace, warn};
@@ -13,20 +13,20 @@ use tracing::{debug, error, error_span, info, info_span, trace, warn};
 use weaver_ast::ast::Query;
 
 use crate::access_control::auth::context::AuthContext;
-use crate::access_control::auth::init::{AuthConfig, init_auth_context};
-use crate::cancellable_task::{CancellableTask, Cancelled, CancelRecv};
-use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
+use crate::access_control::auth::init::{init_auth_context, AuthConfig};
+use crate::cancellable_task::{CancelRecv, CancellableTask, Cancelled};
 use crate::cnxn::cnxn_loop::remote_stream_loop;
 use crate::cnxn::interprocess::WeaverLocalSocketListener;
 use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::tcp::WeaverTcpListener;
+use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::common::stream_support::Stream;
 use crate::db::core::{bootstrap, WeaverDbCore};
 use crate::db::server::init::system::init_system_tables;
 use crate::db::server::init::weaver::init_weaver_schema;
-use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
+use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::processes::{
     ProcessManager, WeaverPid, WeaverProcessChild, WeaverProcessInfo,
 };

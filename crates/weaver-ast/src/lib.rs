@@ -1,10 +1,10 @@
-use std::io;
-use std::io::Write;
 use crate::ast::Query;
 use crate::error::ParseQueryError;
 use crate::lexing::Token;
 use crate::parsing::parse_query;
 use lexing::Tokenizer;
+use std::io;
+use std::io::Write;
 
 pub mod ast;
 pub mod error;
@@ -44,7 +44,7 @@ impl QueryParser {
 /// Convert some object into valid sql
 pub trait ToSql {
     /// Converts an object into valid sql
-    fn to_sql<W : Write>(&self, writer: &mut W) -> Result<(), io::Error>;
+    fn to_sql<W: Write>(&self, writer: &mut W) -> Result<(), io::Error>;
 }
 
 #[cfg(test)]

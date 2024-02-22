@@ -33,7 +33,7 @@ impl Binary for PrettyBytes<'_> {
         write!(f, "b'")?;
         let min = self.0.len().min(128);
         for &byte in &self.0[..min] {
-           write!(f, "{byte:b}", )?;
+            write!(f, "{byte:b}",)?;
         }
         write!(f, "'")
     }
@@ -44,7 +44,7 @@ impl LowerHex for PrettyBytes<'_> {
         write!(f, "x'")?;
         let min = self.0.len().min(128);
         for &byte in &self.0[..min] {
-            write!(f, "{byte:x}", )?;
+            write!(f, "{byte:x}",)?;
         }
         write!(f, "'")
     }
@@ -55,9 +55,8 @@ impl UpperHex for PrettyBytes<'_> {
         write!(f, "X'")?;
         let min = self.0.len().min(128);
         for &byte in &self.0[..min] {
-            write!(f, "{byte:X}", )?;
+            write!(f, "{byte:X}",)?;
         }
         write!(f, "'")
     }
 }
-

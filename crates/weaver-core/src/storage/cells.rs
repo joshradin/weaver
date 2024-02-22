@@ -5,10 +5,10 @@ use std::fmt::{Debug, Display, Formatter};
 use std::io::Write;
 use std::mem::size_of;
 
+use crate::common::pretty_bytes::PrettyBytes;
 use bitfield::bitfield;
 use derive_more::{Display, From};
 use std::num::NonZeroU32;
-use crate::common::pretty_bytes::PrettyBytes;
 
 use crate::data::row::OwnedRow;
 use crate::data::serde::{deserialize_data_typed, serialize_data_typed, serialize_data_untyped};
@@ -173,10 +173,10 @@ pub struct KeyValueCell {
 impl Debug for KeyValueCell {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeyValueCell")
-         .field("flags", &self.flags)
-         .field("key", &PrettyBytes(&self.key))
-         .field("record", &PrettyBytes(&self.data_record))
-         .finish()
+            .field("flags", &self.flags)
+            .field("key", &PrettyBytes(&self.key))
+            .field("record", &PrettyBytes(&self.data_record))
+            .finish()
     }
 }
 

@@ -4,7 +4,13 @@ use std::io;
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::ops::Index;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
+use std::time::Instant;
 
+use nom::Parser;
+
+use crate::monitoring::{Monitor, Monitorable, Stats};
 use crate::storage::paging::traits::{Page, PageMut, PageMutWithHeader, Pager};
 use crate::storage::StorageFile;
 
@@ -18,6 +24,7 @@ use crate::storage::StorageFile;
 pub struct RandomAccessFile {
     file: File,
     length: u64,
+    monitor: OnceLock<RAFMonitor>,
 }
 
 impl Debug for RandomAccessFile {
@@ -32,7 +39,11 @@ impl Debug for RandomAccessFile {
 impl RandomAccessFile {
     pub fn with_file(file: File) -> io::Result<Self> {
         let length = file.metadata()?.len();
-        Ok(Self { file, length })
+        Ok(Self {
+            file,
+            length,
+            monitor: OnceLock::new(),
+        })
     }
 
     pub fn create<P: AsRef<Path>>(path: P) -> io::Result<Self> {
@@ -51,6 +62,12 @@ impl RandomAccessFile {
             .truncate(false)
             .open(path)
             .and_then(|file| Self::with_file(file))
+    }
+}
+
+impl Monitorable for RandomAccessFile {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        Box::new(self.monitor.get_or_init(RAFMonitor::new).clone())
     }
 }
 
@@ -74,6 +91,12 @@ impl StorageFile for RandomAccessFile {
         }
         self.file.seek(SeekFrom::Start(offset))?;
         self.file.write_all(&data)?;
+        self.file.flush()?;
+        if let Some(stats) = self.monitor.get() {
+            stats.flushes.fetch_add(1, Ordering::Relaxed);
+            stats.writes.fetch_add(1, Ordering::Relaxed);
+            stats.bytes_written.fetch_add(data.len(), Ordering::Relaxed);
+        }
         Ok(())
     }
     /// Read data at given offset into a buffer
@@ -85,7 +108,13 @@ impl StorageFile for RandomAccessFile {
             ));
         }
         (&self.file).seek(SeekFrom::Start(0))?;
-        (&self.file).read(buffer).map(|u| u as u64)
+        let read = (&self.file).read(buffer).map(|u| u as u64)?;
+        if let Some(stats) = self.monitor.get() {
+            stats.reads.fetch_add(1, Ordering::Relaxed);
+            stats.bytes_read.fetch_add(read as usize, Ordering::Relaxed);
+        }
+
+        Ok(read)
     }
     /// Read an exact amount of data, returning an error if this can't be done
     fn read_exact(&self, offset: u64, len: u64) -> io::Result<Vec<u8>> {
@@ -99,6 +128,10 @@ impl StorageFile for RandomAccessFile {
         let mut vec = vec![0_u8; len as usize];
         (&self.file).seek(SeekFrom::Start(offset))?;
         (&self.file).read_exact(&mut vec)?;
+        if let Some(stats) = self.monitor.get() {
+            stats.reads.fetch_add(1, Ordering::Relaxed);
+            stats.bytes_read.fetch_add(len as usize, Ordering::Relaxed);
+        }
         Ok(vec)
     }
     /// Gets the length of the random access file
@@ -107,6 +140,9 @@ impl StorageFile for RandomAccessFile {
     }
     fn flush(&mut self) -> io::Result<()> {
         self.file.flush()?;
+        if let Some(stats) = self.monitor.get() {
+            stats.flushes.fetch_add(1, Ordering::Relaxed);
+        }
         self.file.sync_all()?;
         self.file.sync_data()?;
         Ok(())
@@ -133,9 +169,56 @@ impl TryFrom<File> for RandomAccessFile {
     }
 }
 
+#[derive(Debug, Clone)]
+struct RAFMonitor {
+    start: Instant,
+    reads: Arc<AtomicUsize>,
+    bytes_read: Arc<AtomicUsize>,
+    writes: Arc<AtomicUsize>,
+    bytes_written: Arc<AtomicUsize>,
+    flushes: Arc<AtomicUsize>,
+}
+
+impl RAFMonitor {
+    pub fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            reads: Default::default(),
+            bytes_read: Default::default(),
+            writes: Default::default(),
+            bytes_written: Default::default(),
+            flushes: Default::default(),
+        }
+    }
+}
+
+impl Monitor for RAFMonitor {
+    fn name(&self) -> &str {
+        "RandomAccessFile"
+    }
+
+    fn stats(&mut self) -> Stats {
+        let elapsed = self.start.elapsed().as_secs_f64();
+        let flushes = self.flushes.load(Ordering::Relaxed) as f64;
+        let reads = self.reads.load(Ordering::Relaxed) as f64;
+        let bytes_read = self.bytes_read.load(Ordering::Relaxed) as f64;
+        let writes = self.writes.load(Ordering::Relaxed) as f64;
+        let bytes_written = self.bytes_written.load(Ordering::Relaxed);
+        Stats::from_iter([
+            ("flushes", Stats::Throughput(flushes / elapsed)),
+            ("reads", Stats::Throughput(reads / elapsed)),
+            ("bytes_read", Stats::Throughput(bytes_read / elapsed)),
+            ("writes", Stats::Throughput(writes / elapsed)),
+            ("bytes_written", Stats::Throughput(bytes_written as f64 / elapsed)),
+            ("total_bytes_written", Stats::Integer(bytes_written as i64)),
+        ])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tempfile::tempfile;
+
     use crate::storage::StorageFile;
 
     use super::RandomAccessFile;

@@ -1,16 +1,20 @@
 //! Storage primitives
 
-use crate::storage::cells::PageId;
-use nom::error::Error;
-use nom::ErrorConvert;
 use std::borrow::Borrow;
+use std::fmt::Debug;
+use std::fs::Metadata;
+use std::io;
 use std::io::Write;
 use std::string::FromUtf8Error;
+
+use nom::error::Error;
+use nom::ErrorConvert;
 use thiserror::Error;
 
 pub use paging::traits::{Pager, VecPager};
-use std::io;
-use std::fs::Metadata;
+use crate::monitoring::{Monitor, Monitorable};
+
+use crate::storage::cells::PageId;
 
 pub mod b_plus_tree;
 pub mod cells;
@@ -170,7 +174,9 @@ impl StorageBackedData for str {
     }
 }
 
-pub trait StorageFile {
+/// A file which allows for random access
+pub trait StorageFile: Debug + Monitorable {
+    /// Gets the metadata of a storage file
     fn metadata(&self) -> io::Result<Metadata>;
     /// Sets the new length of the file, either extending it or truncating it
     fn set_len(&mut self, len: u64) -> io::Result<()>;
@@ -184,4 +190,75 @@ pub trait StorageFile {
     fn len(&self) -> u64;
     fn flush(&mut self) -> io::Result<()>;
     fn sync(&mut self) -> io::Result<()>;
+
+    /// Converts a [StorageFile] into a [StorageFileDelegate], which wraps this storage file in an
+    /// object-safe manner.
+    fn into_delegate(self) -> StorageFileDelegate
+    where
+        Self: Sized + Send + Sync + 'static,
+    {
+        StorageFileDelegate::new(self)
+    }
+}
+
+/// A storage file delagate wraps an arbitrary storage file implementation
+#[derive(Debug)]
+pub struct StorageFileDelegate {
+    delegate: Box<dyn StorageFile + Send + Sync>,
+}
+
+impl StorageFileDelegate {
+    /// Creates a new storage file delegate from the given delegate
+    fn new(delegate: impl StorageFile + Send + Sync + 'static) -> Self {
+        Self {
+            delegate: Box::new(delegate),
+        }
+    }
+}
+
+impl Monitorable for StorageFileDelegate {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        self.delegate.monitor()
+    }
+}
+
+impl StorageFile for StorageFileDelegate {
+    fn metadata(&self) -> io::Result<Metadata> {
+        self.delegate.metadata()
+    }
+
+    fn set_len(&mut self, len: u64) -> io::Result<()> {
+        self.delegate.set_len(len)
+    }
+
+    fn write(&mut self, offset: u64, data: &[u8]) -> io::Result<()> {
+        self.delegate.write(offset, data)
+    }
+
+    fn read(&self, offset: u64, buffer: &mut [u8]) -> io::Result<u64> {
+        self.delegate.read(offset, buffer)
+    }
+
+    fn read_exact(&self, offset: u64, len: u64) -> io::Result<Vec<u8>> {
+        self.delegate.read_exact(offset, len)
+    }
+
+    fn len(&self) -> u64 {
+        self.delegate.len()
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.delegate.flush()
+    }
+
+    fn sync(&mut self) -> io::Result<()> {
+        self.delegate.sync()
+    }
+
+    fn into_delegate(self) -> StorageFileDelegate
+    where
+        Self: Sized + Send + Sync + 'static,
+    {
+        self
+    }
 }

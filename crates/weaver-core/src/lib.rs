@@ -10,6 +10,7 @@ pub mod dynamic_table;
 pub mod error;
 pub mod key;
 pub mod modules;
+pub mod monitoring;
 pub mod queries;
 pub mod rows;
 pub mod storage;

@@ -15,19 +15,20 @@ use parking_lot::RwLock;
 use crate::common::hex_dump::HexDump;
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
+use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable};
 use crate::storage::paging::traits::{Page, PageMut};
 use crate::storage::ram_file::RandomAccessFile;
-use crate::storage::{PAGE_SIZE, Pager, StorageFile};
+use crate::storage::{Pager, StorageFile, PAGE_SIZE};
 
 /// Provides a paged abstraction over a [RandomAccessFile]
 #[derive(Debug)]
-pub struct FilePager {
-    raf: Arc<RwLock<RandomAccessFile>>,
+pub struct FilePager<F: StorageFile> {
+    raf: Arc<RwLock<F>>,
     usage_map: Arc<RwLock<HashMap<usize, Arc<AtomicI32>>>>,
     page_len: usize,
 }
 
-impl FilePager {
+impl FilePager<RandomAccessFile> {
     /// Creates a new paged file
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let path = path.as_ref();
@@ -48,9 +49,11 @@ impl FilePager {
         let ram = RandomAccessFile::open_or_create(path)?;
         Ok(Self::with_file_and_page_len(ram, PAGE_SIZE))
     }
+}
 
+impl<F: StorageFile> FilePager<F> {
     /// Creates a new paged file
-    pub fn with_file_and_page_len(file: RandomAccessFile, page_len: usize) -> Self {
+    pub fn with_file_and_page_len(file: F, page_len: usize) -> Self {
         let current_file_len = file.len() as usize;
         let pages = current_file_len.div_ceil(page_len);
         let usage_map = HashMap::from_iter((0..pages).into_iter().map(|i| (i, Default::default())));
@@ -63,20 +66,31 @@ impl FilePager {
     }
 
     /// Creates a new paged file
-    pub fn with_file(file: RandomAccessFile) -> Self {
+    pub fn with_file(file: F) -> Self {
         Self::with_file_and_page_len(file, PAGE_SIZE)
     }
 }
 
-impl From<RandomAccessFile> for FilePager {
-    fn from(value: RandomAccessFile) -> Self {
+impl<F: StorageFile> From<F> for FilePager<F> {
+    fn from(value: F) -> Self {
         Self::with_file(value)
     }
 }
 
-impl Pager for FilePager {
-    type Page<'a> = FilePage;
-    type PageMut<'a> = FilePageMut;
+impl<F: StorageFile> Monitorable for FilePager<F> {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        let file_monitor = self.raf.read().monitor();
+        let collector = MonitorCollector::from_iter([file_monitor]);
+
+        Box::new(monitor_fn("file_pager", move || {
+            collector.all()
+        }))
+    }
+}
+
+impl<F: StorageFile> Pager for FilePager<F> {
+    type Page<'a> = FilePage where F: 'a;
+    type PageMut<'a> = FilePageMut<F> where F: 'a;
     type Err = Error;
 
     fn page_size(&self) -> usize {
@@ -247,15 +261,15 @@ impl<'a> Page<'a> for FilePage {
 }
 
 /// A page from a random access fille
-pub struct FilePageMut {
-    file: Arc<RwLock<RandomAccessFile>>,
+pub struct FilePageMut<F: StorageFile> {
+    file: Arc<RwLock<F>>,
     usage_token: Arc<AtomicI32>,
     buffer: Mad<Box<[u8]>>,
     offset: u64,
     len: u64,
 }
 
-impl Debug for FilePageMut {
+impl<F: StorageFile> Debug for FilePageMut<F> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FilePageMut")
             .field("buffer", &HexDump::new(&*self.buffer))
@@ -263,13 +277,13 @@ impl Debug for FilePageMut {
     }
 }
 
-impl<'a> PageMut<'a> for FilePageMut {
+impl<'a, F: StorageFile> PageMut<'a> for FilePageMut<F> {
     fn as_mut_slice(&mut self) -> &mut [u8] {
         self.buffer.to_mut().as_mut()
     }
 }
 
-impl<'a> Page<'a> for FilePageMut {
+impl<'a, F: StorageFile> Page<'a> for FilePageMut<F> {
     fn len(&self) -> usize {
         self.len as usize
     }
@@ -278,7 +292,7 @@ impl<'a> Page<'a> for FilePageMut {
     }
 }
 
-impl Drop for FilePageMut {
+impl<F: StorageFile> Drop for FilePageMut<F> {
     fn drop(&mut self) {
         let _ = self.file.write().write(self.offset, &self.buffer[..]);
         if self
@@ -294,23 +308,41 @@ impl Drop for FilePageMut {
 #[cfg(test)]
 mod tests {
     use tempfile::tempfile;
+    use crate::monitoring::Monitorable;
 
-    use crate::storage::paging::traits::{Page, PageMut};
     use crate::storage::paging::file_pager::{FilePageMut, FilePager};
+    use crate::storage::paging::traits::{Page, PageMut};
     use crate::storage::ram_file::RandomAccessFile;
     use crate::storage::Pager;
+    use std::io::Write;
 
     #[test]
     fn paged() {
         let temp = tempfile().expect("could not create tempfile");
         let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
         let mut paged = FilePager::with_file_and_page_len(ram, 4096);
-        let (mut page, index): (FilePageMut, _) = paged.new().unwrap();
+        let (mut page, index): (FilePageMut<_>, _) = paged.new().unwrap();
         let slice = page.get_mut(..128).unwrap();
         slice[..6].copy_from_slice(&[0, 1, 2, 3, 4, 5]);
         drop(page);
         let page = paged.get(index).unwrap();
         let slice = page.get(..6).unwrap();
         assert_eq!(slice, &[0, 1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn  get_stats() {
+        let temp = tempfile().expect("could not create tempfile");
+        let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
+        let mut paged = FilePager::with_file_and_page_len(ram, 4096);
+        let mut monitor = paged.monitor();
+
+        for i in 0..16 {
+            let (mut page, _) = paged.new().expect("could not get next page");
+            write!(page.as_mut_slice(), "hello page {}", i).expect("could not write");
+        }
+
+        let stats = monitor.stats();
+        println!("{}: {stats:#?}", monitor.name());
     }
 }

@@ -18,6 +18,7 @@ use tracing::trace;
 use crate::common::consistent_hasher::SeededHasherBuilder;
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
+use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::paging::traits::{Page, PageMut};
 use crate::storage::Pager;
 
@@ -51,12 +52,17 @@ impl<K: Eq + Hash, P: Pager> VirtualPagerTable<K, P> {
         }
     }
     /// Gets a virtual pager by the given key, initializes it if the root doesn't already exist
-    pub fn get_or_init(&self, key: K) -> Result<VirtualPager<K, P>, VirtualPagerError> where K : Clone {
+    pub fn get_or_init(&self, key: K) -> Result<VirtualPager<K, P>, VirtualPagerError>
+    where
+        K: Clone,
+    {
         if self.shared.contains_root(&key)? {
-            self.get(key).and_then(|o| o.ok_or(VirtualPagerError::RootUndefined))
+            self.get(key)
+                .and_then(|o| o.ok_or(VirtualPagerError::RootUndefined))
         } else {
             self.init(key.clone())?;
-            self.get(key).and_then(|o| o.ok_or(VirtualPagerError::RootUndefined))
+            self.get(key)
+                .and_then(|o| o.ok_or(VirtualPagerError::RootUndefined))
         }
     }
 
@@ -472,6 +478,12 @@ where
 {
     key: K,
     parent: Arc<VirtualPagerShared<K, P>>,
+}
+
+impl<K, P> Monitorable for VirtualPager<K, P> where K: Hash, P: Pager {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        self.parent.backing_pager.monitor()
+    }
 }
 
 impl<K, P> Pager for VirtualPager<K, P>
