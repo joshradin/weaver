@@ -5,7 +5,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use nom::character::complete::tab;
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 
 use crate::db::start_db::start_db;
 use crate::dynamic_table::{
@@ -88,6 +88,7 @@ impl WeaverDbCore {
         engine: T,
     ) {
         let engine_key = engine.engine_key().clone();
+        trace!("registered storage engine {}", engine_key);
         self.engines.insert(engine_key, StorageEngineDelegate::new(engine));
     }
 
@@ -149,7 +150,7 @@ impl WeaverDbCore {
         let engine = self
             .engines
             .get(schema.engine())
-            .ok_or_else(|| Error::CreateTableError)?;
+            .ok_or_else(|| Error::UnknownStorageEngine(schema.engine().clone()))?;
         let table = engine.factory().open(schema, self)?;
 
         if let Some(monitor) = self.monitor.get() {

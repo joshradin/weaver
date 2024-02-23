@@ -29,6 +29,7 @@ use crate::db::server::init::weaver::init_weaver_schema;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
 use crate::db::server::layers::{Layer, Layers};
+use crate::db::server::lifecycle::{LifecyclePhase, WeaverDbLifecycleService};
 use crate::db::server::processes::{
     ProcessManager, WeaverPid, WeaverProcessChild, WeaverProcessInfo,
 };
@@ -69,6 +70,8 @@ pub(super) struct WeaverDbShared {
 
     /// Layered processor
     layers: RwLock<Layers>,
+
+    lifecycle_service: WeaverDbLifecycleService,
 
     monitor: Arc<OnceLock<WeaverDbMonitor>>
 }
@@ -172,21 +175,19 @@ impl WeaverDb {
                 auth_context,
                 process_manager: RwLock::new(ProcessManager::new(WeakWeaverDb(weak.clone()))),
                 layers: RwLock::new(layers),
+                lifecycle_service: WeaverDbLifecycleService::new(WeakWeaverDb(weak.clone())),
                 monitor: Arc::new(Default::default()),
             }
         });
 
         let mut db = WeaverDb { shared: inner };
 
-        /// Most critical for initialization is actually having the engines available
-        init_engines(&mut db)?;
-
-        // initializes system tables. These are tables that are merely views into the system, and
-        // have no physical backing
-        init_system_tables(&mut db)?;
-        let weaver_schema_dir = path.join("weaver");
-        if !weaver_schema_dir.exists() {
-            let socket = db.connect();
+        let mut service = db.lifecycle_service();
+        service.on_init(init_engines);
+        service.on_init(init_system_tables);
+        service.on_bootstrap(move |weaver_db| {
+            let weaver_schema_dir = path.join("weaver");
+            let socket = weaver_db.connect();
             let _ = socket
                 .send(DbReq::on_core(move |core, _| -> Result<(), Error> {
                     // bootstraps weaver schema
@@ -196,10 +197,20 @@ impl WeaverDb {
                 }))
                 .join()??
                 .to_result()?;
-        }
-
+            Ok(())
+        });
 
         Ok(db)
+    }
+
+    /// Gets whether the weaver core is initialized
+    pub fn is_bootstrapped(&self) -> bool {
+        self.shared.core.read().path().join("weaver").exists()
+    }
+
+    /// Gets the lifecycle service for this weaver db instance
+    pub fn lifecycle_service(&self) -> WeaverDbLifecycleService {
+        self.shared.lifecycle_service.clone()
     }
 
     /// Apply a plugin
@@ -241,6 +252,11 @@ impl WeaverDb {
 
     /// Bind to a tcp port. Can only be done once
     pub fn bind_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> Result<(), Error> {
+        let phase = self.shared.lifecycle_service.phase();
+        if phase != LifecyclePhase::Ready {
+            return Err(Error::ServerNotReady(phase));
+        }
+
         if self
             .shared
             .tcp_bound
@@ -264,6 +280,11 @@ impl WeaverDb {
 
     /// Bind to a tcp port. Can only be done once
     pub fn bind_local_socket<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+        let phase = self.shared.lifecycle_service.phase();
+        if phase != LifecyclePhase::Ready {
+            return Err(Error::ServerNotReady(phase));
+        }
+
         let path = path.as_ref().to_path_buf();
         if self.shared.socket_file_bound.compare_exchange(
             false,
@@ -464,7 +485,8 @@ impl Monitorable for WeaverDb {
 
 impl Drop for WeaverDbShared {
     fn drop(&mut self) {
-        info!("Dropping db core");
+        info!("db server dropped, running teardown if not already");
+        let _ = self.lifecycle_service.teardown().unwrap();
     }
 }
 

@@ -1,4 +1,5 @@
 use std::iter;
+use tempfile::TempDir;
 use tracing::info;
 use tracing::level_filters::LevelFilter;
 use weaver_core::access_control::auth::init::AuthConfig;
@@ -20,7 +21,11 @@ fn transactions_in_memory() -> Result<(), Error> {
         .with_thread_ids(true)
         .init();
 
-    let mut db = WeaverDb::new(num_cpus::get(), WeaverDbCore::new()?, AuthConfig::default())?;
+    let dir = TempDir::new()?;
+    let core = WeaverDbCore::with_path(dir.path())?;
+    let mut db = WeaverDb::new(num_cpus::get(), core, AuthConfig::in_path(dir.path()))?;
+    let mut service = db.lifecycle_service();
+    service.startup()?;
 
     let socket = db.connect();
     socket

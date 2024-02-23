@@ -32,6 +32,9 @@ pub fn start_server(
             force_recreate: false,
         },
     )?;
+
+    weaver.lifecycle_service().startup()?;
+
     let monitor = weaver.monitor();
     weaver.bind_tcp(("localhost", port))?;
     weaver.bind_local_socket(socket_path)?;

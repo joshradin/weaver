@@ -13,9 +13,10 @@ use crate::cancellable_task::Cancelled;
 use crate::data::types::Type;
 use crate::data::values::DbVal;
 use crate::db::server::layers::packets::{DbResp, IntoDbResponse};
+use crate::db::server::lifecycle::LifecyclePhase;
 use crate::db::server::processes::WeaverPid;
 use crate::db::server::socket::MainQueueItem;
-use crate::dynamic_table::{OpenTableError, OwnedCol, StorageError, TableCol};
+use crate::dynamic_table::{EngineKey, OpenTableError, OwnedCol, StorageError, TableCol};
 use crate::key::KeyData;
 use crate::storage::cells::PageId;
 use crate::storage::paging::slotted_pager::PageType;
@@ -38,6 +39,8 @@ pub enum Error {
     NoPrimaryKey,
     #[error("Error creating table")]
     CreateTableError,
+    #[error("Unknown storage engine `{0}`")]
+    UnknownStorageEngine(EngineKey),
     #[error(transparent)]
     StorageError(#[from] StorageError),
     #[error(transparent)]
@@ -127,6 +130,8 @@ pub enum Error {
     UnknownCostKey(String),
     #[error("Attempted to query the cost table, but it was not loaded")]
     CostTableNotLoaded,
+    #[error("Server not in ready state (current state: {0:?})")]
+    ServerNotReady(LifecyclePhase),
 
     #[error(transparent)]
     VirtualPagerError(#[from] VirtualPagerError),
