@@ -18,6 +18,7 @@ fn can_connect() -> eyre::Result<()> {
 
     Ok(())
 }
+
 #[test]
 fn get_processes() -> eyre::Result<()> {
     let _ = tracing_subscriber::fmt()
@@ -34,6 +35,7 @@ fn get_processes() -> eyre::Result<()> {
 
     Ok(())
 }
+
 #[test]
 fn get_tables() -> eyre::Result<()> {
     let _ = tracing_subscriber::fmt()

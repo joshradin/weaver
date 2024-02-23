@@ -7,6 +7,7 @@ use crate::rows::{KeyIndex, Rows};
 use crate::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 use std::sync::Arc;
+use crate::monitoring::{Monitor, Monitorable};
 
 /// A shared table
 #[derive(Debug, Clone)]
@@ -22,6 +23,12 @@ impl SharedTable {
 impl HasSchema for SharedTable {
     fn schema(&self) -> &TableSchema {
         self.0.schema()
+    }
+}
+
+impl Monitorable for SharedTable {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        self.0.monitor()
     }
 }
 

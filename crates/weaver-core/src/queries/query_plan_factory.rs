@@ -1,9 +1,10 @@
 //! Creates an unoptimized [query plan](QueryPlan) from a [query](Query)
 
 use rand::Rng;
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::From;
+use parking_lot::RwLock;
 
 use tracing::{debug, error_span, trace};
 
@@ -30,7 +31,7 @@ use crate::tx::Tx;
 #[derive(Debug)]
 pub struct QueryPlanFactory {
     db: WeakWeaverDb,
-    cost_table: CostTable,
+    cost_table: RefCell<CostTable>,
 }
 
 impl QueryPlanFactory {
@@ -55,9 +56,13 @@ impl QueryPlanFactory {
             debug!("connected socket to weaver db");
             debug!("getting cost table...");
             let cost_table = socket
-                .get_table(&("weaver".into(), "costs".into()))
+                .get_table(&("weaver".into(), "cost".into()))
                 .map_err(|_| Error::CostTableNotLoaded)?;
-            let all = cost_table.all(tx)?;
+
+            let cost_table = CostTable::from_table(&cost_table, tx);
+            if &cost_table != &*self.cost_table.borrow() {
+                *self.cost_table.borrow_mut() = cost_table;
+            }
 
             self.to_plan_node(query, &socket, plan_context.into())
                 .map(QueryPlan::new)
@@ -111,6 +116,7 @@ impl QueryPlanFactory {
     fn get_cost(&self, key: impl AsRef<str>) -> Result<Cost, Error> {
         let key = key.as_ref().to_string();
         self.cost_table
+            .borrow()
             .get(&key)
             .ok_or_else(|| Error::UnknownCostKey(key))
             .copied()

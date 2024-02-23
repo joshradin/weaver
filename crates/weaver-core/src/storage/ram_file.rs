@@ -12,7 +12,7 @@ use nom::Parser;
 
 use crate::monitoring::{Monitor, Monitorable, Stats};
 use crate::storage::paging::traits::{Page, PageMut, PageMutWithHeader, Pager};
-use crate::storage::StorageFile;
+use crate::storage::StorageDevice;
 
 /// A random access file allows for accessing the contents of a file
 /// at any given point within the file.
@@ -71,7 +71,7 @@ impl Monitorable for RandomAccessFile {
     }
 }
 
-impl StorageFile for RandomAccessFile {
+impl StorageDevice for RandomAccessFile {
     fn metadata(&self) -> io::Result<Metadata> {
         self.file.metadata()
     }
@@ -219,7 +219,7 @@ impl Monitor for RAFMonitor {
 mod tests {
     use tempfile::tempfile;
 
-    use crate::storage::StorageFile;
+    use crate::storage::StorageDevice;
 
     use super::RandomAccessFile;
 

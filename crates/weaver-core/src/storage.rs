@@ -20,6 +20,8 @@ pub mod b_plus_tree;
 pub mod cells;
 pub mod ram_file;
 
+pub mod engine;
+
 pub mod paging;
 
 /// Gets the standard page size of 4096 bytes
@@ -175,7 +177,7 @@ impl StorageBackedData for str {
 }
 
 /// A file which allows for random access
-pub trait StorageFile: Debug + Monitorable {
+pub trait StorageDevice: Debug + Monitorable {
     /// Gets the metadata of a storage file
     fn metadata(&self) -> io::Result<Metadata>;
     /// Sets the new length of the file, either extending it or truncating it
@@ -191,38 +193,38 @@ pub trait StorageFile: Debug + Monitorable {
     fn flush(&mut self) -> io::Result<()>;
     fn sync(&mut self) -> io::Result<()>;
 
-    /// Converts a [StorageFile] into a [StorageFileDelegate], which wraps this storage file in an
+    /// Converts a [StorageDevice] into a [StorageDeviceDelegate], which wraps this storage file in an
     /// object-safe manner.
-    fn into_delegate(self) -> StorageFileDelegate
+    fn into_delegate(self) -> StorageDeviceDelegate
     where
         Self: Sized + Send + Sync + 'static,
     {
-        StorageFileDelegate::new(self)
+        StorageDeviceDelegate::new(self)
     }
 }
 
 /// A storage file delagate wraps an arbitrary storage file implementation
 #[derive(Debug)]
-pub struct StorageFileDelegate {
-    delegate: Box<dyn StorageFile + Send + Sync>,
+pub struct StorageDeviceDelegate {
+    delegate: Box<dyn StorageDevice + Send + Sync>,
 }
 
-impl StorageFileDelegate {
+impl StorageDeviceDelegate {
     /// Creates a new storage file delegate from the given delegate
-    fn new(delegate: impl StorageFile + Send + Sync + 'static) -> Self {
+    fn new(delegate: impl StorageDevice + Send + Sync + 'static) -> Self {
         Self {
             delegate: Box::new(delegate),
         }
     }
 }
 
-impl Monitorable for StorageFileDelegate {
+impl Monitorable for StorageDeviceDelegate {
     fn monitor(&self) -> Box<dyn Monitor> {
         self.delegate.monitor()
     }
 }
 
-impl StorageFile for StorageFileDelegate {
+impl StorageDevice for StorageDeviceDelegate {
     fn metadata(&self) -> io::Result<Metadata> {
         self.delegate.metadata()
     }
@@ -255,7 +257,7 @@ impl StorageFile for StorageFileDelegate {
         self.delegate.sync()
     }
 
-    fn into_delegate(self) -> StorageFileDelegate
+    fn into_delegate(self) -> StorageDeviceDelegate
     where
         Self: Sized + Send + Sync + 'static,
     {

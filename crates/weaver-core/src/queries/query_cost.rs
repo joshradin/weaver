@@ -7,9 +7,13 @@
 
 use std::collections::HashMap;
 use std::ops::Mul;
+use crate::data::values::DbVal;
+use crate::dynamic_table::{DynamicTable, Table};
+use crate::rows::Rows;
+use crate::tx::Tx;
 
 /// Represents the cost of an operation over some unknown amount of rows
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Cost {
     /// The base cost per `row^row_factor`
     pub base: f64,
@@ -18,6 +22,11 @@ pub struct Cost {
 }
 
 impl Cost {
+
+    /// Create a new cost struct
+    pub const fn new(base: f64, row_factor: u32) -> Self {
+        Self { base, row_factor }
+    }
     /// Gets the final cost. All values are saturated
     pub fn get_cost(&self, rows: usize) -> f64 {
         let row_cost = rows.saturating_pow(self.row_factor);
@@ -26,12 +35,15 @@ impl Cost {
 }
 
 /// The cost table stores information about the cost of given operations
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CostTable {
     table: HashMap<String, Cost>,
 }
 
-static QUERY_COSTS: &[(&str, Cost)] = &[];
+static QUERY_COSTS: &[(&str, Cost)] = &[
+    ("LOAD_TABLE", Cost::new(1.0, 0)),
+    ("SELECT", Cost::new(1.0, 1))
+];
 
 impl Default for CostTable {
     fn default() -> Self {
@@ -48,6 +60,24 @@ impl CostTable {
     /// Creates a cost table with default entries
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn from_table<T : DynamicTable + ?Sized>(table: &T, tx: &Tx) -> Self {
+        let mut output = Self::new();
+        let all = table.all(tx).expect("could not get all rows");
+        for row in all.into_iter() {
+            let DbVal::String(key, _) = &*row[0] else {
+                panic!("first column is key")
+            };
+            let &DbVal::Float(base) = &*row[1] else {
+                panic!("second column is base")
+            };
+            let &DbVal::Integer(row_factor) = &*row[2] else {
+                panic!("third column is row factor")
+            };
+            output.set(key, Cost { base, row_factor: row_factor as u32 })
+        }
+        output
     }
 
     /// Sets a cost within the table.

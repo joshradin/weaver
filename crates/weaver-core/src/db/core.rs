@@ -3,11 +3,13 @@ use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use nom::character::complete::tab;
 use tracing::{debug, info};
 
 use crate::db::start_db::start_db;
 use crate::dynamic_table::{
-    storage_engine_factory, DynamicTable, EngineKey, HasSchema, StorageEngineFactory, Table,
+    DynamicTable, EngineKey, HasSchema, Table,
 };
 use crate::error::Error;
 use crate::tables::bpt_file_table::BptfTableFactory;
@@ -20,15 +22,21 @@ use crate::tx::Tx;
 
 mod bootstrap;
 pub use bootstrap::bootstrap;
+use crate::db::server::WeaverDb;
+use crate::dynamic_table_factory::DynamicTableFactory;
+use crate::monitoring::{Monitor, monitor_fn, Monitorable, MonitorCollector, Stats};
+use crate::storage::engine::{StorageEngine, StorageEngineDelegate};
+use crate::tables::in_memory_table::InMemoryTableFactory;
 
 /// A db core. Represents some part of a distributed db
 pub struct WeaverDbCore {
     path: PathBuf,
     lock_file: Option<File>,
-    engines: HashMap<EngineKey, Box<dyn StorageEngineFactory>>,
+    engines: HashMap<EngineKey, StorageEngineDelegate>,
     default_engine: Option<EngineKey>,
     open_tables: RwLock<HashMap<(String, String), SharedTable>>,
     pub(crate) tx_coordinator: Option<TxCoordinator>,
+    monitor: OnceLock<CoreMonitor>
 }
 
 impl Default for WeaverDbCore {
@@ -61,39 +69,34 @@ impl WeaverDbCore {
             .open(path.join("weaver.lock"))?;
 
         lock_file.lock_exclusive()?;
-
-        let engines = EngineKey::all()
-            .filter_map(|key| match key.as_ref() {
-                IN_MEMORY_KEY => Some((
-                    key,
-                    storage_engine_factory(|schema: &TableSchema| {
-                        Ok(Box::new(InMemoryTable::new(schema.clone())?))
-                    }),
-                )),
-                B_PLUS_TREE_FILE_KEY => Some((key, Box::new(BptfTableFactory::new(&path)))),
-                _ => None,
-            })
-            .collect::<HashMap<_, _>>();
-
         let mut shard = Self {
             path,
             lock_file: Some(lock_file),
-            engines,
-            default_engine: Some(EngineKey::new(B_PLUS_TREE_FILE_KEY)),
+            engines: Default::default(),
+            default_engine: None,
             open_tables: Default::default(),
             tx_coordinator: None,
+            monitor: OnceLock::new(),
         };
         start_db(&mut shard)?;
         Ok(shard)
     }
 
     /// Insert an engine
-    pub fn insert_engine<T: StorageEngineFactory + 'static>(
+    pub fn add_engine<T: StorageEngine + 'static>(
         &mut self,
-        engine_key: EngineKey,
         engine: T,
     ) {
-        self.engines.insert(engine_key, Box::new(engine));
+        let engine_key = engine.engine_key().clone();
+        self.engines.insert(engine_key, StorageEngineDelegate::new(engine));
+    }
+
+    /// Insert an engine
+    pub fn set_default_engine(
+        &mut self,
+        engine_key: EngineKey
+    ) {
+        self.default_engine = Some(engine_key);
     }
 
     pub fn start_transaction(&self) -> Tx {
@@ -124,6 +127,9 @@ impl WeaverDbCore {
         } else {
             let mut open_tables = self.open_tables.write();
             let table: Table = Box::new(table);
+            if let Some(monitor) = self.monitor.get() {
+                monitor.collector.clone().push_monitorable(&*table);
+            }
             open_tables.insert((schema, name), SharedTable::new(table));
             Ok(())
         }
@@ -144,7 +150,11 @@ impl WeaverDbCore {
             .engines
             .get(schema.engine())
             .ok_or_else(|| Error::CreateTableError)?;
-        let table = engine.open(schema, self)?;
+        let table = engine.factory().open(schema, self)?;
+
+        if let Some(monitor) = self.monitor.get() {
+            monitor.collector.clone().push_monitorable(&*table);
+        }
 
         open_tables.insert(
             (schema.schema().to_string(), schema.name().to_string()),
@@ -193,5 +203,35 @@ impl Drop for WeaverDbCore {
             let _ = std::fs::remove_file(&self.path.join("weaver.lock"));
         }
         info!("Shutting down distro db core");
+    }
+}
+
+impl Monitorable for WeaverDbCore {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        Box::new(self.monitor.get_or_init(|| {
+            let mut monitor = CoreMonitor::default();
+            let guard = self.open_tables.read();
+            for (_, table) in guard.iter() {
+                let mut table_monitor = table.monitor();
+                monitor.collector.push(monitor_fn(table.schema().engine().clone(), move|| table_monitor.stats()));
+            }
+
+            monitor
+        }).clone())
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct CoreMonitor {
+    collector: MonitorCollector
+}
+
+impl Monitor for CoreMonitor {
+    fn name(&self) -> &str {
+        "WeaverDbCore"
+    }
+
+    fn stats(&mut self) -> Stats {
+        self.collector.all().mean()
     }
 }

@@ -10,6 +10,7 @@ use crate::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 use std::fmt::Debug;
 use std::sync::Arc;
+use crate::monitoring::{Monitor, monitor_fn, Monitorable};
 
 /// Provide a system table
 pub struct SystemTable {
@@ -35,6 +36,12 @@ impl SystemTable {
             connection,
             on_read: Box::new(on_read),
         }
+    }
+}
+
+impl Monitorable for SystemTable {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        Box::new(monitor_fn("SystemTable", || {}))
     }
 }
 

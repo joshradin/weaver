@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tracing::{debug, info_span};
+use crate::data::types::Type;
 
 use crate::db::core::WeaverDbCore;
 use crate::db::server::layers::packets::DbReq;
@@ -16,18 +17,12 @@ use crate::error::Error;
 use crate::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
 use crate::tables::table_schema::TableSchema;
 
-pub fn init_weaver_schema(db: &mut WeaverDb) -> Result<(), Error> {
+pub fn init_weaver_schema(core: &mut WeaverDbCore) -> Result<(), Error> {
     let start = Instant::now();
     let span = info_span!("init-weaver-schema");
     let _enter = span.enter();
 
-    let connection = Arc::new(db.connect());
-    connection
-        .send(DbReq::on_core(move |core, cancel| -> Result<(), Error> {
-            cost_table(core)?;
-            Ok(())
-        }))
-        .join()??;
+    cost_table(core)?;
 
     drop(_enter);
     let duration = start.elapsed();
@@ -41,6 +36,9 @@ pub fn init_weaver_schema(db: &mut WeaverDb) -> Result<(), Error> {
 fn cost_table(db: &mut WeaverDbCore) -> Result<(), Error> {
     db.open_table(
         &TableSchema::builder("weaver", "cost")
+            .column("key", Type::String(32), true, None, None)?
+            .column("cost", Type::Float, true, None, None)?
+            .column("row_factor", Type::Integer, true, None, None)?
             .engine(EngineKey::new(B_PLUS_TREE_FILE_KEY))
             .build()?,
     )?;

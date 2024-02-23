@@ -1,18 +1,21 @@
 //! Defines storage engines
 
+use std::fmt::{Debug, Display, Formatter};
+use std::io;
+
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
 use crate::data::row::Row;
-use crate::db::core::WeaverDbCore;
+use crate::dynamic_table_factory::DynamicTableFactory;
 use crate::error::Error;
+use crate::monitoring::Monitorable;
 use crate::rows::{KeyIndex, Rows};
 use crate::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
 use crate::tables::in_memory_table::IN_MEMORY_KEY;
 use crate::tables::system_tables::SYSTEM_TABLE_KEY;
 use crate::tables::table_schema::TableSchema;
 use crate::tx::Tx;
-use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Formatter};
-use std::io;
-use thiserror::Error;
 
 /// A column within a table
 pub type Col<'a> = &'a str;
@@ -27,7 +30,7 @@ pub static ROW_ID_COLUMN: Col<'static> = "@@ROW_ID";
 
 /// The main storage engine trait. Storage engines are provided
 /// per table.
-pub trait DynamicTable: HasSchema + Send + Sync {
+pub trait DynamicTable: Monitorable + HasSchema + Send + Sync {
     /// The next auto-incremented value for a given column
     ///
     /// Auto incremented values be always be unique.
@@ -100,36 +103,6 @@ impl Debug for Table {
             .finish()
     }
 }
-
-pub trait StorageEngineFactory: Send + Sync {
-    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, Error>;
-}
-
-impl<F: Fn(&TableSchema) -> Result<Table, Error> + Send + Sync> StorageEngineFactory for F {
-    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, Error> {
-        (self)(schema)
-    }
-}
-
-struct FnStorageEngineFactory<F: Fn(&TableSchema) -> Result<Table, Error> + Send + Sync + 'static> {
-    func: F,
-}
-impl<F: Fn(&TableSchema) -> Result<Table, Error> + Send + Sync> StorageEngineFactory
-    for FnStorageEngineFactory<F>
-{
-    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, Error> {
-        (self.func)(schema)
-    }
-}
-
-pub fn storage_engine_factory<
-    F: Fn(&TableSchema) -> Result<Table, Error> + 'static + Send + Sync,
->(
-    func: F,
-) -> Box<dyn StorageEngineFactory> {
-    Box::new(func)
-}
-
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize, Hash)]
 pub struct EngineKey(String);
 
@@ -146,6 +119,12 @@ impl EngineKey {
     /// An in memory table key. These are for volatile tables
     pub fn in_memory() -> Self {
         Self::new(IN_MEMORY_KEY)
+    }
+}
+
+impl Display for EngineKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

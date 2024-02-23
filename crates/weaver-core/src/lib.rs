@@ -7,6 +7,7 @@ pub mod conversion;
 pub mod data;
 pub mod db;
 pub mod dynamic_table;
+pub mod dynamic_table_factory;
 pub mod error;
 pub mod key;
 pub mod modules;

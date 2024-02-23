@@ -1,7 +1,7 @@
 //! Useful data structures and functions for monitoring parts of weaver
 
 use std::borrow::Borrow;
-use std::fmt::{Debug, Formatter, Pointer};
+use std::fmt::{Debug, Display, Formatter, Pointer};
 use std::hash::Hash;
 use std::ops::Index;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use chrono::{DateTime, Local};
 use derive_more::From;
 use indexmap::IndexMap;
 use indexmap::map::Entry;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
 /// A monitor
 pub trait Monitor: Send + Sync {
@@ -45,7 +45,7 @@ impl<M: Monitor + Clone + 'static> Monitorable for M {
 /// Monitor service is responsible for registering and storing monitors.
 ///
 /// Can be cloned freely.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct MonitorCollector {
     monitors: Arc<RwLock<Vec<Box<dyn Monitor>>>>,
 }
@@ -61,9 +61,7 @@ impl Debug for MonitorCollector {
 impl MonitorCollector {
     /// Creates a new, empty monitor service
     pub fn new() -> Self {
-        Self {
-            monitors: Arc::new(Default::default()),
-        }
+        Self::default()
     }
 
     /// Push a new monitor to the monitor service
@@ -72,7 +70,7 @@ impl MonitorCollector {
     }
 
     /// This monitor service will not monitor this monitorable
-    pub fn push_monitorable<M: Monitorable>(&mut self, monitor: &M) {
+    pub fn push_monitorable<M: Monitorable + ?Sized>(&mut self, monitor: &M) {
         self.push(DelegateMonitor::new(monitor.monitor()))
     }
 
@@ -87,7 +85,7 @@ impl MonitorCollector {
             match entry {
                 Entry::Occupied(mut occ) => {
                     occ.insert(occ.get().merge(&stats));
-                },
+                }
                 Entry::Vacant(v) => {
                     v.insert(stats);
                 }
@@ -166,6 +164,37 @@ impl Monitor for DelegateMonitor {
 
     fn stats(&mut self) -> Stats {
         self.delegate.stats()
+    }
+}
+
+#[derive(Clone)]
+pub struct SharedMonitor {
+    name: String,
+    lock: Arc<Mutex<Box<dyn Monitor>>>
+}
+
+impl SharedMonitor {
+    /// Create a new shared monitor
+    pub fn new<M : Monitor + 'static>(monitor: M) -> Self {
+        let name = monitor.name().to_string();
+        Self { name, lock: Arc::new(Mutex::new(Box::new(monitor)))}
+    }
+}
+
+impl From<Box<dyn Monitor>> for SharedMonitor {
+    fn from(value: Box<dyn Monitor>) -> Self {
+        let name = value.name().to_string();
+        Self { name, lock: Arc::new(Mutex::new(value))}
+    }
+}
+
+impl Monitor for SharedMonitor {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn stats(&mut self) -> Stats {
+        self.lock.lock().stats()
     }
 }
 
@@ -254,16 +283,46 @@ impl Stats {
         }
     }
 
-    fn merge_self(&self) -> Self {
-        let mut output = self.clone();
-        if let Self::SubStats(stats) = &mut output {
-            output = stats
-                .iter()
-                .cloned()
-                .reduce(|l, r| Stats::merge(&l, &r))
-                .unwrap_or_else(|| Self::Null);
+    /// For [Stats::SubStats] where all stats are [Stats::Integer], [Stats::Float], or [Stats::Throughput], a mean value is
+    /// calculated.
+    ///
+    /// This is performed recursively when applicable.
+    pub fn mean(&self) -> Stats {
+        match self {
+            Stats::Dict(dict) => {
+                Stats::Dict(dict.iter().map(|(k, v)| (k.clone(), v.mean())).collect())
+            }
+            Stats::SubStats(sub_stats) => {
+                if sub_stats.iter().all(|s| matches!(s, Stats::Integer(_))) {
+                    let (sum, count) = sub_stats.iter().fold((0, 0), |(sum, count), next| {
+                        let &Stats::Integer(i) = next else {
+                            unreachable!()
+                        };
+                        (sum + i, count + 1)
+                    });
+                    Stats::Integer((sum as f64 / count as f64).round() as i64)
+                } else if sub_stats.iter().all(|s| matches!(s, Stats::Float(_))) {
+                    let (sum, count) = sub_stats.iter().fold((0.0, 0), |(sum, count), next| {
+                        let &Stats::Float(i) = next else {
+                            unreachable!()
+                        };
+                        (sum + i, count + 1)
+                    });
+                    Stats::Float(sum / count as f64)
+                } else if sub_stats.iter().all(|s| matches!(s, Stats::Throughput(_))) {
+                    let (sum, count) = sub_stats.iter().fold((0.0, 0), |(sum, count), next| {
+                        let &Stats::Throughput(i) = next else {
+                            unreachable!()
+                        };
+                        (sum + i, count + 1)
+                    });
+                    Stats::Throughput(sum / count as f64)
+                } else {
+                    Stats::SubStats(sub_stats.iter().map(|s| s.mean()).collect())
+                }
+            }
+            _ => self.clone(),
         }
-        output
     }
 
     /// Merges stat values.
@@ -290,12 +349,7 @@ impl Stats {
             )),
             (Self::Array(l), Self::Array(r)) => {
                 // if all l and r are dict stats, merge
-                Self::Array(
-                    l.iter()
-                        .chain(r.iter())
-                        .map(Self::merge_self)
-                        .collect(),
-                )
+                Self::Array(l.iter().chain(r.iter()).map(Self::merge_self).collect())
             }
             (Self::SubStats(l), Self::SubStats(r)) => l
                 .iter()
@@ -307,6 +361,17 @@ impl Stats {
             (l, Self::SubStats(r)) => Self::SubStats([vec![l], r.clone()].concat()),
             (l, r) => Self::SubStats(vec![l.clone(), r.clone()]),
         }
+    }
+    fn merge_self(&self) -> Self {
+        let mut output = self.clone();
+        if let Self::SubStats(stats) = &mut output {
+            output = stats
+                .iter()
+                .cloned()
+                .reduce(|l, r| Stats::merge(&l, &r))
+                .unwrap_or_else(|| Self::Null);
+        }
+        output
     }
 }
 

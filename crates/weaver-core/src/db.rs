@@ -1,6 +1,6 @@
 //! The db is responsible for building tables
 
-use crate::dynamic_table::StorageEngineFactory;
+use crate::dynamic_table_factory::DynamicTableFactory;
 use std::fmt::Debug;
 
 pub mod core;

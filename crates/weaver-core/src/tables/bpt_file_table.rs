@@ -7,14 +7,15 @@ use tracing::debug;
 
 use crate::data::row::Row;
 use crate::db::core::WeaverDbCore;
-use crate::dynamic_table::{Col, DynamicTable, HasSchema, StorageEngineFactory, Table};
+use crate::dynamic_table::{Col, DynamicTable, HasSchema, Table};
+use crate::dynamic_table_factory::DynamicTableFactory;
 use crate::error::Error;
-use crate::monitoring::{Monitor, Monitorable};
+use crate::monitoring::{Monitor, monitor_fn, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::paging::file_pager::FilePager;
 use crate::storage::paging::virtual_pager::{VirtualPager, VirtualPagerTable};
 use crate::storage::ram_file::RandomAccessFile;
-use crate::storage::{Pager, StorageFile, StorageFileDelegate};
+use crate::storage::{Pager, StorageDevice, StorageDeviceDelegate};
 use crate::storage::paging::caching_pager::LruCachingPager;
 use crate::tables::table_schema::TableSchema;
 use crate::tables::unbuffered_table::UnbufferedTable;
@@ -25,7 +26,7 @@ pub const B_PLUS_TREE_FILE_KEY: &'static str = "weaveBPTF";
 /// A table stored in a [FilePager]
 #[derive(Debug)]
 pub struct BptfTable {
-    main_table: UnbufferedTable<LruCachingPager<FilePager<StorageFileDelegate>>>,
+    main_table: UnbufferedTable<LruCachingPager<FilePager<StorageDeviceDelegate>>>,
 }
 impl DynamicTable for BptfTable {
     fn auto_increment(&self, col: Col) -> i64 {
@@ -103,7 +104,13 @@ impl BptfTableFactory {
     }
 }
 
-impl StorageEngineFactory for BptfTableFactory {
+impl Monitorable for BptfTableFactory {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        Box::new(monitor_fn("BptfTableFactory", || {}))
+    }
+}
+
+impl DynamicTableFactory for BptfTableFactory {
     fn open(&self, schema: &TableSchema, _core: &WeaverDbCore) -> Result<Table, Error> {
         self.open(schema).map(|s| Box::new(s) as Table)
     }
@@ -117,14 +124,13 @@ mod tests {
     use crate::data::row::Row;
     use crate::data::types::Type;
     use crate::data::values::DbVal;
-    use crate::dynamic_table::{DynamicTable, EngineKey, StorageEngineFactory};
+    use crate::dynamic_table::{DynamicTable, EngineKey};
+    use crate::dynamic_table_factory::DynamicTableFactory;
     use crate::key::KeyData;
     use crate::monitoring::Monitorable;
     use crate::rows::{KeyIndex, KeyIndexKind, Rows};
-    use crate::storage::VecPager;
-    use crate::tables::bpt_file_table::{BptfTableFactory, B_PLUS_TREE_FILE_KEY};
+    use crate::tables::bpt_file_table::{B_PLUS_TREE_FILE_KEY, BptfTableFactory};
     use crate::tables::table_schema::TableSchema;
-    use crate::tables::unbuffered_table::UnbufferedTable;
     use crate::tx::Tx;
 
     #[test]

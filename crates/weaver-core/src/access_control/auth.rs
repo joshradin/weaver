@@ -49,7 +49,7 @@ pub mod handshake {
             );
             auth_context.secure_transport(stream.transport())?;
             let mut login_ctx: LoginContext = packet_read(stream.transport().as_mut().unwrap())?;
-            debug!("received login context: {:#?}", login_ctx);
+            debug!("received login context: {:?}", login_ctx);
             let tx = db_socket.start_tx()?;
             let query = Query::parse(&format!(
                 r#"select user, host from weaver.users where user = '{}'"#,
@@ -62,7 +62,7 @@ pub mod handshake {
                 .join()
                 .map_err(|e| Error::ThreadPanicked)??
                 .to_result();
-            debug!("resp={resp:#?}");
+            debug!("resp={resp:?}");
             let resp = resp?;
             let DbResp::TxRows(tx, mut rows) = resp else {
                 unreachable!();

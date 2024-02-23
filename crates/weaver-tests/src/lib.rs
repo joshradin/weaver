@@ -15,6 +15,7 @@ use weaver_core::db::core::WeaverDbCore;
 
 use weaver_core::db::server::WeaverDb;
 use weaver_core::error::Error;
+use weaver_core::monitoring::{Monitor, Monitorable};
 
 pub fn start_server(
     port: u16,
@@ -31,6 +32,7 @@ pub fn start_server(
             force_recreate: false,
         },
     )?;
+    let monitor = weaver.monitor();
     weaver.bind_tcp(("localhost", port))?;
     weaver.bind_local_socket(socket_path)?;
     let addr = weaver.local_addr().expect("should exist");
@@ -43,6 +45,7 @@ pub fn start_server(
     });
     Ok(WeaverDbInstance {
         killer: send,
+        monitor: Some(monitor),
         port: addr.port(),
         join_handle: Some(join),
     })
@@ -51,6 +54,7 @@ pub fn start_server(
 #[derive(Debug)]
 pub struct WeaverDbInstance {
     killer: Sender<()>,
+    monitor: Option<Box<dyn Monitor>>,
     port: u16,
     join_handle: Option<JoinHandle<eyre::Result<()>>>,
 }
@@ -81,8 +85,8 @@ where
         &mut WeaverClient<LocalSocketStream>,
     ) -> Result<(), eyre::Error>,
 {
-    let server = start_server(0, path, None);
-    DualResult::zip_with(server, |server| {
+    let server = start_server(0, path, None)?;
+    DualResult::zip_with(Ok(server), |server| {
         let mut context = LoginContext::new();
         context.set_user("root");
         match server {
@@ -95,8 +99,9 @@ where
             debug!("running full stack");
             let output = cb(&mut server, &mut client);
             drop(client);
+            let monitor = server.monitor.take().unwrap();
             drop(server);
-            output
+            output.map(|output| (output, monitor))
         },
         |(e1, e2)| match (e1, e2) {
             (Some(e1), Some(e2)) => {
@@ -114,4 +119,8 @@ where
             _ => unreachable!(),
         },
     )
+        .map(|(server, mut monitor)| {
+            debug!("monitor: {:#?}", monitor.stats());
+            server
+        })
 }

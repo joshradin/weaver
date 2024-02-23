@@ -1,6 +1,8 @@
 //! Bootstraps the weaver core
 
 use std::path::Path;
+use tracing::error_span;
+use crate::data::row::Row;
 
 use crate::data::types::Type;
 use crate::data::values::DbVal;
@@ -19,28 +21,68 @@ use crate::tx::Tx;
 ///
 ///
 /// Bootstrapping should follow the following process:
-/// 1. Create the `weaver.schemata` table with a stored table schema within this program, then insert
-///     the `weaver` schema with id 1
-/// 2. Create the `weaver.tables` table with a stored table schema within this program.
-/// 3.
+/// 1. Create the `weaver.schemata` table with a stored table schema within this program,
+/// 2. Insert the `weaver` schema with id 1
+/// 3. Create the `weaver.tables` table with a stored table schema within this program.
+/// 4. Insert `weaver.schemata` and `weaver.tables` entries into `weaver.tables` with protected flag on
 ///
 pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<(), Error> {
+    let span = error_span!("bootstrap");
+    let _enter = span.enter();
     let ref tx = Tx::default(); // base transaction
+
+    std::fs::create_dir_all(weaver_schema_dir)?;
+
+    // STEP 1: Load weaver.schemata
+    let ref weaver_schemata_schema = weaver_schemata_schema()?;
+    core.open_table(weaver_schemata_schema)?;
+    let weaver_schemata = core.get_open_table("weaver", "schemata")?;
+    weaver_schemata.insert(tx, Row::from([
+        DbVal::from(1), "weaver".into()
+    ]))?;
 
     // STEP 2: Load weaver.tables
     let ref weaver_tables_schema = weaver_tables_schema()?;
     core.open_table(weaver_tables_schema)?;
+    let weaver_tables = core.get_open_table("weaver", "tables")?;
 
-    todo!("bootstrapping")
+    weaver_tables.insert(tx, Row::from([
+        DbVal::Null,
+        DbVal::from(1),
+        DbVal::from("schemata"),
+        DbVal::from(serde_json::to_string(&weaver_schemata_schema).expect("could not serialize")),
+        DbVal::from(true)
+    ]))?;
+    weaver_tables.insert(tx, Row::from([
+        DbVal::Null,
+        DbVal::from(1),
+        DbVal::from("tables"),
+        DbVal::from(serde_json::to_string(&weaver_tables_schema).expect("could not serialize")),
+        DbVal::from(true)
+    ]))?;
+
+    Ok(())
+}
+
+
+/// The `weaver.schemata` schema
+fn weaver_schemata_schema() -> Result<TableSchema, Error> {
+    TableSchema::builder("weaver", "schemata")
+        .column("id", Type::Integer, true, None, 1)?
+        .column("name", Type::String(256), true, None, None)?
+        .primary(&["id"])?
+        .engine(EngineKey::basic())
+        .build()
 }
 
 /// The `weaver.tables` schema
 fn weaver_tables_schema() -> Result<TableSchema, Error> {
     TableSchema::builder("weaver", "tables")
-        .column("id", Type::Integer, true, DbVal::from(1), 1)?
+        .column("id", Type::Integer, true, None, 1)?
         .column("schema_id", Type::Integer, true, None, None)?
         .column("name", Type::String(255), true, None, None)?
         .column("table_ddl", Type::String(1 << 11), true, None, None)?
+        .column("protected", Type::Boolean, true, DbVal::from(false), None)?
         .primary(&["id"])?
         .engine(EngineKey::basic())
         .build()

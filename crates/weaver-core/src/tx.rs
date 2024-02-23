@@ -154,11 +154,13 @@ impl Display for Tx {
 
 impl Drop for Tx {
     fn drop(&mut self) {
-        info!("dropping transaction {:?}", self);
-        if !self.completed {
-            match self.drop_behavior.0 {
-                TxCompletion::Rollback => self._rollback(),
-                TxCompletion::Commit => self._commit(),
+        if self.msg_sender.is_some() {
+            info!("dropping transaction {:?}", self);
+            if !self.completed {
+                match self.drop_behavior.0 {
+                    TxCompletion::Rollback => self._rollback(),
+                    TxCompletion::Commit => self._commit(),
+                }
             }
         }
     }

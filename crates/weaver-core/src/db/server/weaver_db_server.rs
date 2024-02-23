@@ -1,9 +1,10 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Instant;
 
 use crossbeam::channel::{unbounded, Sender};
 use parking_lot::{Mutex, RwLock};
@@ -22,6 +23,7 @@ use crate::cnxn::tcp::WeaverTcpListener;
 use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::common::stream_support::Stream;
 use crate::db::core::{bootstrap, WeaverDbCore};
+use crate::db::server::init::engines::init_engines;
 use crate::db::server::init::system::init_system_tables;
 use crate::db::server::init::weaver::init_weaver_schema;
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
@@ -33,6 +35,7 @@ use crate::db::server::processes::{
 use crate::db::server::socket::{DbSocket, MainQueueItem};
 use crate::error::Error;
 use crate::modules::{Module, ModuleError};
+use crate::monitoring::{Monitor, Monitorable, Stats};
 use crate::queries::executor::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
@@ -48,7 +51,7 @@ pub struct WeaverDb {
 }
 
 pub(super) struct WeaverDbShared {
-    pub(super) core: Arc<RwLock<WeaverDbCore>>,
+    core: Arc<RwLock<WeaverDbCore>>,
     message_queue: Sender<MainQueueItem>,
     main_handle: Option<JoinHandle<()>>,
     worker_handles: Mutex<Vec<JoinHandle<Result<(), Error>>>>,
@@ -66,6 +69,8 @@ pub(super) struct WeaverDbShared {
 
     /// Layered processor
     layers: RwLock<Layers>,
+
+    monitor: Arc<OnceLock<WeaverDbMonitor>>
 }
 
 impl WeaverDb {
@@ -167,27 +172,33 @@ impl WeaverDb {
                 auth_context,
                 process_manager: RwLock::new(ProcessManager::new(WeakWeaverDb(weak.clone()))),
                 layers: RwLock::new(layers),
+                monitor: Arc::new(Default::default()),
             }
         });
 
         let mut db = WeaverDb { shared: inner };
-        // initializes system tables
+
+        /// Most critical for initialization is actually having the engines available
+        init_engines(&mut db)?;
+
+        // initializes system tables. These are tables that are merely views into the system, and
+        // have no physical backing
         init_system_tables(&mut db)?;
-        // initialize or load weaver schema
         let weaver_schema_dir = path.join("weaver");
         if !weaver_schema_dir.exists() {
-            if !weaver_schema_dir.is_dir() {
-                panic!("weaver must be a directory")
-            }
             let socket = db.connect();
             let _ = socket
-                .send(DbReq::on_core(move |core, _| {
-                    bootstrap(core, &weaver_schema_dir)
+                .send(DbReq::on_core(move |core, _| -> Result<(), Error> {
+                    // bootstraps weaver schema
+                    bootstrap(core, &weaver_schema_dir)?;
+                    init_weaver_schema(core)?;
+                    Ok(())
                 }))
                 .join()??
                 .to_result()?;
         }
-        init_weaver_schema(&mut db)?;
+
+
         Ok(db)
     }
 
@@ -322,16 +333,20 @@ impl WeaverDb {
     ) -> Result<WeaverPid, Error> {
         let mut process_manager = self.shared.process_manager.write();
         let user = stream.user().clone();
+        let monitor = self.shared.monitor.clone();
 
         process_manager.start(
             &user,
             CancellableTask::with_cancel(move |child: WeaverProcessChild, recv| {
+                if let Some(monitor) = monitor.get() {
+                    monitor.connections.fetch_add(1, Ordering::SeqCst);
+                }
                 let span = info_span!(
                     "external-connection",
                     peer_addrr = stream.peer_addr().map(|addr| addr.to_string())
                 );
                 let _enter = span.enter();
-                Ok(
+                let ret = Ok(
                     if let Err(e) = remote_stream_loop(&mut stream, child, recv) {
                         warn!("client connection ended with err: {}", e);
                         if let Err(e) =
@@ -344,7 +359,11 @@ impl WeaverDb {
                     } else {
                         Ok(())
                     },
-                )
+                );
+                if let Some(monitor) = monitor.get() {
+                    monitor.connections.fetch_sub(1, Ordering::SeqCst);
+                }
+                ret
             }),
         )
     }
@@ -435,6 +454,14 @@ impl Default for WeaverDb {
     }
 }
 
+impl Monitorable for WeaverDb {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        Box::new(self.shared.monitor.get_or_init(|| WeaverDbMonitor::new(
+            self.shared.core.read().monitor()
+        )).clone())
+    }
+}
+
 impl Drop for WeaverDbShared {
     fn drop(&mut self) {
         info!("Dropping db core");
@@ -448,5 +475,37 @@ pub struct WeakWeaverDb(Weak<WeaverDbShared>);
 impl WeakWeaverDb {
     pub fn upgrade(&self) -> Option<WeaverDb> {
         self.0.upgrade().map(|db| WeaverDb { shared: db })
+    }
+}
+
+/// The main weaver db monitor
+#[derive(Debug, Clone)]
+pub(super) struct WeaverDbMonitor {
+    start_time: Instant,
+    pub(super) connections: Arc<AtomicUsize>,
+    core_monitor: Arc<Mutex<Box<dyn Monitor>>>
+}
+
+impl Monitor for WeaverDbMonitor {
+    fn name(&self) -> &str {
+        "WeaverDb"
+    }
+
+    fn stats(&mut self) -> Stats {
+        Stats::from_iter([
+            ("elapsed", Stats::from(self.start_time.elapsed().as_secs_f64())),
+            ("connections", Stats::from(self.connections.load(Ordering::Relaxed) as i64)),
+            ("core", self.core_monitor.lock().stats())
+        ])
+    }
+}
+
+impl WeaverDbMonitor {
+    fn new(core: Box<dyn Monitor>) -> Self {
+        Self {
+            start_time: Instant::now(),
+            connections: Default::default(),
+            core_monitor: Arc::new(Mutex::new(core))
+        }
     }
 }

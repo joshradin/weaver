@@ -160,10 +160,10 @@ where
 
     fn insert(&self, tx: &Tx, row: Row) -> Result<(), crate::error::Error> {
         let row = self.schema.validate(row, tx, self)?;
-        info!("validated row: {:?}", row);
+        trace!("validated row: {:?}", row);
         let key_data = self.schema.all_key_data(&row);
         let primary = key_data.primary().clone();
-        info!("validated row primary key: {:?}", primary);
+        trace!("validated row primary key: {:?}", primary);
         self.main_buffer.insert(primary, row.to_owned())?;
         Ok(())
     }

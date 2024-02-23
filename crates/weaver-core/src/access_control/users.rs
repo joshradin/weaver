@@ -8,6 +8,7 @@ use crate::data::values::DbVal;
 use crate::db::SYSTEM_SCHEMA;
 use crate::dynamic_table::{Col, DynamicTable, EngineKey, HasSchema};
 use crate::error::Error;
+use crate::monitoring::{Monitor, monitor_fn, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::tables::table_schema::TableSchema;
 use crate::tables::InMemoryTable;
@@ -80,6 +81,12 @@ impl UserTable {
 impl Default for UserTable {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Monitorable for UserTable {
+    fn monitor(&self) -> Box<dyn Monitor> {
+        Box::new(monitor_fn("UserTable", || {}))
     }
 }
 

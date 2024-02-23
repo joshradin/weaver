@@ -10,6 +10,7 @@ use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 use tracing::{info, trace, warn};
+
 use weaver_ast::ToSql;
 
 use crate::data::row::{OwnedRow, Row};
@@ -273,7 +274,11 @@ impl ColumnDefinition {
 
             let default_value = default_value.into();
             if let Some(ref default) = default_value {
-                if !data_type.validate(default) {
+                if auto_increment.is_some() {
+                    return Err(Error::IllegalAutoIncrement {
+                        reason: "can not specify both auto increment and default value".to_string(),
+                    });
+                } else if !data_type.validate(default) {
                     return Err(Error::TypeError {
                         expected: data_type,
                         actual: default.clone(),
@@ -530,7 +535,7 @@ impl TableSchemaBuilder {
             ROW_ID_COLUMN,
             Type::Integer,
             true,
-            DbVal::Integer(0),
+            None,
             0,
         )?);
 
