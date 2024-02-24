@@ -5,14 +5,14 @@ use std::thread::JoinHandle;
 
 use crossbeam::channel::{bounded, Sender};
 use eyre::{eyre, Report};
-use log::{debug, error, warn};
+use tracing::{debug, error, error_span, warn};
+
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::init::AuthConfig;
 use weaver_core::access_control::auth::LoginContext;
 use weaver_core::cnxn::interprocess::LocalSocketStream;
 use weaver_core::common::dual_result::DualResult;
 use weaver_core::db::core::WeaverDbCore;
-
 use weaver_core::db::server::WeaverDb;
 use weaver_core::error::Error;
 use weaver_core::monitoring::{Monitor, Monitorable};
@@ -100,7 +100,7 @@ where
     .then(
         |(mut server, mut client)| {
             debug!("running full stack");
-            let output = cb(&mut server, &mut client);
+            let output = error_span!("client").in_scope(|| cb(&mut server, &mut client));
             drop(client);
             let monitor = server.monitor.take().unwrap();
             drop(server);
@@ -122,8 +122,8 @@ where
             _ => unreachable!(),
         },
     )
-        .map(|(server, mut monitor)| {
-            debug!("monitor: {:#?}", monitor.stats());
-            server
-        })
+    .map(|(server, mut monitor)| {
+        debug!("monitor: {:#?}", monitor.stats());
+        server
+    })
 }

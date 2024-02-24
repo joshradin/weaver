@@ -39,6 +39,8 @@ pub enum RemoteDbReq {
     Commit,
     /// Rollback a transaction
     Rollback,
+    /// Lets the server know you want to disconnect
+    Disconnect,
 }
 
 /// A remote db response
@@ -50,6 +52,7 @@ pub enum RemoteDbResp {
     Row(Option<OwnedRow>),
     ConnectionInfo(WeaverProcessInfo),
     Err(String),
+    Disconnect,
 }
 
 /// Messages that can be sent between shards

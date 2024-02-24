@@ -28,6 +28,7 @@ use crate::monitoring::{Monitor, Monitorable, SharedMonitor};
 use crate::tables::in_memory_table::InMemoryTableFactory;
 
 pub mod in_memory;
+pub mod weave_bptf;
 
 /// A storage engine provides a dynamic table factory with some storage/memory backend.
 pub trait StorageEngine : Monitorable + Send + Sync {

@@ -14,23 +14,32 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use tracing::Span;
 use weaver_ast::ast::Query;
 
 /// Headers are used to convey extra data in requests
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Default, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct Headers {
-    header: HashMap<String, Vec<String>>,
+    header_map: HashMap<String, Vec<String>>,
+}
+
+impl Debug for Headers {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_map()
+            .entries(self.header_map.iter())
+            .finish()
+    }
 }
 
 impl Headers {
     /// Gets header values, if present
     pub fn get(&self, header: impl AsRef<str>) -> Option<&[String]> {
-        self.header.get(header.as_ref()).map(|s| s.as_slice())
+        self.header_map.get(header.as_ref()).map(|s| s.as_slice())
     }
 
     /// Sets a value, appending it to an already existing header if it's already present
     pub fn set(&mut self, header: impl AsRef<str>, value: impl ToString) {
-        self.header
+        self.header_map
             .entry(header.as_ref().to_string())
             .or_default()
             .push(value.to_string());
@@ -38,7 +47,7 @@ impl Headers {
 
     /// Clears a header if present, removing it from the map
     pub fn clear(&mut self, header: impl AsRef<str>) {
-        let _ = self.header.remove(header.as_ref());
+        let _ = self.header_map.remove(header.as_ref());
     }
 }
 
@@ -48,17 +57,21 @@ pub struct DbReq {
     headers: Headers,
     ctx: Option<WeaverProcessInfo>,
     body: DbReqBody,
+    span: Option<Span>,
 }
 
 impl DbReq {
     /// Create a new db response
-    pub fn new(headers: Headers, body: DbReqBody) -> Self {
+    pub fn new(headers: Headers, body: DbReqBody, span: impl Into<Option<Span>>) -> Self {
         Self {
             headers,
             ctx: None,
             body,
+            span: span.into(),
         }
     }
+
+
 
     pub fn set_ctx(&mut self, ctx: WeaverProcessInfo) {
         self.ctx = Some(ctx);
@@ -101,6 +114,16 @@ impl DbReq {
         } = self;
         (headers, ctx, body)
     }
+
+    /// Gets the associated span for this packet
+    pub fn span(&self) -> Option<&Span> {
+        self.span.as_ref()
+    }
+
+    /// Allows for altering the span
+    pub fn span_mut(&mut self) -> &mut Option<Span> {
+        &mut self.span
+    }
 }
 
 impl From<DbReqBody> for DbReq {
@@ -110,15 +133,30 @@ impl From<DbReqBody> for DbReq {
             headers: Default::default(),
             ctx: None,
             body: value,
+            span: None,
         }
     }
 }
 
 impl From<(Tx, Query)> for DbReq {
     fn from((tx, query): (Tx, Query)) -> Self {
-        DbReq::new(Headers::default(), DbReqBody::TxQuery(tx, query))
+        DbReq::new(Headers::default(), DbReqBody::TxQuery(tx, query), None)
     }
 }
+
+impl From<(Tx, Query, Span)> for DbReq {
+    fn from((tx, query, span): (Tx, Query, Span)) -> Self {
+        DbReq::new(Headers::default(), DbReqBody::TxQuery(tx, query), span)
+    }
+}
+
+
+impl From<(DbReqBody, Span)> for DbReq {
+    fn from((body, span): (DbReqBody, Span)) -> Self {
+        DbReq::new(Headers::default(), body, span)
+    }
+}
+
 
 /// The base request that is sent to the database
 
@@ -158,7 +196,10 @@ impl Debug for DbReqBody {
             DbReqBody::StartTransaction => f.debug_tuple("StartTransaction").finish(),
             DbReqBody::Commit(c) => f.debug_tuple("Commit").field(c).finish(),
             DbReqBody::Rollback(r) => f.debug_tuple("Rollback").field(r).finish(),
-            _ => f.debug_struct("DbReq").finish_non_exhaustive(),
+            DbReqBody::OnCore(_) => f.debug_struct("OnCore").finish_non_exhaustive(),
+            DbReqBody::OnCoreWrite(_) => f.debug_struct("OnCoreWrite").finish_non_exhaustive(),
+            DbReqBody::OnServer(_) => f.debug_struct("OnServer").finish_non_exhaustive(),
+            _ => f.debug_struct("DbReqBody").finish_non_exhaustive(),
         }
     }
 }

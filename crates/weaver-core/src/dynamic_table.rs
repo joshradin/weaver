@@ -128,16 +128,6 @@ impl Display for EngineKey {
     }
 }
 
-impl EngineKey {
-    pub fn all() -> impl Iterator<Item = EngineKey> {
-        [
-            EngineKey::new(IN_MEMORY_KEY),
-            EngineKey::new(SYSTEM_TABLE_KEY),
-            EngineKey::new(B_PLUS_TREE_FILE_KEY),
-        ]
-        .into_iter()
-    }
-}
 
 impl AsRef<str> for EngineKey {
     fn as_ref(&self) -> &str {

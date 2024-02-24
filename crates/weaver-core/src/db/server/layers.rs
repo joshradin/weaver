@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use serde::Deserialize;
-use tracing::error_span;
+use tracing::{debug_span, error_span, trace_span};
 
 pub use layer_impl::*;
 use service::Service;
@@ -44,12 +44,10 @@ impl Layers {
 
 impl Service for Layers {
     fn process(&self, db_req: DbReq, cancel_recv: &CancelRecv) -> Result<DbResp, Cancelled> {
-        error_span!("request-handling").in_scope(|| {
-            self.inner
-                .as_ref()
-                .expect("should always have base service")
-                .process(db_req, cancel_recv)
-        })
+        self.inner
+            .as_ref()
+            .expect("should always have base service")
+            .process(db_req, cancel_recv)
     }
 }
 

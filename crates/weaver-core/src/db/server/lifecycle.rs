@@ -3,7 +3,7 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use parking_lot::{Mutex, RwLock};
-use tracing::{error, error_span, info, instrument, warn};
+use tracing::{error, error_span, info, instrument, Span, warn};
 
 use crate::db::server::{WeakWeaverDb, WeaverDb};
 use crate::error::Error;
@@ -92,7 +92,6 @@ impl WeaverDbLifecycleService {
     }
 
     /// Makes sure the WeaverDb instance is ready.
-    #[instrument(skip_all)]
     pub fn startup(&mut self) -> Result<(), Error> {
         let mut phase_lock = self.phase.write();
         match &*phase_lock {
@@ -121,12 +120,11 @@ impl WeaverDbLifecycleService {
     fn startup_(&mut self) -> Result<(), Error> {
         let mut helper = &mut *self.helper.lock();
         let mut weaver = helper.weak.upgrade().ok_or_else(|| Error::NoCoreAvailable)?;
-
         // init
         let init_functions = VecDeque::from_iter(helper.initialization_functions.drain(..));
 
         info!("Initializing weaver...");
-        error_span!("initialization").in_scope(|| -> Result<(), Error>{
+        error_span!("startup", phase="initialization").in_scope(|| -> Result<(), Error>{
             for init_function in init_functions {
                 init_function(&mut weaver)?;
             }
@@ -136,7 +134,7 @@ impl WeaverDbLifecycleService {
         })?;
         if !weaver.is_bootstrapped() {
             *self.phase.write() = LifecyclePhase::Bootstrapping;
-            error_span!("bootstrap").in_scope(|| -> Result<(), Error> {
+            error_span!("startup", phase="bootstrap").in_scope(|| -> Result<(), Error> {
                 info!("Bootstrapping weaver...");
                 // bootstrap
                 let bootstrap_functions = VecDeque::from_iter(helper.bootstrapping_functions.drain(..));
@@ -149,7 +147,6 @@ impl WeaverDbLifecycleService {
         }
 
         *self.phase.write() = LifecyclePhase::Ready;
-        info!("Weaver ready!");
         Ok(())
     }
 
@@ -168,6 +165,7 @@ impl WeaverDbLifecycleService {
 
 
         *self.phase.write() = LifecyclePhase::Dead;
+        warn!("Weaver dead");
         Ok(())
     }
 }

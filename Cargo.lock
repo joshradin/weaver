@@ -2085,8 +2085,8 @@ version = "0.0.0"
 dependencies = [
  "crossbeam",
  "eyre",
- "log",
  "tempfile",
+ "tracing",
  "tracing-subscriber",
  "weaver-client",
  "weaver-core",

@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::hint;
 use std::sync::Arc;
-use tracing::{debug, error_span, trace, warn};
+use tracing::{debug, error_span, Span, trace, trace_span, warn};
 
 pub type MainQueueItem = (Packet<DbReq>, Sender<Packet<DbResp>>);
 
@@ -56,10 +56,14 @@ impl DbSocket {
     /// Communicate with the db
     pub fn send(&self, req: impl Into<DbReq>) -> CancellableTaskHandle<Result<DbResp, Error>> {
         let clone = self.clone();
+        let span = Span::current();
+
         CancellableTask::with_cancel(
             move |req: DbReq, canceler| -> Result<Result<DbResp, Error>, Cancelled> {
-                error_span!("req-resp", pid = clone.shared.pid).in_scope(
+                trace_span!("req-resp", pid = clone.shared.pid).in_scope(
                     || -> Result<Result<DbResp, Error>, Cancelled> {
+                        let mut req: DbReq = req.into();
+                        req.span_mut().get_or_insert(span);
                         let packet = Packet::new(req.into());
                         trace!("packet={:#?}", packet);
                         let &id = packet.id();
@@ -139,8 +143,8 @@ impl DbSocket {
             .join()??
         else {
             return Err(Error::NoTableFound {
-                table: schema.to_string(),
-                schema: table.to_string(),
+                table: table.to_string(),
+                schema: schema.to_string(),
             });
         };
 

@@ -9,6 +9,7 @@ use std::thread;
 use std::thread::JoinHandle;
 
 use crossbeam::channel::{bounded, Receiver, SendError, Sender};
+use tracing::Span;
 
 use crate::error::Error;
 
@@ -60,8 +61,9 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
             cancel_receiver: _,
             mut func,
         } = self;
+        let span = Span::current();
         CancellableTaskHandle {
-            handle: OnceLock::from(thread::spawn(move || func(input))),
+            handle: OnceLock::from(thread::spawn(move || span.in_scope(|| func(input)))),
             canceller: Arc::new(cancel_send),
             cancelled: AtomicBool::default(),
         }
@@ -77,11 +79,12 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
             cancel_receiver: _,
             mut func,
         } = self;
+        let span = Span::current();
         Ok(CancellableTaskHandle {
             handle: OnceLock::from(
                 thread::Builder::new()
                     .name(name)
-                    .spawn(move || func(input))?,
+                    .spawn(move || span.in_scope(|| func(input)))?,
             ),
             canceller: Arc::new(cancel_send),
             cancelled: AtomicBool::default(),

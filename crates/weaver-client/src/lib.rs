@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use eyre::eyre;
 use interprocess::local_socket::LocalSocketStream;
-use log::warn;
+use log::{debug, trace, warn};
 
 use weaver_ast::ast::Query;
 use weaver_core::access_control::auth::LoginContext;
@@ -13,6 +13,7 @@ use weaver_core::cnxn::{MessageStream, RemoteDbReq, RemoteDbResp};
 use weaver_core::common::stream_support::Stream;
 use weaver_core::data::row::Row;
 use weaver_core::db::server::processes::WeaverPid;
+use weaver_core::error::Error;
 use weaver_core::rows::Rows;
 use weaver_core::tables::table_schema::TableSchema;
 
@@ -27,7 +28,16 @@ pub struct WeaverClient<T: Stream> {
 
 impl<T: Stream> Drop for WeaverClient<T> {
     fn drop(&mut self) {
-        warn!("dropping weaver client");
+        trace!("dropping weaver client");
+        trace!("sending disconnect to server as a courtesy");
+        match self.stream.send(&RemoteDbReq::Disconnect) {
+            Ok(RemoteDbResp::Disconnect) => {
+                trace!("disconnect acknowledged");
+            }
+           _other => {
+               trace!("Unexpected response after disconnect: {_other:?}");
+           }
+        }
     }
 }
 

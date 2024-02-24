@@ -14,7 +14,7 @@ use crate::cancellable_task::{CancellableTask, CancellableTaskHandle, Cancelled,
 use crate::db::server::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, span, Level};
+use tracing::{debug, error, info, span, Level, error_span};
 
 use crate::error::Error;
 
@@ -256,20 +256,21 @@ impl ProcessManager {
 
         let handle = {
             let channel = self.process_killed_channel.clone();
-            func.wrap(move |child: WeaverProcessChild, mut inner, canceller| {
-                let pid = child.shared.pid;
-                debug!("running process {}", pid);
-                let result = inner(child);
-                debug!("process ended with result {:?}", result);
+            error_span!("process", pid).in_scope(|| {
+                func.wrap(move |child: WeaverProcessChild, mut inner, canceller| {
+                    let pid = child.shared.pid;
+                    debug!("starting process...");
+                    let result = inner(child);
+                    debug!("process ended with result {:?}", result);
 
-                if let Ok(()) = channel.send(pid) {
-                } else {
-                    error!("couldn't remove process {} from process list", pid);
-                }
+                    if let Ok(()) = channel.send(pid) {} else {
+                        error!("couldn't remove process {} from process list", pid);
+                    }
 
-                result
-            })
-            .start_with_name(child, format!("weaver-db-process-{}", pid))?
+                    result
+                })
+                    .start_with_name(child, format!("weaver-db-process-{}", pid))
+            })?
         };
         parent.set_handle(handle);
         let pid = parent.shared.pid;

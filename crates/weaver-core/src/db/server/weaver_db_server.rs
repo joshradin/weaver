@@ -1,34 +1,36 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use crossbeam::channel::{unbounded, Sender};
+use crossbeam::channel::{Sender, unbounded};
 use parking_lot::{Mutex, RwLock};
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use tracing::{debug, error, error_span, info, info_span, trace, warn};
+use tracing::{
+    debug, error, error_span, info, info_span, Level, Span, span_enabled, trace, trace_span, warn,
+};
 
 use weaver_ast::ast::Query;
 
 use crate::access_control::auth::context::AuthContext;
-use crate::access_control::auth::init::{init_auth_context, AuthConfig};
-use crate::cancellable_task::{CancelRecv, CancellableTask, Cancelled};
+use crate::access_control::auth::init::{AuthConfig, init_auth_context};
+use crate::cancellable_task::{CancellableTask, Cancelled, CancelRecv};
+use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::cnxn::cnxn_loop::remote_stream_loop;
 use crate::cnxn::interprocess::WeaverLocalSocketListener;
 use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::tcp::WeaverTcpListener;
-use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::common::stream_support::Stream;
 use crate::db::core::{bootstrap, WeaverDbCore};
 use crate::db::server::init::engines::init_engines;
 use crate::db::server::init::system::init_system_tables;
 use crate::db::server::init::weaver::init_weaver_schema;
+use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
-use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::lifecycle::{LifecyclePhase, WeaverDbLifecycleService};
 use crate::db::server::processes::{
     ProcessManager, WeaverPid, WeaverProcessChild, WeaverProcessInfo,
@@ -73,7 +75,7 @@ pub(super) struct WeaverDbShared {
 
     lifecycle_service: WeaverDbLifecycleService,
 
-    monitor: Arc<OnceLock<WeaverDbMonitor>>
+    monitor: Arc<OnceLock<WeaverDbMonitor>>,
 }
 
 impl WeaverDb {
@@ -121,8 +123,23 @@ impl WeaverDb {
                                 if let Err(e) = CancellableTask::with_cancel({
                                     let response_channel = response_channel.clone();
                                     move |_: (), cancel| {
-                                        error_span!("packet", id = req_id).in_scope(|| {
+                                        let span = if span_enabled!(Level::TRACE) {
+                                            if let Some(parent) = req.span() {
+                                                trace_span!(parent: parent, "packet", id = req_id)
+                                            } else {
+                                                trace_span!("packet", id = req_id)
+                                            }
+                                        } else {
+                                            if let Some(parent) = req.span() {
+                                                parent.clone()
+                                            } else {
+                                                Span::current()
+                                            }
+                                        };
+
+                                        span.in_scope(|| {
                                             trace!("packet has begun processing");
+
                                             let resp =
                                                 db.shared.layers.read().process(req, cancel)?;
                                             trace!("packet has finished being processed");
@@ -362,13 +379,15 @@ impl WeaverDb {
                 if let Some(monitor) = monitor.get() {
                     monitor.connections.fetch_add(1, Ordering::SeqCst);
                 }
-                let span = info_span!(
-                    "external-connection",
-                    peer_addrr = stream.peer_addr().map(|addr| addr.to_string())
+                let span = error_span!(
+                    "cnxn",
+                    peer_addr = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|| "<unknown>".to_string()),
+                    user = child.info().user,
+                    pid = child.pid(),
                 );
                 let _enter = span.enter();
                 let ret = Ok(
-                    if let Err(e) = remote_stream_loop(&mut stream, child, recv) {
+                    if let Err(e) = remote_stream_loop(&mut stream, child, recv, &span) {
                         warn!("client connection ended with err: {}", e);
                         if let Err(e) =
                             stream.write(&Message::Resp(RemoteDbResp::Err(e.to_string())))
@@ -419,12 +438,12 @@ impl WeaverDb {
         let (_, ctx, body) = req.to_parts();
         trace!("req={:#?}", body);
         match body {
-            DbReqBody::OnCoreWrite(cb) => error_span!("core", mode = "write").in_scope(|| {
+            DbReqBody::OnCoreWrite(cb) => trace_span!("core", mode = "write").in_scope(|| {
                 trace!("getting write access to core");
                 let mut writable = self.shared.core.write();
                 Ok((cb)(&mut *writable, cancel_recv)?.into_db_resp())
             }),
-            DbReqBody::OnCore(cb) => error_span!("core", mode = "read").in_scope(|| {
+            DbReqBody::OnCore(cb) => trace_span!("core", mode = "read").in_scope(|| {
                 trace!("getting read access to core");
                 let readable = self.shared.core.read();
                 Ok((cb)(&*readable, cancel_recv)?.into_db_resp())
@@ -477,9 +496,12 @@ impl Default for WeaverDb {
 
 impl Monitorable for WeaverDb {
     fn monitor(&self) -> Box<dyn Monitor> {
-        Box::new(self.shared.monitor.get_or_init(|| WeaverDbMonitor::new(
-            self.shared.core.read().monitor()
-        )).clone())
+        Box::new(
+            self.shared
+                .monitor
+                .get_or_init(|| WeaverDbMonitor::new(self.shared.core.read().monitor()))
+                .clone(),
+        )
     }
 }
 
@@ -505,7 +527,7 @@ impl WeakWeaverDb {
 pub(super) struct WeaverDbMonitor {
     start_time: Instant,
     pub(super) connections: Arc<AtomicUsize>,
-    core_monitor: Arc<Mutex<Box<dyn Monitor>>>
+    core_monitor: Arc<Mutex<Box<dyn Monitor>>>,
 }
 
 impl Monitor for WeaverDbMonitor {
@@ -515,9 +537,15 @@ impl Monitor for WeaverDbMonitor {
 
     fn stats(&mut self) -> Stats {
         Stats::from_iter([
-            ("elapsed", Stats::from(self.start_time.elapsed().as_secs_f64())),
-            ("connections", Stats::from(self.connections.load(Ordering::Relaxed) as i64)),
-            ("core", self.core_monitor.lock().stats())
+            (
+                "elapsed",
+                Stats::from(self.start_time.elapsed().as_secs_f64()),
+            ),
+            (
+                "connections",
+                Stats::from(self.connections.load(Ordering::Relaxed) as i64),
+            ),
+            ("core", self.core_monitor.lock().stats()),
         ])
     }
 }
@@ -527,7 +555,7 @@ impl WeaverDbMonitor {
         Self {
             start_time: Instant::now(),
             connections: Default::default(),
-            core_monitor: Arc::new(Mutex::new(core))
+            core_monitor: Arc::new(Mutex::new(core)),
         }
     }
 }
