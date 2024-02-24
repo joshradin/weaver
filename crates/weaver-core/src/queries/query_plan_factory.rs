@@ -24,8 +24,8 @@ use crate::key::KeyData;
 use crate::queries::query_cost::{Cost, CostTable};
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{KeyIndex, KeyIndexKind};
-use crate::tables::table_schema::{Key, TableSchema, TableSchemaBuilder};
-use crate::tables::{table_schema, TableRef};
+use crate::storage::tables::table_schema::{Key, TableSchema, TableSchemaBuilder};
+use crate::storage::tables::{table_schema, TableRef};
 use crate::tx::Tx;
 
 #[derive(Debug)]

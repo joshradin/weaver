@@ -9,7 +9,7 @@ use crate::dynamic_table::{HasSchema, Table};
 use crate::error::Error;
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{OwnedRows, Rows, RowsExt};
-use crate::tables::InMemoryTable;
+use crate::storage::tables::InMemoryTable;
 use crate::tx::Tx;
 
 /// The query executor is responsible for executing queries against the database

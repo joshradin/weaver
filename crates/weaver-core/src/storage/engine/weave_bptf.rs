@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::dynamic_table::EngineKey;
 use crate::monitoring::{monitor_fn, Monitor, Monitorable, Stats};
 use crate::storage::engine::StorageEngine;
-use crate::tables::bpt_file_table::{BptfTableFactory, B_PLUS_TREE_FILE_KEY};
+use crate::storage::tables::bpt_file_table::{BptfTableFactory, B_PLUS_TREE_FILE_KEY};
 
 ///! `weaveBPTF` storage engine, providing for file-per-table b plus tree implementations
 

@@ -23,6 +23,7 @@ pub mod ram_file;
 pub mod engine;
 
 pub mod paging;
+pub mod tables;
 
 /// Gets the standard page size of 4096 bytes
 pub static PAGE_SIZE: usize = 2 << 11;

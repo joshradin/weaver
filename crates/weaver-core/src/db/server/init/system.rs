@@ -16,8 +16,8 @@ use crate::db::SYSTEM_SCHEMA;
 use crate::dynamic_table::EngineKey;
 use crate::error::Error;
 use crate::rows::OwnedRows;
-use crate::tables::system_tables::{SystemTable, SYSTEM_TABLE_KEY};
-use crate::tables::table_schema::TableSchema;
+use crate::storage::tables::system_tables::{SystemTable, SYSTEM_TABLE_KEY};
+use crate::storage::tables::table_schema::TableSchema;
 
 pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
     let start = Instant::now();

@@ -1,8 +1,8 @@
 use crate::dynamic_table::HasSchema;
 use crate::queries::query_cost::Cost;
 use crate::rows::KeyIndex;
-use crate::tables::table_schema::{ColumnDefinition, TableSchema};
-use crate::tables::TableRef;
+use crate::storage::tables::table_schema::{ColumnDefinition, TableSchema};
+use crate::storage::tables::TableRef;
 use std::collections::HashMap;
 
 #[derive(Debug)]

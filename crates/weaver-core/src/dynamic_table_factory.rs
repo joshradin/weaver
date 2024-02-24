@@ -3,7 +3,7 @@ use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::Table;
 use crate::error::Error;
 use crate::monitoring::{Monitor, Monitorable};
-use crate::tables::table_schema::TableSchema;
+use crate::storage::tables::table_schema::TableSchema;
 
 pub trait DynamicTableFactory: Send + Sync + Monitorable {
     fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, Error>;

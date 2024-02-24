@@ -17,8 +17,8 @@ use crate::storage::paging::virtual_pager::{VirtualPager, VirtualPagerTable};
 use crate::storage::ram_file::RandomAccessFile;
 use crate::storage::{Pager, StorageDevice, StorageDeviceDelegate};
 use crate::storage::paging::caching_pager::LruCachingPager;
-use crate::tables::table_schema::TableSchema;
-use crate::tables::unbuffered_table::UnbufferedTable;
+use crate::storage::tables::table_schema::TableSchema;
+use crate::storage::tables::unbuffered_table::UnbufferedTable;
 use crate::tx::Tx;
 
 pub const B_PLUS_TREE_FILE_KEY: &'static str = "weaveBPTF";
@@ -129,8 +129,8 @@ mod tests {
     use crate::key::KeyData;
     use crate::monitoring::Monitorable;
     use crate::rows::{KeyIndex, KeyIndexKind, Rows};
-    use crate::tables::bpt_file_table::{B_PLUS_TREE_FILE_KEY, BptfTableFactory};
-    use crate::tables::table_schema::TableSchema;
+    use crate::storage::tables::bpt_file_table::{B_PLUS_TREE_FILE_KEY, BptfTableFactory};
+    use crate::storage::tables::table_schema::TableSchema;
     use crate::tx::Tx;
 
     #[test]

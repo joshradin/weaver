@@ -25,7 +25,7 @@ use static_assertions::assert_obj_safe;
 use crate::dynamic_table::EngineKey;
 use crate::dynamic_table_factory::{DynamicTableFactory, DynamicTableFactoryDelegate};
 use crate::monitoring::{Monitor, Monitorable, SharedMonitor};
-use crate::tables::in_memory_table::InMemoryTableFactory;
+use crate::storage::tables::in_memory_table::InMemoryTableFactory;
 
 pub mod in_memory;
 pub mod weave_bptf;

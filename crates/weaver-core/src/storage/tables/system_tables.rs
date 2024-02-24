@@ -6,7 +6,7 @@ use crate::db::server::socket::DbSocket;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows};
-use crate::tables::table_schema::TableSchema;
+use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 use std::fmt::Debug;
 use std::sync::Arc;

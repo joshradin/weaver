@@ -10,7 +10,7 @@ use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{DynamicTable, EngineKey};
 use crate::error::Error;
 use crate::rows::{KeyIndex, Rows, RowsExt};
-use crate::tables::table_schema::TableSchema;
+use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 
 /// Bootstraps the weaver core, enabling persistence and table protections.

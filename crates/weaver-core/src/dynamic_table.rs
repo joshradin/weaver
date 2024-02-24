@@ -11,10 +11,10 @@ use crate::dynamic_table_factory::DynamicTableFactory;
 use crate::error::Error;
 use crate::monitoring::Monitorable;
 use crate::rows::{KeyIndex, Rows};
-use crate::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
-use crate::tables::in_memory_table::IN_MEMORY_KEY;
-use crate::tables::system_tables::SYSTEM_TABLE_KEY;
-use crate::tables::table_schema::TableSchema;
+use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
+use crate::storage::tables::in_memory_table::IN_MEMORY_KEY;
+use crate::storage::tables::system_tables::SYSTEM_TABLE_KEY;
+use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 
 /// A column within a table

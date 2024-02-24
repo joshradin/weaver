@@ -15,7 +15,7 @@ use weaver_core::data::row::Row;
 use weaver_core::db::server::processes::WeaverPid;
 use weaver_core::error::Error;
 use weaver_core::rows::Rows;
-use weaver_core::tables::table_schema::TableSchema;
+use weaver_core::storage::tables::table_schema::TableSchema;
 
 pub mod write_rows;
 

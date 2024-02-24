@@ -3,7 +3,7 @@
 use crate::dynamic_table::EngineKey;
 use crate::monitoring::{Monitor, monitor_fn, Monitorable};
 use crate::storage::engine::StorageEngine;
-use crate::tables::in_memory_table::{IN_MEMORY_KEY, InMemoryTableFactory};
+use crate::storage::tables::in_memory_table::{IN_MEMORY_KEY, InMemoryTableFactory};
 
 /// In memory engine
 #[derive(Debug)]

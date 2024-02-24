@@ -12,11 +12,11 @@ use crate::dynamic_table::{
     DynamicTable, EngineKey, HasSchema, Table,
 };
 use crate::error::Error;
-use crate::tables::bpt_file_table::BptfTableFactory;
-use crate::tables::shared_table::SharedTable;
-use crate::tables::table_schema::TableSchema;
-use crate::tables::InMemoryTable;
-use crate::tables::{bpt_file_table::B_PLUS_TREE_FILE_KEY, in_memory_table::IN_MEMORY_KEY};
+use crate::storage::tables::bpt_file_table::BptfTableFactory;
+use crate::storage::tables::shared_table::SharedTable;
+use crate::storage::tables::table_schema::TableSchema;
+use crate::storage::tables::InMemoryTable;
+use crate::storage::tables::{bpt_file_table::B_PLUS_TREE_FILE_KEY, in_memory_table::IN_MEMORY_KEY};
 use crate::tx::coordinator::TxCoordinator;
 use crate::tx::Tx;
 
@@ -26,7 +26,7 @@ use crate::db::server::WeaverDb;
 use crate::dynamic_table_factory::DynamicTableFactory;
 use crate::monitoring::{Monitor, monitor_fn, Monitorable, MonitorCollector, Stats};
 use crate::storage::engine::{StorageEngine, StorageEngineDelegate};
-use crate::tables::in_memory_table::InMemoryTableFactory;
+use crate::storage::tables::in_memory_table::InMemoryTableFactory;
 
 /// A db core. Represents some part of a distributed db
 pub struct WeaverDbCore {

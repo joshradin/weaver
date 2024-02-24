@@ -10,8 +10,8 @@ use crate::dynamic_table::{Col, DynamicTable, EngineKey, HasSchema};
 use crate::error::Error;
 use crate::monitoring::{Monitor, monitor_fn, Monitorable};
 use crate::rows::{KeyIndex, Rows};
-use crate::tables::table_schema::TableSchema;
-use crate::tables::InMemoryTable;
+use crate::storage::tables::table_schema::TableSchema;
+use crate::storage::tables::InMemoryTable;
 use crate::tx::Tx;
 
 /// A user struct is useful for access control

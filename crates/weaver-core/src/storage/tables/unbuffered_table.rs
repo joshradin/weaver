@@ -24,7 +24,7 @@ use crate::storage::{Pager, VecPager};
 use crate::storage::b_plus_tree::BPlusTree;
 use crate::storage::paging::buffered_pager::BufferedPager;
 use crate::storage::paging::virtual_pager::{VirtualPager, VirtualPagerTable};
-use crate::tables::table_schema::{ColumnDefinition, TableSchema};
+use crate::storage::tables::table_schema::{ColumnDefinition, TableSchema};
 use crate::tx::{Tx, TX_ID_COLUMN, TxId};
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]

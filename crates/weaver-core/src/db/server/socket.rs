@@ -2,8 +2,8 @@ use crate::cancellable_task::{CancellableTask, CancellableTaskHandle, Cancelled}
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp, Packet, PacketId};
 use crate::db::server::processes::WeaverPid;
 use crate::error::Error;
-use crate::tables::shared_table::SharedTable;
-use crate::tables::TableRef;
+use crate::storage::tables::shared_table::SharedTable;
+use crate::storage::tables::TableRef;
 use crate::tx::Tx;
 use crossbeam::channel::{unbounded, Receiver, RecvError, Sender, TryRecvError};
 use parking_lot::Mutex;

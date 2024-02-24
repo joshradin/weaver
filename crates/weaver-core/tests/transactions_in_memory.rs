@@ -12,7 +12,7 @@ use weaver_core::db::server::WeaverDb;
 use weaver_core::dynamic_table::DynamicTable;
 use weaver_core::error::Error;
 use weaver_core::rows::Rows;
-use weaver_core::tables::table_schema::TableSchema;
+use weaver_core::storage::tables::table_schema::TableSchema;
 
 #[test]
 fn transactions_in_memory() -> Result<(), Error> {

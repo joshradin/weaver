@@ -15,7 +15,6 @@ pub mod monitoring;
 pub mod queries;
 pub mod rows;
 pub mod storage;
-pub mod tables;
 pub mod tx;
 
 pub use db::server::cnxn;

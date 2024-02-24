@@ -14,8 +14,8 @@ use crate::db::server::layers::packets::DbReq;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::EngineKey;
 use crate::error::Error;
-use crate::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
-use crate::tables::table_schema::TableSchema;
+use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
+use crate::storage::tables::table_schema::TableSchema;
 
 pub fn init_weaver_schema(core: &mut WeaverDbCore) -> Result<(), Error> {
     let start = Instant::now();
