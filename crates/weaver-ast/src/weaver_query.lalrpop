@@ -100,15 +100,15 @@ Expr: ast::Expr = {
     ":" <"int"> =>  ast::Expr::BindParameter{ parameter: Some(<>)},
      #[precedence(level="0")]
     <table_name: (<Table> ".")?> <column_name: Identifier> => {
-        let column_ref = match table_name {
+        let column_ref: ast::ColumnRef = match table_name {
             Some((Some(schema), table)) => {
-                ast::ResolvedColumnRef::new(schema, table, column_name)
+                ast::ResolvedColumnRef::new(schema, table, column_name).into()
             }
             Some((None, table)) => {
-                ast::UnresolvedColumnRef::with_table(table, column_name)
+                ast::UnresolvedColumnRef::with_table(table, column_name).into()
             }
             None => {
-                ast::UnresolvedColumnRef::with_column(column_name)
+                ast::UnresolvedColumnRef::with_column(column_name).into()
             }
             _ => unreachable!()
         };
