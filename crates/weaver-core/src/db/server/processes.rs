@@ -14,7 +14,7 @@ use crate::cancellable_task::{CancellableTask, CancellableTaskHandle, Cancelled,
 use crate::db::server::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, span, Level, error_span};
+use tracing::{debug, error, error_span, info, span, Level};
 
 use crate::error::Error;
 
@@ -263,13 +263,14 @@ impl ProcessManager {
                     let result = inner(child);
                     debug!("process ended with result {:?}", result);
 
-                    if let Ok(()) = channel.send(pid) {} else {
+                    if let Ok(()) = channel.send(pid) {
+                    } else {
                         error!("couldn't remove process {} from process list", pid);
                     }
 
                     result
                 })
-                    .start_with_name(child, format!("weaver-db-process-{}", pid))
+                .start_with_name(child, format!("weaver-db-process-{}", pid))
             })?
         };
         parent.set_handle(handle);

@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use chrono::{DateTime, Local};
 use derive_more::From;
-use indexmap::IndexMap;
 use indexmap::map::Entry;
+use indexmap::IndexMap;
 use parking_lot::{Mutex, RwLock};
 
 /// A monitor
@@ -170,21 +170,27 @@ impl Monitor for DelegateMonitor {
 #[derive(Clone)]
 pub struct SharedMonitor {
     name: String,
-    lock: Arc<Mutex<Box<dyn Monitor>>>
+    lock: Arc<Mutex<Box<dyn Monitor>>>,
 }
 
 impl SharedMonitor {
     /// Create a new shared monitor
-    pub fn new<M : Monitor + 'static>(monitor: M) -> Self {
+    pub fn new<M: Monitor + 'static>(monitor: M) -> Self {
         let name = monitor.name().to_string();
-        Self { name, lock: Arc::new(Mutex::new(Box::new(monitor)))}
+        Self {
+            name,
+            lock: Arc::new(Mutex::new(Box::new(monitor))),
+        }
     }
 }
 
 impl From<Box<dyn Monitor>> for SharedMonitor {
     fn from(value: Box<dyn Monitor>) -> Self {
         let name = value.name().to_string();
-        Self { name, lock: Arc::new(Mutex::new(value))}
+        Self {
+            name,
+            lock: Arc::new(Mutex::new(value)),
+        }
     }
 }
 

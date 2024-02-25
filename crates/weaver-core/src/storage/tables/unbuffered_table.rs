@@ -1,12 +1,12 @@
 //! An in-memory storage engine
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
 use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Formatter};
 use std::ops::Bound::{Excluded, Unbounded};
-use std::sync::{Arc, OnceLock};
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use once_cell::sync::Lazy;
@@ -18,14 +18,14 @@ use crate::data::types::Type;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, OwnedCol, Table};
 use crate::error::Error;
 use crate::key::{KeyData, KeyDataRange};
-use crate::monitoring::{Monitor, monitor_fn, Monitorable, MonitorCollector, Stats};
+use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable, Stats};
 use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, Rows};
-use crate::storage::{Pager, VecPager};
 use crate::storage::b_plus_tree::BPlusTree;
 use crate::storage::paging::buffered_pager::BufferedPager;
 use crate::storage::paging::virtual_pager::{VirtualPager, VirtualPagerTable};
 use crate::storage::tables::table_schema::{ColumnDefinition, TableSchema};
-use crate::tx::{Tx, TX_ID_COLUMN, TxId};
+use crate::storage::{Pager, VecPager};
+use crate::tx::{Tx, TxId, TX_ID_COLUMN};
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
 struct RowId(u64);
@@ -45,13 +45,15 @@ impl<P: Pager + Sync + Send> Debug for UnbufferedTable<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UnbufferedTable")
             .field("schema", &self.schema)
-            .field("primary_index_nodes", &self.main_buffer.nodes().unwrap_or(0))
+            .field(
+                "primary_index_nodes",
+                &self.main_buffer.nodes().unwrap_or(0),
+            )
             .field("auto_incremented", &self.auto_incremented)
             .field("row_id", &self.row_id)
             .finish()
     }
 }
-
 
 impl<P: Pager + Sync + Send> UnbufferedTable<P> {
     /// Creates a new, empty in memory table
@@ -242,4 +244,3 @@ where
         &self.schema
     }
 }
-

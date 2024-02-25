@@ -1,7 +1,10 @@
-use prettytable::format::{LinePosition, LineSeparator, TableFormat};
-use prettytable::{Cell, Row, Table};
 use std::io::Write;
 use std::time::Duration;
+
+use tabled::builder::Builder;
+use tabled::grid::config::HorizontalLine;
+use tabled::settings::Style;
+
 use weaver_core::rows::Rows;
 
 pub fn write_rows<'r, W: Write, R: Rows<'r>>(
@@ -11,35 +14,24 @@ pub fn write_rows<'r, W: Write, R: Rows<'r>>(
 ) -> eyre::Result<()> {
     let schema = rows.schema();
 
-    let mut table = Table::new();
-    table.set_titles(Row::new(
-        schema
-            .columns()
-            .iter()
-            .map(|col| Cell::new(col.name()))
-            .collect(),
-    ));
-    let mut format = TableFormat::default();
-
-    format.separator(LinePosition::Title, LineSeparator::new('-', '+', '+', '+'));
-    format.separator(LinePosition::Top, LineSeparator::new('-', '+', '+', '+'));
-    format.separator(LinePosition::Bottom, LineSeparator::new('-', '+', '+', '+'));
-    format.separator(LinePosition::Intern, LineSeparator::new(' ', '+', '+', '+'));
-    format.padding(1, 1);
-    format.column_separator('|');
-    format.borders('|');
-
-    table.set_format(format);
+    let mut builder = Builder::new();
+    builder.push_record(schema.columns().iter().map(|col| col.name()));
 
     let mut row_count = 0;
     while let Some(row) = rows.next() {
-        table.add_row(Row::new(
-            row.iter().map(|v| Cell::new(&v.to_string())).collect(),
-        ));
+        builder.push_record(row.iter().map(|v| v.to_string()));
         row_count += 1;
     }
 
-    table.print(&mut write)?;
+    let table = builder
+        .build()
+        .with(Style::ascii().remove_horizontal().horizontals([(
+            1,
+            HorizontalLine::new(Some('-'), Some('+'), Some('+'), Some('+')).into(),
+        )]))
+        .to_string();
+
+    writeln!(write, "{table}")?;
     writeln!(
         write,
         "{row_count} {} in set ({:0.2} sec)",

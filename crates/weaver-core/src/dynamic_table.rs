@@ -20,9 +20,6 @@ use crate::tx::Tx;
 /// A column within a table
 pub type Col<'a> = &'a str;
 
-/// A column within a table
-pub type TableCol = (String, String, String);
-
 /// An owned column reference
 pub type OwnedCol = String;
 
@@ -127,7 +124,6 @@ impl Display for EngineKey {
         write!(f, "{}", self.0)
     }
 }
-
 
 impl AsRef<str> for EngineKey {
     fn as_ref(&self) -> &str {

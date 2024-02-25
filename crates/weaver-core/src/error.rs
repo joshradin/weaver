@@ -6,6 +6,7 @@ use crossbeam::channel::{RecvError, SendError};
 use openssl::error::ErrorStack;
 use openssl::ssl::HandshakeError;
 use serde::ser::StdError;
+use weaver_ast::ast::{JoinClause, ResolvedColumnRef, UnresolvedColumnRef};
 use weaver_ast::error::ParseQueryError;
 
 use crate::access_control::auth::error::AuthInitError;
@@ -16,7 +17,7 @@ use crate::db::server::layers::packets::{DbResp, IntoDbResponse};
 use crate::db::server::lifecycle::LifecyclePhase;
 use crate::db::server::processes::WeaverPid;
 use crate::db::server::socket::MainQueueItem;
-use crate::dynamic_table::{EngineKey, OpenTableError, OwnedCol, StorageError, TableCol};
+use crate::dynamic_table::{EngineKey, OpenTableError, OwnedCol, StorageError};
 use crate::key::KeyData;
 use crate::storage::cells::PageId;
 use crate::storage::paging::slotted_pager::PageType;
@@ -102,7 +103,7 @@ pub enum Error {
     #[error("Mutiple options found for column {col:?}: {positives:#?}")]
     AmbiguousColumn {
         col: String,
-        positives: Vec<TableCol>,
+        positives: Vec<ResolvedColumnRef>,
     },
     #[error("encountered an error trying to read a cell: {0}")]
     ReadDataError(#[from] ReadDataError),
@@ -135,6 +136,9 @@ pub enum Error {
 
     #[error(transparent)]
     VirtualPagerError(#[from] VirtualPagerError),
+
+    #[error("No strategy for {0}")]
+    NoStrategyForJoin(JoinClause),
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {

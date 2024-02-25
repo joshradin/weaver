@@ -11,7 +11,7 @@ use weaver_tests::run_full_stack;
 
 fn init_tracing() -> Result<(), Box<dyn Error + Send + Sync>> {
     tracing_subscriber::fmt()
-        .with_max_level(LevelFilter::TRACE)
+        .with_max_level(LevelFilter::DEBUG)
         .with_thread_ids(true)
         .event_format(tracing_subscriber::fmt::format())
         .try_init()
@@ -25,7 +25,6 @@ fn can_connect() -> eyre::Result<()> {
 
     Ok(())
 }
-
 
 #[test]
 fn get_processes() -> eyre::Result<()> {
@@ -49,6 +48,28 @@ fn get_tables() -> eyre::Result<()> {
     run_full_stack(temp_dir.path(), |server, client| {
         info!("trying to get tables");
         let (rows, elapsed) = client.query(&Query::parse("select * from weaver.tables")?)?;
+        write_rows(stdout(), rows, elapsed).expect("could not write rows");
+
+        Ok(())
+    })?;
+
+    Ok(())
+}
+
+#[test]
+fn get_tables_with_schema() -> eyre::Result<()> {
+    let _ = init_tracing();
+    let temp_dir = TempDir::new()?;
+    run_full_stack(temp_dir.path(), |server, client| {
+        info!("trying to get tables");
+        let (rows, elapsed) = client.query(&Query::parse(
+            r"
+        SELECT s.name, t.name, t.table_ddl
+        FROM
+            weaver.tables as t
+        JOIN
+            weaver.schemata as s ON t.schema_id = s.id",
+        )?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
 
         Ok(())

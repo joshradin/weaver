@@ -6,7 +6,7 @@ use std::fmt::{Debug, Formatter};
 use std::io::Write;
 use std::ops::Bound;
 use std::sync::atomic::AtomicUsize;
-use std::sync::{Arc, atomic, OnceLock};
+use std::sync::{atomic, Arc, OnceLock};
 use std::time::Instant;
 
 use parking_lot::{Mutex, RwLock};
@@ -130,7 +130,7 @@ where
                     monitor.inserts.fetch_add(1, atomic::Ordering::Relaxed);
                 }
                 Ok(false)
-            },
+            }
             Err(Error::WriteDataError(WriteDataError::AllocationFailed { .. })) => {
                 // insufficient space requires a split
                 let id = page.page_id();
@@ -337,23 +337,28 @@ where
             page_ptr = right;
         }
 
-        pages.into_iter().try_fold(vec![], |mut vec, page_id| {
-            let page = self.allocator.get(page_id)?;
-            let page_range = page.key_range()?;
-            if let Some(on_page) = page_range.intersection(&range) {
-                let page_cells = page
-                    .get_range(on_page)?
-                    .into_iter()
-                    .flat_map(|cell| cell.into_key_value_cell())
-                    .map(|cell| Box::from(cell.record()));
-                vec.extend(page_cells);
-            }
-            Ok(vec)
-        }).inspect(|cells| {
-            if let Some(monitor) = self.monitor.get() {
-                monitor.reads.fetch_add(cells.len(), atomic::Ordering::Relaxed);
-            }
-        })
+        pages
+            .into_iter()
+            .try_fold(vec![], |mut vec, page_id| {
+                let page = self.allocator.get(page_id)?;
+                let page_range = page.key_range()?;
+                if let Some(on_page) = page_range.intersection(&range) {
+                    let page_cells = page
+                        .get_range(on_page)?
+                        .into_iter()
+                        .flat_map(|cell| cell.into_key_value_cell())
+                        .map(|cell| Box::from(cell.record()));
+                    vec.extend(page_cells);
+                }
+                Ok(vec)
+            })
+            .inspect(|cells| {
+                if let Some(monitor) = self.monitor.get() {
+                    monitor
+                        .reads
+                        .fetch_add(cells.len(), atomic::Ordering::Relaxed);
+                }
+            })
     }
 
     /// Gets all rows
@@ -798,7 +803,7 @@ struct BPlusTreeMonitor {
     inserts: Arc<AtomicUsize>,
     updates: Arc<AtomicUsize>,
     deletes: Arc<AtomicUsize>,
-    splits: Arc<AtomicUsize>
+    splits: Arc<AtomicUsize>,
 }
 
 impl Debug for BPlusTreeMonitor {

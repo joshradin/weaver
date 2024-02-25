@@ -18,3 +18,10 @@ pub mod storage;
 pub mod tx;
 
 pub use db::server::cnxn;
+
+/// Sealed trait, allowing for traits that can not be implemented outside of this crate
+pub(crate) mod sealed {
+
+    /// Seals a trait, preventing outside structs from implementing
+    pub trait Sealed {}
+}

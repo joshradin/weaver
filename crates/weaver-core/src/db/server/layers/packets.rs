@@ -25,9 +25,7 @@ pub struct Headers {
 
 impl Debug for Headers {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_map()
-            .entries(self.header_map.iter())
-            .finish()
+        f.debug_map().entries(self.header_map.iter()).finish()
     }
 }
 
@@ -70,8 +68,6 @@ impl DbReq {
             span: span.into(),
         }
     }
-
-
 
     pub fn set_ctx(&mut self, ctx: WeaverProcessInfo) {
         self.ctx = Some(ctx);
@@ -150,13 +146,11 @@ impl From<(Tx, Query, Span)> for DbReq {
     }
 }
 
-
 impl From<(DbReqBody, Span)> for DbReq {
     fn from((body, span): (DbReqBody, Span)) -> Self {
         DbReq::new(Headers::default(), body, span)
     }
 }
-
 
 /// The base request that is sent to the database
 

@@ -8,7 +8,7 @@ use crate::data::values::DbVal;
 use crate::db::SYSTEM_SCHEMA;
 use crate::dynamic_table::{Col, DynamicTable, EngineKey, HasSchema};
 use crate::error::Error;
-use crate::monitoring::{Monitor, monitor_fn, Monitorable};
+use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::table_schema::TableSchema;
 use crate::storage::tables::InMemoryTable;

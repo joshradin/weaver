@@ -3,11 +3,11 @@
 use crate::data::row::Row;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, Table};
 use crate::error::Error;
+use crate::monitoring::{Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 use std::sync::Arc;
-use crate::monitoring::{Monitor, Monitorable};
 
 /// A shared table
 #[derive(Debug, Clone)]

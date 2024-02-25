@@ -11,8 +11,8 @@ use nom::error::Error;
 use nom::ErrorConvert;
 use thiserror::Error;
 
-pub use paging::traits::{Pager, VecPager};
 use crate::monitoring::{Monitor, Monitorable};
+pub use paging::traits::{Pager, VecPager};
 
 use crate::storage::cells::PageId;
 

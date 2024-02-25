@@ -82,9 +82,7 @@ impl<F: StorageDevice> Monitorable for FilePager<F> {
         let file_monitor = self.raf.read().monitor();
         let collector = MonitorCollector::from_iter([file_monitor]);
 
-        Box::new(monitor_fn("file_pager", move || {
-            collector.all()
-        }))
+        Box::new(monitor_fn("file_pager", move || collector.all()))
     }
 }
 
@@ -307,8 +305,8 @@ impl<F: StorageDevice> Drop for FilePageMut<F> {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempfile;
     use crate::monitoring::Monitorable;
+    use tempfile::tempfile;
 
     use crate::storage::paging::file_pager::{FilePageMut, FilePager};
     use crate::storage::paging::traits::{Page, PageMut};
@@ -331,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn  get_stats() {
+    fn get_stats() {
         let temp = tempfile().expect("could not create tempfile");
         let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
         let mut paged = FilePager::with_file_and_page_len(ram, 4096);

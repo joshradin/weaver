@@ -480,7 +480,11 @@ where
     parent: Arc<VirtualPagerShared<K, P>>,
 }
 
-impl<K, P> Monitorable for VirtualPager<K, P> where K: Hash, P: Pager {
+impl<K, P> Monitorable for VirtualPager<K, P>
+where
+    K: Hash,
+    P: Pager,
+{
     fn monitor(&self) -> Box<dyn Monitor> {
         self.parent.backing_pager.monitor()
     }

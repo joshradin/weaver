@@ -8,9 +8,11 @@ use crate::storage::engine::weave_bptf::WeaveBPTFEngine;
 
 pub fn init_engines(weaver_db: &mut WeaverDb) -> Result<(), Error> {
     let socket = weaver_db.connect();
-    socket.send(DbReq::on_core(|core, _| {
-        core.add_engine(InMemoryEngine::new());
-        core.add_engine(WeaveBPTFEngine::new(core.path()));
-    })).join()??;
+    socket
+        .send(DbReq::on_core(|core, _| {
+            core.add_engine(InMemoryEngine::new());
+            core.add_engine(WeaveBPTFEngine::new(core.path()));
+        }))
+        .join()??;
     Ok(())
 }

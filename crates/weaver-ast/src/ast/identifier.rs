@@ -35,7 +35,6 @@ impl Deref for Identifier {
 #[derive(Debug, Ord, PartialOrd, Hash, Eq, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedColumnRef {
-    schema: Option<Identifier>,
     table: Option<Identifier>,
     column: Identifier,
 }
@@ -55,7 +54,6 @@ impl Display for UnresolvedColumnRef {
 impl UnresolvedColumnRef {
     pub fn with_column(col: Identifier) -> Self {
         Self {
-            schema: None,
             table: None,
             column: col,
         }
@@ -63,15 +61,6 @@ impl UnresolvedColumnRef {
 
     pub fn with_table(table: Identifier, col: Identifier) -> Self {
         Self {
-            schema: None,
-            table: Some(table),
-            column: col,
-        }
-    }
-
-    pub fn with_schema(schema: Identifier, table: Identifier, col: Identifier) -> Self {
-        Self {
-            schema: Some(schema),
             table: Some(table),
             column: col,
         }
@@ -81,13 +70,48 @@ impl UnresolvedColumnRef {
         (self.schema(), self.table(), self.column())
     }
 
+    #[deprecated]
     pub fn schema(&self) -> Option<&Identifier> {
-        self.schema.as_ref()
+        None
     }
     pub fn table(&self) -> Option<&Identifier> {
         self.table.as_ref()
     }
     pub fn column(&self) -> &Identifier {
         &self.column
+    }
+}
+
+/// Should be used to refer to
+#[derive(Debug, Ord, PartialOrd, Hash, Eq, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedColumnRef {
+    schema: Identifier,
+    table: Identifier,
+    column: Identifier,
+}
+
+impl ResolvedColumnRef {
+    pub fn new(schema: Identifier, table: Identifier, column: Identifier) -> Self {
+        Self {
+            schema,
+            table,
+            column,
+        }
+    }
+    pub fn schema(&self) -> &Identifier {
+        &self.schema
+    }
+    pub fn table(&self) -> &Identifier {
+        &self.table
+    }
+    pub fn column(&self) -> &Identifier {
+        &self.column
+    }
+}
+
+impl Display for ResolvedColumnRef {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.schema(), self.table(), self.column())
     }
 }

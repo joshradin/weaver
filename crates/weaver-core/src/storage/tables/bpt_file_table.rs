@@ -10,15 +10,15 @@ use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, Table};
 use crate::dynamic_table_factory::DynamicTableFactory;
 use crate::error::Error;
-use crate::monitoring::{Monitor, monitor_fn, Monitorable};
+use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
+use crate::storage::paging::caching_pager::LruCachingPager;
 use crate::storage::paging::file_pager::FilePager;
 use crate::storage::paging::virtual_pager::{VirtualPager, VirtualPagerTable};
 use crate::storage::ram_file::RandomAccessFile;
-use crate::storage::{Pager, StorageDevice, StorageDeviceDelegate};
-use crate::storage::paging::caching_pager::LruCachingPager;
 use crate::storage::tables::table_schema::TableSchema;
 use crate::storage::tables::unbuffered_table::UnbufferedTable;
+use crate::storage::{Pager, StorageDevice, StorageDeviceDelegate};
 use crate::tx::Tx;
 
 pub const B_PLUS_TREE_FILE_KEY: &'static str = "weaveBPTF";
@@ -94,9 +94,7 @@ impl BptfTableFactory {
         let file = RandomAccessFile::open_or_create(file_location)?.into_delegate();
 
         let file_pager = FilePager::with_file(file);
-        let caching_pager = LruCachingPager::new(
-            file_pager, 512
-        );
+        let caching_pager = LruCachingPager::new(file_pager, 512);
 
         Ok(BptfTable {
             main_table: UnbufferedTable::new(schema.clone(), caching_pager, true)?,
@@ -129,7 +127,7 @@ mod tests {
     use crate::key::KeyData;
     use crate::monitoring::Monitorable;
     use crate::rows::{KeyIndex, KeyIndexKind, Rows};
-    use crate::storage::tables::bpt_file_table::{B_PLUS_TREE_FILE_KEY, BptfTableFactory};
+    use crate::storage::tables::bpt_file_table::{BptfTableFactory, B_PLUS_TREE_FILE_KEY};
     use crate::storage::tables::table_schema::TableSchema;
     use crate::tx::Tx;
 
@@ -198,7 +196,9 @@ mod tests {
 
         let ref tx = Tx::default();
         for i in 0..2000 {
-            table.insert(tx, Row::from([i as i64])).expect("insert failed");
+            table
+                .insert(tx, Row::from([i as i64]))
+                .expect("insert failed");
         }
         println!("table: {table:#?}");
         println!("monitor: {:#?}", monitor.stats());

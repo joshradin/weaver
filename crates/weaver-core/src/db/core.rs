@@ -1,32 +1,32 @@
 use fs2::FileExt;
+use nom::character::complete::tab;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use nom::character::complete::tab;
 use tracing::{debug, info, trace};
 
 use crate::db::start_db::start_db;
-use crate::dynamic_table::{
-    DynamicTable, EngineKey, HasSchema, Table,
-};
+use crate::dynamic_table::{DynamicTable, EngineKey, HasSchema, Table};
 use crate::error::Error;
 use crate::storage::tables::bpt_file_table::BptfTableFactory;
 use crate::storage::tables::shared_table::SharedTable;
 use crate::storage::tables::table_schema::TableSchema;
 use crate::storage::tables::InMemoryTable;
-use crate::storage::tables::{bpt_file_table::B_PLUS_TREE_FILE_KEY, in_memory_table::IN_MEMORY_KEY};
+use crate::storage::tables::{
+    bpt_file_table::B_PLUS_TREE_FILE_KEY, in_memory_table::IN_MEMORY_KEY,
+};
 use crate::tx::coordinator::TxCoordinator;
 use crate::tx::Tx;
 
 mod bootstrap;
-pub use bootstrap::bootstrap;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table_factory::DynamicTableFactory;
-use crate::monitoring::{Monitor, monitor_fn, Monitorable, MonitorCollector, Stats};
+use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable, Stats};
 use crate::storage::engine::{StorageEngine, StorageEngineDelegate};
 use crate::storage::tables::in_memory_table::InMemoryTableFactory;
+pub use bootstrap::bootstrap;
 
 /// A db core. Represents some part of a distributed db
 pub struct WeaverDbCore {
@@ -36,7 +36,7 @@ pub struct WeaverDbCore {
     default_engine: Option<EngineKey>,
     open_tables: RwLock<HashMap<(String, String), SharedTable>>,
     pub(crate) tx_coordinator: Option<TxCoordinator>,
-    monitor: OnceLock<CoreMonitor>
+    monitor: OnceLock<CoreMonitor>,
 }
 
 impl Default for WeaverDbCore {
@@ -83,20 +83,15 @@ impl WeaverDbCore {
     }
 
     /// Insert an engine
-    pub fn add_engine<T: StorageEngine + 'static>(
-        &mut self,
-        engine: T,
-    ) {
+    pub fn add_engine<T: StorageEngine + 'static>(&mut self, engine: T) {
         let engine_key = engine.engine_key().clone();
         trace!("registered storage engine {}", engine_key);
-        self.engines.insert(engine_key, StorageEngineDelegate::new(engine));
+        self.engines
+            .insert(engine_key, StorageEngineDelegate::new(engine));
     }
 
     /// Insert an engine
-    pub fn set_default_engine(
-        &mut self,
-        engine_key: EngineKey
-    ) {
+    pub fn set_default_engine(&mut self, engine_key: EngineKey) {
         self.default_engine = Some(engine_key);
     }
 
@@ -209,22 +204,30 @@ impl Drop for WeaverDbCore {
 
 impl Monitorable for WeaverDbCore {
     fn monitor(&self) -> Box<dyn Monitor> {
-        Box::new(self.monitor.get_or_init(|| {
-            let mut monitor = CoreMonitor::default();
-            let guard = self.open_tables.read();
-            for (_, table) in guard.iter() {
-                let mut table_monitor = table.monitor();
-                monitor.collector.push(monitor_fn(table.schema().engine().clone(), move|| table_monitor.stats()));
-            }
+        Box::new(
+            self.monitor
+                .get_or_init(|| {
+                    let mut monitor = CoreMonitor::default();
+                    let guard = self.open_tables.read();
+                    for (_, table) in guard.iter() {
+                        let mut table_monitor = table.monitor();
+                        monitor
+                            .collector
+                            .push(monitor_fn(table.schema().engine().clone(), move || {
+                                table_monitor.stats()
+                            }));
+                    }
 
-            monitor
-        }).clone())
+                    monitor
+                })
+                .clone(),
+        )
     }
 }
 
 #[derive(Debug, Clone, Default)]
 struct CoreMonitor {
-    collector: MonitorCollector
+    collector: MonitorCollector,
 }
 
 impl Monitor for CoreMonitor {

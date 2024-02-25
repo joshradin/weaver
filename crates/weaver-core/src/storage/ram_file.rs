@@ -209,7 +209,10 @@ impl Monitor for RAFMonitor {
             ("reads", Stats::Throughput(reads / elapsed)),
             ("bytes_read", Stats::Throughput(bytes_read / elapsed)),
             ("writes", Stats::Throughput(writes / elapsed)),
-            ("bytes_written", Stats::Throughput(bytes_written as f64 / elapsed)),
+            (
+                "bytes_written",
+                Stats::Throughput(bytes_written as f64 / elapsed),
+            ),
             ("total_bytes_written", Stats::Integer(bytes_written as i64)),
         ])
     }

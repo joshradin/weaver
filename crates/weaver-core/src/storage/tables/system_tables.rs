@@ -5,12 +5,12 @@ use crate::data::row::Row;
 use crate::db::server::socket::DbSocket;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema};
 use crate::error::Error;
+use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 use std::fmt::Debug;
 use std::sync::Arc;
-use crate::monitoring::{Monitor, monitor_fn, Monitorable};
 
 /// Provide a system table
 pub struct SystemTable {

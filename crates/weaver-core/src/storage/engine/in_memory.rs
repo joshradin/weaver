@@ -1,19 +1,21 @@
 //! The in_memory engine
 
 use crate::dynamic_table::EngineKey;
-use crate::monitoring::{Monitor, monitor_fn, Monitorable};
+use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::storage::engine::StorageEngine;
-use crate::storage::tables::in_memory_table::{IN_MEMORY_KEY, InMemoryTableFactory};
+use crate::storage::tables::in_memory_table::{InMemoryTableFactory, IN_MEMORY_KEY};
 
 /// In memory engine
 #[derive(Debug)]
 pub struct InMemoryEngine {
-    key: EngineKey
+    key: EngineKey,
 }
 
 impl InMemoryEngine {
     pub fn new() -> Self {
-        Self { key: EngineKey::new(IN_MEMORY_KEY)}
+        Self {
+            key: EngineKey::new(IN_MEMORY_KEY),
+        }
     }
 }
 

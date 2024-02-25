@@ -34,9 +34,9 @@ impl<T: Stream> Drop for WeaverClient<T> {
             Ok(RemoteDbResp::Disconnect) => {
                 trace!("disconnect acknowledged");
             }
-           _other => {
-               trace!("Unexpected response after disconnect: {_other:?}");
-           }
+            _other => {
+                trace!("Unexpected response after disconnect: {_other:?}");
+            }
         }
     }
 }
@@ -74,6 +74,7 @@ impl WeaverClient<LocalSocketStream> {
 }
 impl<T: Stream> WeaverClient<T> {
     pub fn query(&mut self, query: &Query) -> eyre::Result<(impl Rows, Duration)> {
+        debug!("query: {query:#?}");
         let start = Instant::now();
         match self.stream.send(&RemoteDbReq::Query(query.clone()))? {
             RemoteDbResp::Ok => {}

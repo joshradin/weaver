@@ -3,18 +3,41 @@
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 
-use derive_more::Display;
+use derive_more::{Display, From};
 use serde::{Deserialize, Serialize};
 
-use crate::ast::identifier::UnresolvedColumnRef;
+use crate::ast::identifier::{ResolvedColumnRef, UnresolvedColumnRef};
 use crate::ast::literal::Binary;
 use crate::ast::{Literal, ReferencesCols};
 
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize, Display, From)]
+pub enum ColumnRef {
+    Unresolved(UnresolvedColumnRef),
+    Resolved(ResolvedColumnRef),
+}
+
+impl ColumnRef {
+    pub fn resolved(&self) -> Option<&ResolvedColumnRef> {
+        if let Self::Resolved(resolved) = self {
+            Some(resolved)
+        } else {
+            None
+        }
+    }
+
+    pub fn unresolved(&self) -> Option<&UnresolvedColumnRef> {
+        if let Self::Unresolved(unresolved) = self {
+            Some(unresolved)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
 pub enum Expr {
     Column {
-        column: UnresolvedColumnRef,
+        column: ColumnRef,
     },
     Literal {
         literal: Literal,
@@ -188,10 +211,10 @@ impl Expr {
 }
 
 impl ReferencesCols for Expr {
-    fn columns(&self) -> HashSet<UnresolvedColumnRef> {
+    fn columns(&self) -> HashSet<ColumnRef> {
         match self {
             Expr::Column { column } => HashSet::from([column.clone()]),
-            Expr::Unary { op: _, expr: expr } => expr.columns(),
+            Expr::Unary { op: _, expr } => expr.columns(),
             Expr::Binary {
                 left: l,
                 op: _,

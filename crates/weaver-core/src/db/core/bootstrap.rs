@@ -1,15 +1,16 @@
 //! Bootstraps the weaver core
 
+use crate::data::row::Row;
 use std::path::Path;
 use tracing::error_span;
-use crate::data::row::Row;
+use weaver_ast::ToSql;
 
 use crate::data::types::Type;
 use crate::data::values::DbVal;
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{DynamicTable, EngineKey};
 use crate::error::Error;
-use crate::rows::{KeyIndex, Rows, RowsExt};
+use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 
@@ -37,33 +38,36 @@ pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<()
     let ref weaver_schemata_schema = weaver_schemata_schema()?;
     core.open_table(weaver_schemata_schema)?;
     let weaver_schemata = core.get_open_table("weaver", "schemata")?;
-    weaver_schemata.insert(tx, Row::from([
-        DbVal::from(1), "weaver".into()
-    ]))?;
+    weaver_schemata.insert(tx, Row::from([DbVal::from(1), "weaver".into()]))?;
 
     // STEP 2: Load weaver.tables
     let ref weaver_tables_schema = weaver_tables_schema()?;
     core.open_table(weaver_tables_schema)?;
     let weaver_tables = core.get_open_table("weaver", "tables")?;
 
-    weaver_tables.insert(tx, Row::from([
-        DbVal::Null,
-        DbVal::from(1),
-        DbVal::from("schemata"),
-        DbVal::from(serde_json::to_string(&weaver_schemata_schema).expect("could not serialize")),
-        DbVal::from(true)
-    ]))?;
-    weaver_tables.insert(tx, Row::from([
-        DbVal::Null,
-        DbVal::from(1),
-        DbVal::from("tables"),
-        DbVal::from(serde_json::to_string(&weaver_tables_schema).expect("could not serialize")),
-        DbVal::from(true)
-    ]))?;
+    weaver_tables.insert(
+        tx,
+        Row::from([
+            DbVal::Null,
+            DbVal::from(1),
+            DbVal::from("schemata"),
+            DbVal::from(weaver_schemata_schema.to_sql()),
+            DbVal::from(true),
+        ]),
+    )?;
+    weaver_tables.insert(
+        tx,
+        Row::from([
+            DbVal::Null,
+            DbVal::from(1),
+            DbVal::from("tables"),
+            DbVal::from(weaver_tables_schema.to_sql()),
+            DbVal::from(true),
+        ]),
+    )?;
 
     Ok(())
 }
-
 
 /// The `weaver.schemata` schema
 fn weaver_schemata_schema() -> Result<TableSchema, Error> {

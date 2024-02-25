@@ -4,27 +4,25 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::Arc;
 
 use parking_lot::RwLock;
 
 use crate::error::Error;
 use crate::monitoring::{Monitor, Monitorable};
-use crate::storage::Pager;
 use crate::storage::paging::traits::{Page, PageMut};
+use crate::storage::Pager;
 
 /// A pager which buffers writes and caches reads
 #[derive(Debug)]
-pub struct BufferedPager<P: Pager>
-{
+pub struct BufferedPager<P: Pager> {
     buffered: P,
     buffers: Arc<RwLock<HashMap<usize, Box<[u8]>>>>,
     usage: RwLock<HashMap<usize, Arc<AtomicIsize>>>,
 }
 
-impl<P: Pager> BufferedPager<P>
-{
+impl<P: Pager> BufferedPager<P> {
     pub fn new(buffered: P) -> Self {
         Self {
             buffered,
@@ -34,22 +32,19 @@ impl<P: Pager> BufferedPager<P>
     }
 }
 
-impl<P: Pager> Drop for BufferedPager<P>
-{
+impl<P: Pager> Drop for BufferedPager<P> {
     fn drop(&mut self) {
         let _ = self.flush();
     }
 }
 
-impl<P: Pager> Monitorable for BufferedPager<P>
-{
+impl<P: Pager> Monitorable for BufferedPager<P> {
     fn monitor(&self) -> Box<dyn Monitor> {
         self.buffered.monitor()
     }
 }
 
-impl<P: Pager> Pager for BufferedPager<P>
-{
+impl<P: Pager> Pager for BufferedPager<P> {
     type Page<'a> = BufferedPage where P: 'a;
     type PageMut<'a> = BufferedPageMut where P: 'a;
     type Err = Error;
@@ -81,14 +76,16 @@ impl<P: Pager> Pager for BufferedPager<P>
                 )
             })?;
 
-       match self.buffers.write().entry(index) {
+        match self.buffers.write().entry(index) {
             Entry::Occupied(occ) => Ok(BufferedPage {
                 usage: token,
                 slice: occ.get().clone(),
             }),
             Entry::Vacant(mut vacant) => {
-                let page = self.buffered.get(index).map_err(|e| Error::caused_by("backing pager failed", e)
-                )?;
+                let page = self
+                    .buffered
+                    .get(index)
+                    .map_err(|e| Error::caused_by("backing pager failed", e))?;
                 let slice: Box<[u8]> = Box::from(page.as_slice());
                 vacant.insert(slice.clone());
                 Ok(BufferedPage {
@@ -124,8 +121,10 @@ impl<P: Pager> Pager for BufferedPager<P>
                 slice: occ.get().clone(),
             }),
             Entry::Vacant(mut vacant) => {
-                let page = self.buffered.get(index).map_err(|e| Error::caused_by("backing pager failed", e)
-                )?;
+                let page = self
+                    .buffered
+                    .get(index)
+                    .map_err(|e| Error::caused_by("backing pager failed", e))?;
                 let slice: Box<[u8]> = Box::from(page.as_slice());
                 vacant.insert(slice.clone());
                 Ok(BufferedPageMut {
@@ -139,12 +138,19 @@ impl<P: Pager> Pager for BufferedPager<P>
     }
 
     fn new(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
-        let (new_page, index) = self.buffered.new().map_err(|e| Error::caused_by("backing pager failed", e)
-        )?;
+        let (new_page, index) = self
+            .buffered
+            .new()
+            .map_err(|e| Error::caused_by("backing pager failed", e))?;
         let slice = Box::from(new_page.as_slice());
 
         let buffers = self.buffers.clone();
-        let usage = self.usage.write().entry(index).or_insert_with(|| Arc::new(AtomicIsize::new(-1))).clone();
+        let usage = self
+            .usage
+            .write()
+            .entry(index)
+            .or_insert_with(|| Arc::new(AtomicIsize::new(-1)))
+            .clone();
 
         Ok((
             BufferedPageMut {
@@ -159,8 +165,9 @@ impl<P: Pager> Pager for BufferedPager<P>
 
     fn free(&self, index: usize) -> Result<(), Self::Err> {
         self.buffers.write().remove(&index);
-        self.buffered.free(index).map_err(|e| Error::caused_by("backing pager failed", e)
-        )?;
+        self.buffered
+            .free(index)
+            .map_err(|e| Error::caused_by("backing pager failed", e))?;
         Ok(())
     }
 
@@ -175,8 +182,10 @@ impl<P: Pager> Pager for BufferedPager<P>
     fn flush(&self) -> Result<(), Self::Err> {
         let mut buffers = self.buffers.write();
         for (page_offset, bytes) in buffers.drain() {
-            let mut page = self.buffered.get_mut(page_offset).map_err(|e| Error::caused_by("backing pager failed", e)
-            )?;
+            let mut page = self
+                .buffered
+                .get_mut(page_offset)
+                .map_err(|e| Error::caused_by("backing pager failed", e))?;
             page.as_mut_slice().copy_from_slice(&*bytes);
         }
         Ok(())

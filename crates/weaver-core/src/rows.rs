@@ -81,12 +81,13 @@ pub trait Rows<'t> {
             _lf: PhantomData,
         }
     }
-    fn into_iter(self) -> OwnedRows where Self : Sized {
+    fn into_iter(self) -> OwnedRows
+    where
+        Self: Sized,
+    {
         self.to_owned()
     }
-}
 
-pub trait RowsExt<'t>: Rows<'t> {
     fn to_owned(mut self) -> OwnedRows
     where
         Self: Sized,
@@ -102,8 +103,6 @@ pub trait RowsExt<'t>: Rows<'t> {
         }
     }
 }
-
-impl<'t, R: Rows<'t>> RowsExt<'t> for R {}
 
 impl Debug for Box<dyn for<'a> Rows<'a> + Send> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

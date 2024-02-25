@@ -102,7 +102,7 @@ Expr: ast::Expr = {
     <table_name: (<Table> ".")?> <column_name: Identifier> => {
         let column_ref = match table_name {
             Some((Some(schema), table)) => {
-                ast::UnresolvedColumnRef::with_schema(schema, table, column_name)
+                ast::ResolvedColumnRef::new(schema, table, column_name)
             }
             Some((None, table)) => {
                 ast::UnresolvedColumnRef::with_table(table, column_name)

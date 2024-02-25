@@ -1,10 +1,12 @@
+use std::io::Write;
+use std::{fmt, io};
+
+use lexing::Tokenizer;
+
 use crate::ast::Query;
 use crate::error::ParseQueryError;
 use crate::lexing::Token;
 use crate::parsing::parse_query;
-use lexing::Tokenizer;
-use std::io;
-use std::io::Write;
 
 pub mod ast;
 pub mod error;
@@ -44,7 +46,15 @@ impl QueryParser {
 /// Convert some object into valid sql
 pub trait ToSql {
     /// Converts an object into valid sql
-    fn to_sql<W: Write>(&self, writer: &mut W) -> Result<(), io::Error>;
+    fn write_sql<W: Write>(&self, writer: &mut W) -> io::Result<()>;
+
+    /// Convert to a sql string
+    fn to_sql(&self) -> String {
+        let mut buffer = Vec::new();
+        self.write_sql(&mut buffer)
+            .expect("writing to vector should be infallible");
+        String::from_utf8_lossy(&buffer).to_string()
+    }
 }
 
 #[cfg(test)]
@@ -90,6 +100,20 @@ mod tests {
             let mut query_parser = QueryParser::new();
             let q = query_parser.parse(QUERY).expect("could not parse");
             println!("{}", serde_json::to_string_pretty(&q).unwrap());
+        }
+
+        #[test]
+        fn parsed_system_join() {
+            static QUERY: &str = r"
+            SELECT s.name, t.name
+            FROM
+                weaver.tables as t
+            JOIN
+                weaver.schemata as s ON t.schema_id = s.id";
+            let mut query_parser = QueryParser::new();
+            let q = query_parser.parse(QUERY).expect("could not parse");
+            println!("{}", serde_json::to_string_pretty(&q).unwrap());
+            println!("{q:?}");
         }
     }
 }

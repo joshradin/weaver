@@ -31,8 +31,8 @@ pub mod in_memory;
 pub mod weave_bptf;
 
 /// A storage engine provides a dynamic table factory with some storage/memory backend.
-pub trait StorageEngine : Monitorable + Send + Sync {
-    type Factory : DynamicTableFactory;
+pub trait StorageEngine: Monitorable + Send + Sync {
+    type Factory: DynamicTableFactory;
 
     /// Provides a factory for creating tables
     fn factory(&self) -> Self::Factory;
@@ -41,15 +41,13 @@ pub trait StorageEngine : Monitorable + Send + Sync {
     fn engine_key(&self) -> &EngineKey;
 }
 
-assert_obj_safe!(StorageEngine<Factory=InMemoryTableFactory>);
-
-
+assert_obj_safe!(StorageEngine<Factory = InMemoryTableFactory>);
 
 /// A delegate to a storage engine, allowing for object save
 pub struct StorageEngineDelegate {
     factory: Box<dyn Fn() -> DynamicTableFactoryDelegate + Send + Sync>,
     monitor: SharedMonitor,
-    engine_key: EngineKey
+    engine_key: EngineKey,
 }
 
 impl Debug for StorageEngineDelegate {
@@ -61,9 +59,8 @@ impl Debug for StorageEngineDelegate {
 }
 
 impl StorageEngineDelegate {
-
     /// Create a new storage engine delegate from a storage engine
-    pub fn new<T : StorageEngine + 'static>(storage_engine: T) -> Self {
+    pub fn new<T: StorageEngine + 'static>(storage_engine: T) -> Self {
         let engine_key = storage_engine.engine_key().clone();
         let monitor = SharedMonitor::from(storage_engine.monitor());
         let func = Box::new(move || {

@@ -5,15 +5,16 @@
 //! the same cost regardless of amount of rows, so the row factor will be 0, a select would
 //! have a row factor of 1, and a merge could have a row factor of 2.
 
-use std::collections::HashMap;
-use std::ops::Mul;
 use crate::data::values::DbVal;
 use crate::dynamic_table::{DynamicTable, Table};
 use crate::rows::Rows;
 use crate::tx::Tx;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::ops::Mul;
 
 /// Represents the cost of an operation over some unknown amount of rows
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone)]
 pub struct Cost {
     /// The base cost per `row^row_factor`
     pub base: f64,
@@ -22,7 +23,6 @@ pub struct Cost {
 }
 
 impl Cost {
-
     /// Create a new cost struct
     pub const fn new(base: f64, row_factor: u32) -> Self {
         Self { base, row_factor }
@@ -34,6 +34,28 @@ impl Cost {
     }
 }
 
+impl PartialEq for Cost {
+    fn eq(&self, other: &Self) -> bool {
+        self.row_factor == other.row_factor && self.base.total_cmp(&other.base) == Ordering::Equal
+    }
+}
+
+impl Eq for Cost {}
+impl PartialOrd for Cost {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Cost {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.row_factor.cmp(&other.row_factor) {
+            Ordering::Equal => self.base.total_cmp(&self.base),
+            other => return other,
+        }
+    }
+}
+
 /// The cost table stores information about the cost of given operations
 #[derive(Debug, Clone, PartialEq)]
 pub struct CostTable {
@@ -42,7 +64,7 @@ pub struct CostTable {
 
 static QUERY_COSTS: &[(&str, Cost)] = &[
     ("LOAD_TABLE", Cost::new(1.0, 0)),
-    ("SELECT", Cost::new(1.0, 1))
+    ("SELECT", Cost::new(1.0, 1)),
 ];
 
 impl Default for CostTable {
@@ -62,7 +84,7 @@ impl CostTable {
         Self::default()
     }
 
-    pub fn from_table<T : DynamicTable + ?Sized>(table: &T, tx: &Tx) -> Self {
+    pub fn from_table<T: DynamicTable + ?Sized>(table: &T, tx: &Tx) -> Self {
         let mut output = Self::new();
         let all = table.all(tx).expect("could not get all rows");
         for row in all.into_iter() {
@@ -75,7 +97,13 @@ impl CostTable {
             let &DbVal::Integer(row_factor) = &*row[2] else {
                 panic!("third column is row factor")
             };
-            output.set(key, Cost { base, row_factor: row_factor as u32 })
+            output.set(
+                key,
+                Cost {
+                    base,
+                    row_factor: row_factor as u32,
+                },
+            )
         }
         output
     }

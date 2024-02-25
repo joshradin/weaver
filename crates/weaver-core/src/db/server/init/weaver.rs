@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use tracing::{debug, info_span};
 use crate::data::types::Type;
+use tracing::{debug, info_span};
 
 use crate::db::core::WeaverDbCore;
 use crate::db::server::layers::packets::DbReq;

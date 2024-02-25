@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::hint;
 use std::sync::Arc;
-use tracing::{debug, error_span, Span, trace, trace_span, warn};
+use tracing::{debug, error_span, trace, trace_span, warn, Span};
 
 pub type MainQueueItem = (Packet<DbReq>, Sender<Packet<DbResp>>);
 

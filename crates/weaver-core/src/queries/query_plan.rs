@@ -4,6 +4,7 @@ use crate::rows::KeyIndex;
 use crate::storage::tables::table_schema::{ColumnDefinition, TableSchema};
 use crate::storage::tables::TableRef;
 use std::collections::HashMap;
+use weaver_ast::ast::JoinOperator;
 
 #[derive(Debug)]
 pub struct QueryPlan {
@@ -69,10 +70,16 @@ pub enum QueryPlanKind {
     },
     SelectByKey {
         to_select: Box<QueryPlanNode>,
-        key_index: Vec<KeyIndex>,
+        keys: Vec<KeyIndex>,
     },
     Project {
         columns: Vec<usize>,
         node: Box<QueryPlanNode>,
+    },
+    Join {
+        left: Box<QueryPlanNode>,
+        right: Box<QueryPlanNode>,
+        join_kind: JoinOperator,
+        on: (),
     },
 }

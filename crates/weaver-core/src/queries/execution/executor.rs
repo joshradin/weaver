@@ -1,16 +1,14 @@
-//! The mechanism responsible for executing queries
-
-use parking_lot::RwLock;
-use std::sync::{Arc, Weak};
-use tracing::{error, event, info};
-
 use crate::db::core::WeaverDbCore;
-use crate::dynamic_table::{HasSchema, Table};
+use crate::dynamic_table::Table;
 use crate::error::Error;
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
-use crate::rows::{OwnedRows, Rows, RowsExt};
-use crate::storage::tables::InMemoryTable;
+use crate::rows::OwnedRows;
+use crate::rows::Rows;
+use crate::storage::tables::in_memory_table::InMemoryTable;
 use crate::tx::Tx;
+use parking_lot::RwLock;
+use std::sync::{Arc, Weak};
+use tracing::{error, info};
 
 /// The query executor is responsible for executing queries against the database
 /// in performant ways.
@@ -25,7 +23,7 @@ pub struct QueryExecutor {
 }
 
 impl QueryExecutor {
-    pub(crate) fn new(core: Weak<RwLock<WeaverDbCore>>) -> Self {
+    pub fn new(core: Weak<RwLock<WeaverDbCore>>) -> Self {
         Self { core }
     }
 }
@@ -54,7 +52,7 @@ impl QueryExecutor {
         match &node.kind {
             QueryPlanKind::SelectByKey {
                 to_select,
-                key_index,
+                keys: key_index,
             } => {
                 let table = self.execute_node(tx, to_select, core)?;
 
@@ -81,6 +79,17 @@ impl QueryExecutor {
 
                 let table = core.get_open_table(schema, table)?;
                 Ok(Box::new(table))
+            }
+            QueryPlanKind::Join {
+                left,
+                right,
+                join_kind,
+                on,
+            } => {
+                let left = self.execute_node(tx, left, core)?;
+                let right = self.execute_node(tx, right, core)?;
+
+                todo!("join tables")
             }
         }
     }

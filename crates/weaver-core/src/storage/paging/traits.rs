@@ -1,5 +1,6 @@
 //! Creates abstractions that are used to build better storage-backed data structures
 
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
@@ -10,17 +11,16 @@ use std::mem::size_of;
 use std::slice::SliceIndex;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
-use indexmap::IndexMap;
 
 use crate::common::hex_dump::HexDump;
 use parking_lot::RwLock;
 
 use crate::common::track_dirty::Mad;
-use crate::monitoring::{Monitor, monitor_fn, Monitorable, Stats};
+use crate::monitoring::{monitor_fn, Monitor, Monitorable, Stats};
 use crate::storage::{ReadResult, StorageBackedData, WriteResult, PAGE_SIZE};
 
 /// Allows for getting pages of a fix size
-pub trait Pager : Monitorable {
+pub trait Pager: Monitorable {
     type Page<'a>: Page<'a>
     where
         Self: 'a;
@@ -56,7 +56,9 @@ pub trait Pager : Monitorable {
     fn reserved(&self) -> usize;
 
     /// Flushes the pager
-    fn flush(&self) -> Result<(), Self::Err> { Ok(()) }
+    fn flush(&self) -> Result<(), Self::Err> {
+        Ok(())
+    }
 
     fn iter(&self) -> impl Iterator<Item = Result<(Self::Page<'_>, usize), Self::Err>> + '_ {
         (0..self.len())
@@ -297,9 +299,7 @@ impl VecPager {
 
 impl Monitorable for VecPager {
     fn monitor(&self) -> Box<dyn Monitor> {
-        Box::new(monitor_fn("VecPager", || {
-            Stats::Dict(IndexMap::new())
-        }))
+        Box::new(monitor_fn("VecPager", || Stats::Dict(IndexMap::new())))
     }
 }
 

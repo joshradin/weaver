@@ -1,14 +1,14 @@
 use std::iter;
 
-use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main, Throughput};
-use rand::{Rng, thread_rng};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use rand::distributions::Alphanumeric;
 use rand::prelude::ThreadRng;
+use rand::{thread_rng, Rng};
 
 use weaver_core::data::row::Row;
 use weaver_core::data::values::DbVal;
 use weaver_core::key::KeyData;
-use weaver_core::monitoring::{Monitorable, MonitorCollector};
+use weaver_core::monitoring::{MonitorCollector, Monitorable};
 use weaver_core::storage::b_plus_tree::BPlusTree;
 use weaver_core::storage::VecPager;
 
@@ -22,7 +22,7 @@ fn insert_rand<'a>(
             .into_iter()
             .map(|_| rand::thread_rng().gen_range(0..count as i64)),
         page_len,
-        monitor_collector
+        monitor_collector,
     )
 }
 
@@ -33,7 +33,11 @@ fn insert_rand_with<'a, V: Into<DbVal>, F: Fn(&mut ThreadRng) -> V>(
     monitor_collector: impl Into<Option<&'a mut MonitorCollector>>,
 ) -> BPlusTree<VecPager> {
     let mut rng = rand::thread_rng();
-    insert((0..count).into_iter().map(|_| prod(&mut rng)), page_len, monitor_collector)
+    insert(
+        (0..count).into_iter().map(|_| prod(&mut rng)),
+        page_len,
+        monitor_collector,
+    )
 }
 
 fn insert<'a, V: Into<DbVal>, I: IntoIterator<Item = V>>(

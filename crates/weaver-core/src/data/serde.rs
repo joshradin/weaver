@@ -1,8 +1,10 @@
+use crate::common::pretty_bytes::PrettyBytes;
 use nom::bytes::complete::take;
 use nom::combinator::map;
 use nom::error::ParseError;
 use nom::{Finish, IResult};
 use serde::{Serialize, Serializer};
+use tracing::{instrument, trace};
 
 use crate::data::row::Row;
 use crate::data::types::Type;
@@ -43,7 +45,6 @@ impl DataSerializer {
         } else {
             self.bytes.push(if value == &DbVal::Null { 0 } else { 1 })
         }
-
         match value {
             DbVal::String(string, _) => {
                 self.bytes.extend((string.len() as u32).to_be_bytes());
@@ -173,20 +174,21 @@ impl DataDeserializer {
                     let (rest, bytes) =
                         take::<_, _, nom::error::Error<_>>(8_usize)(buffer).finish()?;
                     buffer = rest;
-                    let buffer: [u8; 8] = bytes.try_into().unwrap();
-                    output.push(DbVal::Integer(i64::from_be_bytes(buffer)))
+                    let int_be: [u8; 8] = bytes.try_into().unwrap();
+                    output.push(DbVal::Integer(i64::from_be_bytes(int_be)))
                 }
                 Some(Type::Boolean) => {
                     let (rest, bytes) =
                         take::<_, _, nom::error::Error<_>>(1_usize)(buffer).finish()?;
+                    buffer = rest;
                     output.push(DbVal::Boolean(bytes[0] == 1))
                 }
                 Some(Type::Float) => {
                     let (rest, bytes) =
                         take::<_, _, nom::error::Error<_>>(8_usize)(buffer).finish()?;
                     buffer = rest;
-                    let buffer: [u8; 8] = bytes.try_into().unwrap();
-                    output.push(DbVal::Float(f64::from_be_bytes(buffer)))
+                    let float_be: [u8; 8] = bytes.try_into().unwrap();
+                    output.push(DbVal::Float(f64::from_be_bytes(float_be)))
                 }
                 None => {
                     output.push(DbVal::Null);
@@ -247,32 +249,58 @@ fn u32_parser<'a, E: ParseError<&'a [u8]>>(
 
 pub fn serialize_data_typed<'a, V: AsRef<DbVal>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
     let mut serializer = DataSerializer::new(SerdeMode::Typed);
+
+    let data = data.into_iter().collect::<Vec<_>>();
+    trace!(
+        "serializing typed: {:?}",
+        data.iter().map(|d| d.as_ref()).collect::<Vec<_>>()
+    );
     for value in data {
         serializer.serialize(value.as_ref());
     }
-    serializer.finish()
+    let ret = serializer.finish();
+    trace!("result is {:?}", &ret);
+    ret
 }
+
 pub fn serialize_data_untyped<'a, V: AsRef<DbVal>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
     let mut serializer = DataSerializer::new(SerdeMode::Untyped);
+    let data = data.into_iter().collect::<Vec<_>>();
+    trace!(
+        "serializing untyped: {:?}",
+        data.iter().map(|d| d.as_ref()).collect::<Vec<_>>()
+    );
     for value in data {
         serializer.serialize(value.as_ref());
     }
-    serializer.finish()
+    let ret = serializer.finish();
+    trace!("result is {:?}", &ret);
+    ret
 }
 
 pub fn deserialize_data_typed<B: AsRef<[u8]>>(data: B) -> Result<Vec<DbVal>, ReadDataError> {
+    trace!("deserializing typed: {:?}", data.as_ref());
     let mut deserializer = DataDeserializer::new(SerdeMode::Typed);
     deserializer.deserialize(data);
-    deserializer.finish([])
+    let ret = deserializer.finish([]);
+    trace!("result is {:?}", &ret);
+    ret
 }
 
 pub fn deserialize_data_untyped<'a, B: AsRef<[u8]>, I: IntoIterator<Item = Type>>(
     data: B,
     types: I,
 ) -> Result<Vec<DbVal>, ReadDataError> {
+    let types = types.into_iter().collect::<Vec<_>>();
+    trace!(
+        "deserializing untyped bytes with {types:?}: {:?}",
+        data.as_ref()
+    );
     let mut deserializer = DataDeserializer::new(SerdeMode::Untyped);
     deserializer.deserialize(data);
-    deserializer.finish(types)
+    let ret = deserializer.finish(types);
+    trace!("result is {:?}", &ret);
+    ret
 }
 
 #[cfg(test)]

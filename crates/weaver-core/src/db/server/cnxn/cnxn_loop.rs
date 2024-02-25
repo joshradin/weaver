@@ -1,15 +1,15 @@
 //! The connect loop provides the "main" method for newly created connections
 
-use std::{io, thread};
 use std::io::ErrorKind;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
+use std::{io, thread};
 
-use crossbeam::channel::{Receiver, RecvError, TryRecvError, unbounded};
+use crossbeam::channel::{unbounded, Receiver, RecvError, TryRecvError};
 use either::Either;
-use tracing::{debug, error, info, Span, trace, warn};
+use tracing::{debug, error, info, trace, warn, Span};
 
 use weaver_ast::ast::Query;
 
@@ -34,9 +34,9 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
     let mut rows = Option::<Box<dyn Rows>>::None;
 
     loop {
-        let message = stream.read().inspect_err(|err| {
-            warn!("failed to receive message from stream")
-        })?;
+        let message = stream
+            .read()
+            .inspect_err(|err| warn!("failed to receive message from stream"))?;
         match handle_message(
             message,
             &mut stream,
@@ -75,44 +75,44 @@ fn handle_message<S: MessageStream + Send>(
     mut rows: &mut Option<Box<dyn Rows>>,
     span: &Span,
 ) -> Result<bool, Error> {
-
     match message {
         Message::Req(req) => {
             trace!("Received req {:?}", req);
             child.set_state(ProcessState::Active);
 
-            let mut send_request = |body: DbReqBody, tx: &mut Option<Tx>| -> Result<RemoteDbResp, Error> {
-                let mut resp = socket.send((body, span.clone()));
-                resp.on_cancel(cancel.clone());
-                let resp = resp.join()?;
-                trace!("using response: {:?}", resp);
-                Ok(match resp? {
-                    DbResp::Pong => RemoteDbResp::Pong,
-                    DbResp::Ok => RemoteDbResp::Ok,
-                    DbResp::Err(err) => RemoteDbResp::Err(err.to_string()),
-                    DbResp::Tx(received_tx) => {
-                        *tx = Some(received_tx);
-                        RemoteDbResp::Ok
-                    }
-                    DbResp::TxRows(ret_tx, ret_rows) => {
-                        *tx = Some(ret_tx);
-                        *rows = Some(Box::new(ret_rows));
-                        RemoteDbResp::Ok
-                    }
-                    DbResp::TxTable(ret_tx, ret_table) => {
-                        // rows = Some(ret_table.all(&ret_tx)?);
-                        *tx = Some(ret_tx);
-                        RemoteDbResp::Ok
-                    }
-                    DbResp::Rows(ret_rows) => {
-                        *rows = Some(Box::new(ret_rows));
-                        debug!("received rows from remote");
-                        RemoteDbResp::Ok
-                    }
-                })
-            };
+            let mut send_request =
+                |body: DbReqBody, tx: &mut Option<Tx>| -> Result<RemoteDbResp, Error> {
+                    let mut resp = socket.send((body, span.clone()));
+                    resp.on_cancel(cancel.clone());
+                    let resp = resp.join()?;
+                    trace!("using response: {:?}", resp);
+                    Ok(match resp? {
+                        DbResp::Pong => RemoteDbResp::Pong,
+                        DbResp::Ok => RemoteDbResp::Ok,
+                        DbResp::Err(err) => RemoteDbResp::Err(err.to_string()),
+                        DbResp::Tx(received_tx) => {
+                            *tx = Some(received_tx);
+                            RemoteDbResp::Ok
+                        }
+                        DbResp::TxRows(ret_tx, ret_rows) => {
+                            *tx = Some(ret_tx);
+                            *rows = Some(Box::new(ret_rows));
+                            RemoteDbResp::Ok
+                        }
+                        DbResp::TxTable(ret_tx, ret_table) => {
+                            // rows = Some(ret_table.all(&ret_tx)?);
+                            *tx = Some(ret_tx);
+                            RemoteDbResp::Ok
+                        }
+                        DbResp::Rows(ret_rows) => {
+                            *rows = Some(Box::new(ret_rows));
+                            debug!("received rows from remote");
+                            RemoteDbResp::Ok
+                        }
+                    })
+                };
 
-            let resp: Result<RemoteDbResp, Error>= match req {
+            let resp: Result<RemoteDbResp, Error> = match req {
                 RemoteDbReq::ConnectionInfo => {
                     child.set_info("Getting connection info");
                     Ok(RemoteDbResp::ConnectionInfo(child.info()))
@@ -121,21 +121,26 @@ fn handle_message<S: MessageStream + Send>(
                     sleep(Duration::from_millis(time));
                     Ok(RemoteDbResp::Ok)
                 }
-                RemoteDbReq::Query(query) => match tx.take() {
-                    None => send_request(DbReqBody::TxQuery(Tx::default(), query), tx),
-                    Some(existing_tx) => send_request(DbReqBody::TxQuery(existing_tx, query), tx),
-                },
+                RemoteDbReq::Query(query) => {
+                    trace!("received query = {query:#?}");
+                    match tx.take() {
+                        None => send_request(DbReqBody::TxQuery(Tx::default(), query), tx),
+                        Some(existing_tx) => {
+                            send_request(DbReqBody::TxQuery(existing_tx, query), tx)
+                        }
+                    }
+                }
                 RemoteDbReq::DelegatedQuery(ref query) => {
                     let query: Query = Query::parse(query)?;
                     match tx.take() {
                         None => send_request(DbReqBody::TxQuery(Tx::default(), query), tx),
-                        Some(existing_tx) => send_request(DbReqBody::TxQuery(existing_tx, query), tx),
+                        Some(existing_tx) => {
+                            send_request(DbReqBody::TxQuery(existing_tx, query), tx)
+                        }
                     }
-                },
-                RemoteDbReq::Ping => send_request(DbReqBody::Ping, tx),
-                RemoteDbReq::StartTransaction => {
-                    send_request(DbReqBody::StartTransaction, tx)
                 }
+                RemoteDbReq::Ping => send_request(DbReqBody::Ping, tx),
+                RemoteDbReq::StartTransaction => send_request(DbReqBody::StartTransaction, tx),
                 RemoteDbReq::Commit => {
                     let this_tx = tx.take().expect("no active tx");
                     send_request(DbReqBody::Commit(this_tx), tx)
@@ -148,11 +153,11 @@ fn handle_message<S: MessageStream + Send>(
                     debug!("attempting to get next row");
                     match &mut rows {
                         None => Ok(RemoteDbResp::Err("no table".to_string())),
-                        Some(table) => Ok(RemoteDbResp::Row(
-                            table
-                                .next()
-                                .map(|t| t.slice(..table.schema().columns().len()).to_owned()),
-                        )),
+                        Some(table) => {
+                            Ok(RemoteDbResp::Row(table.next().map(|t| {
+                                t.slice(..table.schema().columns().len()).to_owned()
+                            })))
+                        }
                     }
                 }
                 RemoteDbReq::GetSchema => match rows {
@@ -166,7 +171,7 @@ fn handle_message<S: MessageStream + Send>(
                 }
             };
 
-            let resp =resp?;
+            let resp = resp?;
             child.make_idle();
             trace!("Sending response: {:?}", resp);
             stream.write(&Message::Resp(resp))?;

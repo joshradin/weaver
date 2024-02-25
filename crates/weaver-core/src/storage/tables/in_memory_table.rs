@@ -1,17 +1,17 @@
 //! An in-memory storage engine
 
 use crate::data::row::Row;
+use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, Table};
+use crate::dynamic_table_factory::DynamicTableFactory;
 use crate::error::Error;
+use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
-use crate::storage::VecPager;
 use crate::storage::tables::table_schema::TableSchema;
 use crate::storage::tables::unbuffered_table::UnbufferedTable;
+use crate::storage::VecPager;
 use crate::tx::{Tx, TX_ID_COLUMN};
 use derive_more::Deref;
-use crate::db::core::WeaverDbCore;
-use crate::dynamic_table_factory::DynamicTableFactory;
-use crate::monitoring::{Monitor, monitor_fn, Monitorable};
 
 #[derive(Debug, Deref)]
 pub struct InMemoryTable(UnbufferedTable<VecPager>);

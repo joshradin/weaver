@@ -22,8 +22,7 @@ pub struct AuthConfig {
 }
 
 impl AuthConfig {
-
-    pub fn in_path<P : AsRef<Path>>(path: P) ->Self {
+    pub fn in_path<P: AsRef<Path>>(path: P) -> Self {
         Self {
             key_store: path.as_ref().join("keys"),
             force_recreate: false,

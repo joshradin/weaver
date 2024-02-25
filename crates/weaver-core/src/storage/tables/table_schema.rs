@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::io;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::ops::{Deref, Index};
 use std::rc::Rc;
 
@@ -239,8 +239,23 @@ impl TableSchema {
 }
 
 impl ToSql for TableSchema {
-    fn to_sql<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        write!(writer, "CREATE TABLE {}.{} ();", self.schema, self.name)
+    fn write_sql<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        write!(writer, "create table {}.{} (", self.schema, self.name)?;
+        let cols_and_constraints = self
+            .columns
+            .iter()
+            .map(|col| col.to_sql())
+            .chain(self.keys.iter().map(|key| key.to_sql()))
+            .map(|s| format!("  {s}"))
+            .collect::<Vec<_>>()
+            .join(",\n");
+        if !cols_and_constraints.is_empty() {
+            write!(writer, "\n{cols_and_constraints}\n)")?
+        } else {
+            write!(writer, ")")?
+        }
+        write!(writer, " engine={}", self.engine)?;
+        Ok(())
     }
 }
 
@@ -338,7 +353,13 @@ impl ColumnDefinition {
 
 impl Debug for ColumnDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "column {} {}", self.name, self.data_type)?;
+        write!(f, "column {}", self.to_sql())
+    }
+}
+
+impl ToSql for ColumnDefinition {
+    fn write_sql<W: Write>(&self, f: &mut W) -> io::Result<()> {
+        write!(f, "`{}` {}", self.name, self.data_type)?;
         if self.non_null {
             write!(f, " not null")?;
         }
@@ -369,7 +390,7 @@ pub struct Key {
 
 impl Debug for Key {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "index {} ({})", self.name, self.columns.join(", "))?;
+        write!(f, "index `{}` ({})", self.name, self.columns.join(", "))?;
         if self.is_primary {
             write!(f, " primary")?;
         } else {
@@ -381,6 +402,12 @@ impl Debug for Key {
             }
         }
         Ok(())
+    }
+}
+
+impl ToSql for Key {
+    fn write_sql<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        write!(writer, "{self:?}")
     }
 }
 

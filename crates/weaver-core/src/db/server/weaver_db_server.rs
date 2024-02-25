@@ -1,36 +1,36 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock, Weak};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock, Weak};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use crossbeam::channel::{Sender, unbounded};
+use crossbeam::channel::{unbounded, Sender};
 use parking_lot::{Mutex, RwLock};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use tracing::{
-    debug, error, error_span, info, info_span, Level, Span, span_enabled, trace, trace_span, warn,
+    debug, error, error_span, info, info_span, span_enabled, trace, trace_span, warn, Level, Span,
 };
 
 use weaver_ast::ast::Query;
 
 use crate::access_control::auth::context::AuthContext;
-use crate::access_control::auth::init::{AuthConfig, init_auth_context};
-use crate::cancellable_task::{CancellableTask, Cancelled, CancelRecv};
-use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
+use crate::access_control::auth::init::{init_auth_context, AuthConfig};
+use crate::cancellable_task::{CancelRecv, CancellableTask, Cancelled};
 use crate::cnxn::cnxn_loop::remote_stream_loop;
 use crate::cnxn::interprocess::WeaverLocalSocketListener;
 use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::tcp::WeaverTcpListener;
+use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::common::stream_support::Stream;
 use crate::db::core::{bootstrap, WeaverDbCore};
 use crate::db::server::init::engines::init_engines;
 use crate::db::server::init::system::init_system_tables;
 use crate::db::server::init::weaver::init_weaver_schema;
-use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
+use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::lifecycle::{LifecyclePhase, WeaverDbLifecycleService};
 use crate::db::server::processes::{
     ProcessManager, WeaverPid, WeaverProcessChild, WeaverProcessInfo,
@@ -39,7 +39,7 @@ use crate::db::server::socket::{DbSocket, MainQueueItem};
 use crate::error::Error;
 use crate::modules::{Module, ModuleError};
 use crate::monitoring::{Monitor, Monitorable, Stats};
-use crate::queries::executor::QueryExecutor;
+use crate::queries::execution::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
 use crate::tx::coordinator::TxCoordinator;
@@ -381,7 +381,10 @@ impl WeaverDb {
                 }
                 let span = error_span!(
                     "cnxn",
-                    peer_addr = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|| "<unknown>".to_string()),
+                    peer_addr = stream
+                        .peer_addr()
+                        .map(|addr| addr.to_string())
+                        .unwrap_or_else(|| "<unknown>".to_string()),
                     user = child.info().user,
                     pid = child.pid(),
                 );

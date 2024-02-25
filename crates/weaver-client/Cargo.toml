@@ -19,7 +19,7 @@ clap = { version = "4.4.11", features=["derive"] }
 log = "0.4.20"
 eyre = "0.6.10"
 simplelog = "0.12.1"
-prettytable = "0.10.0"
 color-eyre = "0.6.2"
 interprocess = "1.2.1"
 pluralizer = "0.4.0"
+tabled = "0.15.0"

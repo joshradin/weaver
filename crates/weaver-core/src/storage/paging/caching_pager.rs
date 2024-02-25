@@ -1,21 +1,21 @@
 //! A caching pager stores pages, keeping some amount of non-modified pages in memory
 
 use std::num::NonZeroUsize;
-use std::sync::{Arc, OnceLock};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use lru::LruCache;
 use parking_lot::Mutex;
 
-use crate::monitoring::{Monitor, Monitorable, MonitorCollector, Stats};
-use crate::storage::Pager;
+use crate::monitoring::{Monitor, MonitorCollector, Monitorable, Stats};
 use crate::storage::paging::traits::Page;
+use crate::storage::Pager;
 
 #[derive(Debug)]
 pub struct LruCachingPager<P: Pager> {
     delegate: P,
     lru: Mutex<LruCache<usize, CachedPage>>,
-    monitor: OnceLock<LruCacheMonitor>
+    monitor: OnceLock<LruCacheMonitor>,
 }
 
 impl<P: Pager> LruCachingPager<P> {
@@ -34,7 +34,7 @@ impl<P: Pager> LruCachingPager<P> {
 #[derive(Clone, Default, Debug)]
 struct LruCacheMonitor {
     hits: Arc<AtomicUsize>,
-    misses: Arc<AtomicUsize>
+    misses: Arc<AtomicUsize>,
 }
 
 impl Monitor for LruCacheMonitor {
@@ -77,15 +77,14 @@ impl<P: Pager> Pager for LruCachingPager<P> {
             Ok(lock.get(&index).unwrap().clone())
         } else {
             lock.try_get_or_insert(index, || {
-                    let orig = self.delegate.get(index)?;
-                    if let Some(monitor) = self.monitor.get() {
-                        monitor.misses.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Ok(CachedPage::from_page(orig))
-                })
-                .map(|page| page.clone())
+                let orig = self.delegate.get(index)?;
+                if let Some(monitor) = self.monitor.get() {
+                    monitor.misses.fetch_add(1, Ordering::Relaxed);
+                }
+                Ok(CachedPage::from_page(orig))
+            })
+            .map(|page| page.clone())
         }
-
     }
 
     fn get_mut(&self, index: usize) -> Result<Self::PageMut<'_>, Self::Err> {
