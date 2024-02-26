@@ -72,7 +72,6 @@ fn btree_insert_rand(c: &mut Criterion) {
             b.iter(|| insert_rand(count as usize, 4096, &mut mc));
         });
     }
-    println!("{:#?}", mc.all());
 }
 
 fn btree_insert_rand_strings(c: &mut Criterion) {
@@ -98,7 +97,6 @@ fn btree_insert_rand_strings(c: &mut Criterion) {
             );
         });
     }
-    println!("{:#?}", mc.all());
 }
 
 fn btree_insert_inc(c: &mut Criterion) {
@@ -111,7 +109,6 @@ fn btree_insert_inc(c: &mut Criterion) {
             b.iter(|| insert(0..count as i64, 4096, &mut mc));
         });
     }
-    println!("{:#?}", mc.all());
 }
 
 fn btree_insert_dec(c: &mut Criterion) {
@@ -124,7 +121,6 @@ fn btree_insert_dec(c: &mut Criterion) {
             b.iter(|| insert((0..count as i64).rev(), 4096, &mut mc));
         });
     }
-    println!("{:#?}", mc.all());
 }
 
 fn btree_read(c: &mut Criterion) {

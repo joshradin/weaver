@@ -1,6 +1,7 @@
 //! Table in a file
 
 use std::collections::HashMap;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use tracing::debug;
@@ -12,13 +13,15 @@ use crate::dynamic_table_factory::DynamicTableFactory;
 use crate::error::Error;
 use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
+use crate::storage::devices::mmap_file::MMapFile;
+use crate::storage::devices::ram_file::RandomAccessFile;
+use crate::storage::devices::StorageDevice;
 use crate::storage::paging::caching_pager::LruCachingPager;
 use crate::storage::paging::file_pager::FilePager;
 use crate::storage::paging::virtual_pager::{VirtualPager, VirtualPagerTable};
-use crate::storage::ram_file::RandomAccessFile;
 use crate::storage::tables::table_schema::TableSchema;
 use crate::storage::tables::unbuffered_table::UnbufferedTable;
-use crate::storage::{Pager, StorageDevice, StorageDeviceDelegate};
+use crate::storage::{Pager, StorageDeviceDelegate};
 use crate::tx::Tx;
 
 pub const B_PLUS_TREE_FILE_KEY: &'static str = "weaveBPTF";
@@ -91,7 +94,19 @@ impl BptfTableFactory {
         }
 
         debug!("opening Bptf table at {file_location:?} if present...");
-        let file = RandomAccessFile::open_or_create(file_location)?.into_delegate();
+        let file = if true {
+            MMapFile::with_file(
+                File::options()
+                    .create(true)
+                    .write(true)
+                    .read(true)
+                    .truncate(false)
+                    .open(file_location)?,
+            )?
+            .into_delegate()
+        } else {
+            RandomAccessFile::open_or_create(file_location)?.into_delegate()
+        };
 
         let file_pager = FilePager::with_file(file);
         let caching_pager = LruCachingPager::new(file_pager, 512);
@@ -117,6 +132,7 @@ impl DynamicTableFactory for BptfTableFactory {
 #[cfg(test)]
 mod tests {
     use std::collections::Bound;
+
     use tempfile::tempdir;
 
     use crate::data::row::Row;

@@ -49,6 +49,7 @@ lru = "0.12.2"
 md5 = "0.7.0"
 indexmap = "2.2.3"
 static_assertions = "1.1.0"
+memmap2 = "0.9.4"
 
 [dev-dependencies]
 tracing-subscriber = "0.3.18"
@@ -58,3 +59,6 @@ criterion = { version = "0.5", features = ["html_reports"] }
 name = "btree_benchmarks"
 harness = false
 
+[[bench]]
+name = "devices_benchmarks"
+harness = false

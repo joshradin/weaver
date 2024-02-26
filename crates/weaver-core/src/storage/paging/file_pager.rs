@@ -15,10 +15,11 @@ use parking_lot::RwLock;
 use crate::common::hex_dump::HexDump;
 use crate::common::track_dirty::Mad;
 use crate::error::Error;
-use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable};
+use crate::monitoring::{Monitor, monitor_fn, Monitorable, MonitorCollector};
 use crate::storage::paging::traits::{Page, PageMut};
-use crate::storage::ram_file::RandomAccessFile;
-use crate::storage::{Pager, StorageDevice, PAGE_SIZE};
+use crate::storage::devices::ram_file::RandomAccessFile;
+use crate::storage::{PAGE_SIZE, Pager};
+use crate::storage::devices::StorageDevice;
 
 /// Provides a paged abstraction over a [RandomAccessFile]
 #[derive(Debug)]
@@ -310,7 +311,7 @@ mod tests {
 
     use crate::storage::paging::file_pager::{FilePageMut, FilePager};
     use crate::storage::paging::traits::{Page, PageMut};
-    use crate::storage::ram_file::RandomAccessFile;
+    use crate::storage::devices::ram_file::RandomAccessFile;
     use crate::storage::Pager;
     use std::io::Write;
 

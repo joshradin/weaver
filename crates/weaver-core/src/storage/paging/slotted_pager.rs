@@ -1244,7 +1244,7 @@ mod tests {
     use crate::storage::paging::file_pager::FilePager;
     use crate::storage::paging::slotted_pager::{PageType, SlottedPageHeader, SlottedPager};
     use crate::storage::paging::traits::{Pager, VecPager};
-    use crate::storage::ram_file::RandomAccessFile;
+    use crate::storage::devices::ram_file::RandomAccessFile;
     use crate::storage::WriteDataError;
 
     #[test]

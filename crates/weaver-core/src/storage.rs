@@ -2,8 +2,6 @@
 
 use std::borrow::Borrow;
 use std::fmt::Debug;
-use std::fs::Metadata;
-use std::io;
 use std::io::Write;
 use std::string::FromUtf8Error;
 
@@ -11,19 +9,18 @@ use nom::error::Error;
 use nom::ErrorConvert;
 use thiserror::Error;
 
-use crate::monitoring::{Monitor, Monitorable};
 pub use paging::traits::{Pager, VecPager};
+use devices::StorageDevice;
 
+use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::cells::PageId;
 
 pub mod b_plus_tree;
 pub mod cells;
-pub mod ram_file;
-
 pub mod engine;
-
 pub mod paging;
 pub mod tables;
+pub mod devices;
 
 /// Gets the standard page size of 4096 bytes
 pub static PAGE_SIZE: usize = 2 << 11;
@@ -177,33 +174,6 @@ impl StorageBackedData for str {
     }
 }
 
-/// A file which allows for random access
-pub trait StorageDevice: Debug + Monitorable {
-    /// Gets the metadata of a storage file
-    fn metadata(&self) -> io::Result<Metadata>;
-    /// Sets the new length of the file, either extending it or truncating it
-    fn set_len(&mut self, len: u64) -> io::Result<()>;
-    /// Write data at a given offset
-    fn write(&mut self, offset: u64, data: &[u8]) -> io::Result<()>;
-    /// Read data at given offset into a buffer
-    fn read(&self, offset: u64, buffer: &mut [u8]) -> io::Result<u64>;
-    /// Read an exact amount of data, returning an error if this can't be done
-    fn read_exact(&self, offset: u64, len: u64) -> io::Result<Vec<u8>>;
-    /// Gets the length of the random access file
-    fn len(&self) -> u64;
-    fn flush(&mut self) -> io::Result<()>;
-    fn sync(&mut self) -> io::Result<()>;
-
-    /// Converts a [StorageDevice] into a [StorageDeviceDelegate], which wraps this storage file in an
-    /// object-safe manner.
-    fn into_delegate(self) -> StorageDeviceDelegate
-    where
-        Self: Sized + Send + Sync + 'static,
-    {
-        StorageDeviceDelegate::new(self)
-    }
-}
-
 /// A storage file delagate wraps an arbitrary storage file implementation
 #[derive(Debug)]
 pub struct StorageDeviceDelegate {
@@ -222,46 +192,5 @@ impl StorageDeviceDelegate {
 impl Monitorable for StorageDeviceDelegate {
     fn monitor(&self) -> Box<dyn Monitor> {
         self.delegate.monitor()
-    }
-}
-
-impl StorageDevice for StorageDeviceDelegate {
-    fn metadata(&self) -> io::Result<Metadata> {
-        self.delegate.metadata()
-    }
-
-    fn set_len(&mut self, len: u64) -> io::Result<()> {
-        self.delegate.set_len(len)
-    }
-
-    fn write(&mut self, offset: u64, data: &[u8]) -> io::Result<()> {
-        self.delegate.write(offset, data)
-    }
-
-    fn read(&self, offset: u64, buffer: &mut [u8]) -> io::Result<u64> {
-        self.delegate.read(offset, buffer)
-    }
-
-    fn read_exact(&self, offset: u64, len: u64) -> io::Result<Vec<u8>> {
-        self.delegate.read_exact(offset, len)
-    }
-
-    fn len(&self) -> u64 {
-        self.delegate.len()
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.delegate.flush()
-    }
-
-    fn sync(&mut self) -> io::Result<()> {
-        self.delegate.sync()
-    }
-
-    fn into_delegate(self) -> StorageDeviceDelegate
-    where
-        Self: Sized + Send + Sync + 'static,
-    {
-        self
     }
 }
