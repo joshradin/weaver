@@ -8,7 +8,7 @@ use crate::cnxn::transport::Transport;
 use crate::cnxn::{read_msg, write_msg, Message, MessageStream};
 use crate::common::stream_support::Stream;
 use crate::db::server::socket::DbSocket;
-use crate::error::Error;
+use crate::error::WeaverError;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::io::{Read, Write};
@@ -44,7 +44,7 @@ impl<T: Stream> WeaverStream<T> {
     }
 
     /// Login using a given login context
-    pub(crate) fn login(mut self, context: LoginContext) -> Result<WeaverStream<T>, Error> {
+    pub(crate) fn login(mut self, context: LoginContext) -> Result<WeaverStream<T>, WeaverError> {
         handshake_client(&mut self)?;
         Ok(client_auth(self, context)?)
     }
@@ -58,7 +58,7 @@ impl<T: Stream> WeaverStream<T> {
     }
 
     /// Makes this connection secure, if it's not already
-    pub fn to_secure(mut self, host: &str) -> Result<Self, Error> {
+    pub fn to_secure(mut self, host: &str) -> Result<Self, WeaverError> {
         debug_span!("ssl accept stream").in_scope(|| {
             if let Some(Transport::Insecure(socket)) = self.socket {
                 self.socket = Some(Transport::Secure(Secured::new(host, socket)?));
@@ -88,7 +88,7 @@ impl<T: Stream> WeaverStream<T> {
 }
 
 impl<T: Stream> MessageStream for WeaverStream<T> {
-    fn read(&mut self) -> Result<Message, Error> {
+    fn read(&mut self) -> Result<Message, WeaverError> {
         trace!("waiting for message");
         let mut len = [0_u8; size_of::<u32>()];
         self.socket.as_mut().unwrap().read_exact(&mut len)?;
@@ -102,7 +102,7 @@ impl<T: Stream> MessageStream for WeaverStream<T> {
         read_msg(&message_buffer[..])
     }
 
-    fn write(&mut self, message: &Message) -> Result<(), Error> {
+    fn write(&mut self, message: &Message) -> Result<(), WeaverError> {
         trace!("sending {message:?}");
         let mut msg_buffer = vec![];
         write_msg(&mut msg_buffer, message)?;
@@ -121,7 +121,7 @@ pub fn tcp_server_handshake<T: Stream + Debug>(
     tcp: WeaverStream<T>,
     auth_context: &AuthContext,
     core: &DbSocket,
-) -> Result<WeaverStream<T>, Error> {
+) -> Result<WeaverStream<T>, WeaverError> {
     server_auth(tcp, auth_context, core)
 }
 

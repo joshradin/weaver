@@ -1,7 +1,7 @@
 //! Plugin support
 
 use crate::db::server::WeaverDb;
-use crate::error::Error;
+use crate::error::WeaverError;
 use std::borrow::Cow;
 use thiserror::Error;
 
@@ -17,5 +17,5 @@ pub trait Module {
 pub enum ModuleError {
     /// A weaver error
     #[error(transparent)]
-    WeaverError(#[from] crate::error::Error),
+    WeaverError(#[from] crate::error::WeaverError),
 }

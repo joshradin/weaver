@@ -16,7 +16,7 @@ use tracing::{debug, info, trace};
 use crate::data::row::{OwnedRow, Row};
 use crate::data::types::Type;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, OwnedCol, Table};
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::key::{KeyData, KeyDataRange};
 use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable, Stats};
 use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, Rows};
@@ -57,7 +57,7 @@ impl<P: Pager + Sync + Send> Debug for UnbufferedTable<P> {
 
 impl<P: Pager + Sync + Send> UnbufferedTable<P> {
     /// Creates a new, empty in memory table
-    pub fn new(mut schema: TableSchema, paged: P, transactional: bool) -> Result<Self, Error> {
+    pub fn new(mut schema: TableSchema, paged: P, transactional: bool) -> Result<Self, WeaverError> {
         if transactional
             && !schema
                 .sys_columns()
@@ -95,7 +95,7 @@ impl<P: Pager + Sync + Send> UnbufferedTable<P> {
         &self.schema
     }
 
-    fn all_rows(&self, tx: &Tx) -> Result<OwnedRows, Error> {
+    fn all_rows(&self, tx: &Tx) -> Result<OwnedRows, WeaverError> {
         self.main_buffer
             .all()?
             .into_iter()
@@ -137,7 +137,7 @@ impl<P: Pager + Sync + Send> Monitorable for UnbufferedTable<P> {
 
 impl<P: Pager + Sync + Send> DynamicTable for UnbufferedTable<P>
 where
-    Error: From<P::Err>,
+    WeaverError: From<P::Err>,
 {
     fn auto_increment(&self, col: Col) -> i64 {
         let lock = self
@@ -160,7 +160,7 @@ where
         self.row_id.fetch_add(1, Ordering::SeqCst)
     }
 
-    fn insert(&self, tx: &Tx, row: Row) -> Result<(), crate::error::Error> {
+    fn insert(&self, tx: &Tx, row: Row) -> Result<(), crate::error::WeaverError> {
         let row = self.schema.validate(row, tx, self)?;
         trace!("validated row: {:?}", row);
         let key_data = self.schema.all_key_data(&row);
@@ -174,7 +174,7 @@ where
         &'table self,
         tx: &'tx Tx,
         key: &KeyIndex,
-    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         let key_def = self.schema.get_key(key.key_name())?;
 
         if key_def.primary() {
@@ -184,7 +184,7 @@ where
                     let rows = self.main_buffer.range(KeyDataRange(low.clone(), high.clone()))?
                         .into_iter()
                         .map(|bytes| self.schema.decode(&bytes))
-                        .filter(|row: &Result<OwnedRow, Error>| {
+                        .filter(|row: &Result<OwnedRow, WeaverError>| {
                             if let Ok(row) = row {
                                 println!("row: {row:?}");
                                 let tx_id = self
@@ -227,18 +227,18 @@ where
         }
     }
 
-    fn update(&self, tx: &Tx, row: Row) -> Result<(), crate::error::Error> {
+    fn update(&self, tx: &Tx, row: Row) -> Result<(), crate::error::WeaverError> {
         todo!()
     }
 
-    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
+    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         todo!()
     }
 }
 
 impl<P: Pager + Sync + Send> HasSchema for UnbufferedTable<P>
 where
-    Error: From<P::Err>,
+    WeaverError: From<P::Err>,
 {
     fn schema(&self) -> &TableSchema {
         &self.schema

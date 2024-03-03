@@ -7,7 +7,7 @@ use crate::data::types::Type;
 use crate::data::values::DbVal;
 use crate::db::SYSTEM_SCHEMA;
 use crate::dynamic_table::{Col, DynamicTable, EngineKey, HasSchema};
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::table_schema::TableSchema;
@@ -99,7 +99,7 @@ impl DynamicTable for UserTable {
         todo!()
     }
 
-    fn insert(&self, tx: &Tx, row: Row) -> Result<(), Error> {
+    fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         todo!()
     }
 
@@ -107,15 +107,15 @@ impl DynamicTable for UserTable {
         &'table self,
         tx: &'tx Tx,
         key: &KeyIndex,
-    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         self.in_memory.read(tx, key)
     }
 
-    fn update(&self, tx: &Tx, row: Row) -> Result<(), Error> {
+    fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         todo!()
     }
 
-    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
+    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         todo!()
     }
 }

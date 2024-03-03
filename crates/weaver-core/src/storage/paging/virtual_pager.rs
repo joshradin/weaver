@@ -17,7 +17,7 @@ use tracing::trace;
 
 use crate::common::consistent_hasher::SeededHasherBuilder;
 use crate::common::track_dirty::Mad;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::paging::traits::{Page, PageMut};
 use crate::storage::Pager;
@@ -560,11 +560,11 @@ pub enum VirtualPagerError {
     #[error("root not defined")]
     RootUndefined,
     #[error(transparent)]
-    BackingPagerError(Box<Error>),
+    BackingPagerError(Box<WeaverError>),
 }
 
 impl VirtualPagerError {
-    fn backing_error<E: Into<Error>>(error: E) -> Self {
+    fn backing_error<E: Into<WeaverError>>(error: E) -> Self {
         Self::BackingPagerError(Box::new(error.into()))
     }
 }

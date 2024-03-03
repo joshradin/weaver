@@ -4,7 +4,7 @@ use crate::data::row::Row;
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, Table};
 use crate::dynamic_table_factory::DynamicTableFactory;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::table_schema::TableSchema;
@@ -17,7 +17,7 @@ use derive_more::Deref;
 pub struct InMemoryTable(UnbufferedTable<VecPager>);
 
 impl InMemoryTable {
-    pub fn new(schema: TableSchema) -> Result<Self, Error> {
+    pub fn new(schema: TableSchema) -> Result<Self, WeaverError> {
         Ok(InMemoryTable(UnbufferedTable::new(
             schema,
             VecPager::default(),
@@ -25,7 +25,7 @@ impl InMemoryTable {
         )?))
     }
 
-    pub fn non_transactional(schema: TableSchema) -> Result<Self, Error> {
+    pub fn non_transactional(schema: TableSchema) -> Result<Self, WeaverError> {
         Ok(InMemoryTable(UnbufferedTable::new(
             schema,
             VecPager::default(),
@@ -34,7 +34,7 @@ impl InMemoryTable {
     }
 
     /// Creates an in-memory table from a set of rows and a given schema
-    pub fn from_rows<'t>(mut schema: TableSchema, mut rows: impl Rows<'t>) -> Result<Self, Error> {
+    pub fn from_rows<'t>(mut schema: TableSchema, mut rows: impl Rows<'t>) -> Result<Self, WeaverError> {
         if let Some(pos) = schema
             .sys_columns()
             .iter()
@@ -66,7 +66,7 @@ impl DynamicTable for InMemoryTable {
         self.0.next_row_id()
     }
 
-    fn insert(&self, tx: &Tx, row: Row) -> Result<(), Error> {
+    fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         self.0.insert(tx, row)
     }
 
@@ -74,15 +74,15 @@ impl DynamicTable for InMemoryTable {
         &'table self,
         tx: &'tx Tx,
         key: &KeyIndex,
-    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         self.0.read(tx, key)
     }
 
-    fn update(&self, tx: &Tx, row: Row) -> Result<(), Error> {
+    fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         self.0.update(tx, row)
     }
 
-    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
+    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         self.0.delete(tx, key)
     }
 }
@@ -105,7 +105,7 @@ impl Monitorable for InMemoryTableFactory {
 }
 
 impl DynamicTableFactory for InMemoryTableFactory {
-    fn open(&self, schema: &TableSchema, _core: &WeaverDbCore) -> Result<Table, Error> {
+    fn open(&self, schema: &TableSchema, _core: &WeaverDbCore) -> Result<Table, WeaverError> {
         Ok(Box::new(InMemoryTable::new(schema.clone())?))
     }
 }

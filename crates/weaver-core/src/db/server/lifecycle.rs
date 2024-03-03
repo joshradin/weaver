@@ -6,7 +6,7 @@ use parking_lot::{Mutex, RwLock};
 use tracing::{error, error_span, info, instrument, warn, Span};
 
 use crate::db::server::{WeakWeaverDb, WeaverDb};
-use crate::error::Error;
+use crate::error::WeaverError;
 
 /// The phase the
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -24,9 +24,9 @@ pub enum LifecyclePhase {
 struct WeaverDbLifecycleServiceInternal {
     weak: WeakWeaverDb,
     initialization_functions:
-        Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), Error> + Send + Sync>>,
-    bootstrapping_functions: Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), Error> + Send + Sync>>,
-    teardown_functions: Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), Error> + Send + Sync>>,
+        Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
+    bootstrapping_functions: Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
+    teardown_functions: Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
 }
 
 #[derive(Clone)]
@@ -60,7 +60,7 @@ impl WeaverDbLifecycleService {
     /// Runs on init
     pub fn on_init<F>(&mut self, callback: F)
     where
-        F: FnOnce(&mut WeaverDb) -> Result<(), Error>,
+        F: FnOnce(&mut WeaverDb) -> Result<(), WeaverError>,
         F: Send + Sync + 'static,
     {
         self.helper
@@ -72,7 +72,7 @@ impl WeaverDbLifecycleService {
     /// Runs on bootstrap
     pub fn on_bootstrap<F>(&mut self, callback: F)
     where
-        F: FnOnce(&mut WeaverDb) -> Result<(), Error>,
+        F: FnOnce(&mut WeaverDb) -> Result<(), WeaverError>,
         F: Send + Sync + 'static,
     {
         self.helper
@@ -84,7 +84,7 @@ impl WeaverDbLifecycleService {
     /// Runs on teardown
     pub fn on_teardown<F>(&mut self, callback: F)
     where
-        F: FnOnce(&mut WeaverDb) -> Result<(), Error>,
+        F: FnOnce(&mut WeaverDb) -> Result<(), WeaverError>,
         F: Send + Sync + 'static,
     {
         self.helper
@@ -99,7 +99,7 @@ impl WeaverDbLifecycleService {
     }
 
     /// Makes sure the WeaverDb instance is ready.
-    pub fn startup(&mut self) -> Result<(), Error> {
+    pub fn startup(&mut self) -> Result<(), WeaverError> {
         let mut phase_lock = self.phase.write();
         match &*phase_lock {
             LifecyclePhase::Uninitialized => {
@@ -126,17 +126,17 @@ impl WeaverDbLifecycleService {
         Ok(())
     }
 
-    fn startup_(&mut self) -> Result<(), Error> {
+    fn startup_(&mut self) -> Result<(), WeaverError> {
         let mut helper = &mut *self.helper.lock();
         let mut weaver = helper
             .weak
             .upgrade()
-            .ok_or_else(|| Error::NoCoreAvailable)?;
+            .ok_or_else(|| WeaverError::NoCoreAvailable)?;
         // init
         let init_functions = VecDeque::from_iter(helper.initialization_functions.drain(..));
 
         info!("Initializing weaver...");
-        error_span!("startup", phase = "initialization").in_scope(|| -> Result<(), Error> {
+        error_span!("startup", phase = "initialization").in_scope(|| -> Result<(), WeaverError> {
             for init_function in init_functions {
                 init_function(&mut weaver)?;
             }
@@ -146,7 +146,7 @@ impl WeaverDbLifecycleService {
         })?;
         if !weaver.is_bootstrapped() {
             *self.phase.write() = LifecyclePhase::Bootstrapping;
-            error_span!("startup", phase = "bootstrap").in_scope(|| -> Result<(), Error> {
+            error_span!("startup", phase = "bootstrap").in_scope(|| -> Result<(), WeaverError> {
                 info!("Bootstrapping weaver...");
                 // bootstrap
                 let bootstrap_functions =
@@ -164,7 +164,7 @@ impl WeaverDbLifecycleService {
     }
 
     #[instrument(skip_all)]
-    pub fn teardown(&mut self) -> Result<(), Error> {
+    pub fn teardown(&mut self) -> Result<(), WeaverError> {
         let mut phase_lock = self.phase.write();
         match &*phase_lock {
             LifecyclePhase::Ready => {

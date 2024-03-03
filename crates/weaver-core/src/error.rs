@@ -25,13 +25,13 @@ use crate::storage::paging::virtual_pager::VirtualPagerError;
 use crate::storage::{ReadDataError, WriteDataError};
 
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub enum WeaverError {
     #[error("Illegal auto increment: {reason}")]
     IllegalAutoIncrement { reason: String },
     #[error("Unexpected value of type found. (expected {expected:?}, received: {actual:?})")]
     TypeError { expected: Type, actual: DbVal },
     #[error("Illegal definition for column {col:?}: {reason}")]
-    IllegalColumnDefinition { col: OwnedCol, reason: Box<Error> },
+    IllegalColumnDefinition { col: OwnedCol, reason: Box<WeaverError> },
     #[error("Expected {expected} columns, but found {actual}")]
     BadColumnCount { expected: usize, actual: usize },
     #[error("Primary key must be unique and non null")]
@@ -133,24 +133,25 @@ pub enum Error {
     CostTableNotLoaded,
     #[error("Server not in ready state (current state: {0:?})")]
     ServerNotReady(LifecyclePhase),
-
     #[error(transparent)]
     VirtualPagerError(#[from] VirtualPagerError),
-
     #[error("No strategy for {0}")]
     NoStrategyForJoin(JoinClause),
+
+    #[error("{0} builder incomplete, need {1:?}")]
+    BuilderIncomplete(String, Vec<String>),
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {
         msg: String,
-        cause: Box<Error>,
+        cause: Box<WeaverError>,
         backtrace: Bt,
     },
     #[error("{0}")]
     Custom(String),
 }
 
-impl Error {
+impl WeaverError {
     /// A server error occurred
     pub fn server_error(error: impl ToString) -> Self {
         Self::ServerError(error.to_string())
@@ -173,29 +174,29 @@ impl Error {
     }
 }
 
-impl IntoDbResponse for Error {
+impl IntoDbResponse for WeaverError {
     fn into_db_resp(self) -> DbResp {
         DbResp::Err(self)
     }
 }
 
-impl<S> From<HandshakeError<S>> for Error {
+impl<S> From<HandshakeError<S>> for WeaverError {
     fn from(value: HandshakeError<S>) -> Self {
         match value {
-            HandshakeError::SetupFailure(error) => Error::SslHandshakeSetupError(error),
-            HandshakeError::Failure(error) => Error::SslHandshakeFailure(error.into_error()),
-            HandshakeError::WouldBlock(error) => Error::SslHandshakeWouldBlock(error.into_error()),
+            HandshakeError::SetupFailure(error) => WeaverError::SslHandshakeSetupError(error),
+            HandshakeError::Failure(error) => WeaverError::SslHandshakeFailure(error.into_error()),
+            HandshakeError::WouldBlock(error) => WeaverError::SslHandshakeWouldBlock(error.into_error()),
         }
     }
 }
 
-impl From<Cancelled> for Error {
+impl From<Cancelled> for WeaverError {
     fn from(_: Cancelled) -> Self {
         Self::TaskCancelled
     }
 }
 
-impl From<Infallible> for Error {
+impl From<Infallible> for WeaverError {
     fn from(_: Infallible) -> Self {
         unreachable!("infallible values are not constructable")
     }

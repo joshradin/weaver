@@ -27,7 +27,7 @@ pub trait Pager: Monitorable {
     type PageMut<'a>: PageMut<'a>
     where
         Self: 'a;
-    type Err: Error + Into<crate::error::Error> + Send + Sync + 'static;
+    type Err: Error + Into<crate::error::WeaverError> + Send + Sync + 'static;
 
     /// Gets the size of pages that are allocated by this paged type
     fn page_size(&self) -> usize;

@@ -4,7 +4,7 @@
 use crate::data::row::Row;
 use crate::db::server::socket::DbSocket;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema};
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::table_schema::TableSchema;
@@ -17,7 +17,7 @@ pub struct SystemTable {
     table_schema: TableSchema,
     connection: Arc<DbSocket>,
     on_read: Box<
-        dyn for<'a> Fn(&'a DbSocket, &KeyIndex) -> Result<Box<dyn Rows<'a> + Send + 'a>, Error>
+        dyn for<'a> Fn(&'a DbSocket, &KeyIndex) -> Result<Box<dyn Rows<'a> + Send + 'a>, WeaverError>
             + Send
             + Sync,
     >,
@@ -26,7 +26,7 @@ pub struct SystemTable {
 impl SystemTable {
     pub fn new<F>(table_schema: TableSchema, connection: Arc<DbSocket>, on_read: F) -> Self
     where
-        F: for<'a> Fn(&'a DbSocket, &KeyIndex) -> Result<Box<dyn Rows<'a> + Send + 'a>, Error>
+        F: for<'a> Fn(&'a DbSocket, &KeyIndex) -> Result<Box<dyn Rows<'a> + Send + 'a>, WeaverError>
             + Send
             + Sync
             + 'static,
@@ -54,7 +54,7 @@ impl DynamicTable for SystemTable {
         unimplemented!("system tables shouldn't need row_ids")
     }
 
-    fn insert(&self, tx: &Tx, row: Row) -> Result<(), Error> {
+    fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         unimplemented!("can not insert into a system table")
     }
 
@@ -62,16 +62,16 @@ impl DynamicTable for SystemTable {
         &'table self,
         _tx: &'tx Tx,
         key: &KeyIndex,
-    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         let arc = &*self.connection;
         (self.on_read)(arc, key)
     }
 
-    fn update(&self, tx: &Tx, row: Row) -> Result<(), Error> {
+    fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         unimplemented!("can not update information in a system table")
     }
 
-    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
+    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         unimplemented!("can not delete data from a system table")
     }
 }

@@ -10,10 +10,10 @@ use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::layers::packets::DbReqBody;
 use weaver_core::db::server::layers::packets::DbResp;
 use weaver_core::db::server::WeaverDb;
-use weaver_core::error::Error;
+use weaver_core::error::WeaverError;
 
 /// Starts the application
-pub fn run(app: App) -> Result<(), Error> {
+pub fn run(app: App) -> Result<(), WeaverError> {
     let span = info_span!("main");
     let _enter = span.enter();
 

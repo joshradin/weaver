@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::paging::traits::{Page, PageMut};
 use crate::storage::Pager;
@@ -47,7 +47,7 @@ impl<P: Pager> Monitorable for BufferedPager<P> {
 impl<P: Pager> Pager for BufferedPager<P> {
     type Page<'a> = BufferedPage where P: 'a;
     type PageMut<'a> = BufferedPageMut where P: 'a;
-    type Err = Error;
+    type Err = WeaverError;
 
     fn page_size(&self) -> usize {
         self.buffered.page_size()
@@ -64,7 +64,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
                 }
             })
             .map_err(|used| {
-                Error::caused_by(
+                WeaverError::caused_by(
                     "Failed to get page",
                     io::Error::new(
                         ErrorKind::WouldBlock,
@@ -85,7 +85,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
                 let page = self
                     .buffered
                     .get(index)
-                    .map_err(|e| Error::caused_by("backing pager failed", e))?;
+                    .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
                 let slice: Box<[u8]> = Box::from(page.as_slice());
                 vacant.insert(slice.clone());
                 Ok(BufferedPage {
@@ -101,7 +101,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
         token
             .compare_exchange(0, -1, Ordering::SeqCst, Ordering::Relaxed)
             .map_err(|val| {
-                Error::caused_by(
+                WeaverError::caused_by(
                     "Failed to get page",
                     io::Error::new(
                         ErrorKind::WouldBlock,
@@ -124,7 +124,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
                 let page = self
                     .buffered
                     .get(index)
-                    .map_err(|e| Error::caused_by("backing pager failed", e))?;
+                    .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
                 let slice: Box<[u8]> = Box::from(page.as_slice());
                 vacant.insert(slice.clone());
                 Ok(BufferedPageMut {
@@ -141,7 +141,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
         let (new_page, index) = self
             .buffered
             .new()
-            .map_err(|e| Error::caused_by("backing pager failed", e))?;
+            .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
         let slice = Box::from(new_page.as_slice());
 
         let buffers = self.buffers.clone();
@@ -167,7 +167,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
         self.buffers.write().remove(&index);
         self.buffered
             .free(index)
-            .map_err(|e| Error::caused_by("backing pager failed", e))?;
+            .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
         Ok(())
     }
 
@@ -185,7 +185,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
             let mut page = self
                 .buffered
                 .get_mut(page_offset)
-                .map_err(|e| Error::caused_by("backing pager failed", e))?;
+                .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
             page.as_mut_slice().copy_from_slice(&*bytes);
         }
         Ok(())

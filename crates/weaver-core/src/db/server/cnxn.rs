@@ -4,7 +4,7 @@ use crate::cnxn::stream::WeaverStream;
 use crate::common::stream_support::Stream;
 use crate::data::row::OwnedRow;
 use crate::db::server::processes::WeaverProcessInfo;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::storage::tables::table_schema::TableSchema;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
@@ -63,24 +63,24 @@ pub enum Message {
     Resp(RemoteDbResp),
 }
 
-pub fn write_msg<W: Write>(writer: W, msg: &Message) -> Result<(), Error> {
-    Ok(serde_json::to_writer(writer, msg).map_err(|e| Error::SerializationError(Box::new(e)))?)
+pub fn write_msg<W: Write>(writer: W, msg: &Message) -> Result<(), WeaverError> {
+    Ok(serde_json::to_writer(writer, msg).map_err(|e| WeaverError::SerializationError(Box::new(e)))?)
 }
 
-pub fn read_msg<R: Read>(reader: R) -> Result<Message, Error> {
-    Ok(serde_json::from_reader(reader).map_err(|e| Error::DeserializationError(Box::new(e)))?)
+pub fn read_msg<R: Read>(reader: R) -> Result<Message, WeaverError> {
+    Ok(serde_json::from_reader(reader).map_err(|e| WeaverError::DeserializationError(Box::new(e)))?)
 }
 
 /// A message stream
 pub trait MessageStream {
     /// Read a message
-    fn read(&mut self) -> Result<Message, Error>;
+    fn read(&mut self) -> Result<Message, WeaverError>;
 
     /// Write a message
-    fn write(&mut self, message: &Message) -> Result<(), Error>;
+    fn write(&mut self, message: &Message) -> Result<(), WeaverError>;
 
     /// Wrapper around sending a request and receiving response
-    fn send(&mut self, message: &RemoteDbReq) -> Result<RemoteDbResp, Error> {
+    fn send(&mut self, message: &RemoteDbReq) -> Result<RemoteDbResp, WeaverError> {
         self.write(&Message::Req(message.clone()))?;
         let Message::Resp(resp) = self.read()? else {
             unreachable!();
@@ -90,11 +90,11 @@ pub trait MessageStream {
 }
 
 impl<M: MessageStream> MessageStream for &mut M {
-    fn read(&mut self) -> Result<Message, Error> {
+    fn read(&mut self) -> Result<Message, WeaverError> {
         (*self).read()
     }
 
-    fn write(&mut self, message: &Message) -> Result<(), Error> {
+    fn write(&mut self, message: &Message) -> Result<(), WeaverError> {
         (*self).write(message)
     }
 }
@@ -102,5 +102,5 @@ impl<M: MessageStream> MessageStream for &mut M {
 pub trait WeaverStreamListener {
     type Stream: Stream;
     /// Accepts an incoming connection
-    fn accept(&self) -> Result<WeaverStream<Self::Stream>, Error>;
+    fn accept(&self) -> Result<WeaverStream<Self::Stream>, WeaverError>;
 }

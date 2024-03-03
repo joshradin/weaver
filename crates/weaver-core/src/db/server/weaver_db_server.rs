@@ -37,7 +37,7 @@ use crate::db::server::processes::{
     ProcessManager, WeaverPid, WeaverProcessChild, WeaverProcessInfo,
 };
 use crate::db::server::socket::{DbSocket, MainQueueItem};
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::modules::{Module, ModuleError};
 use crate::monitoring::{Monitor, Monitorable, Stats};
 use crate::queries::execution::QueryExecutor;
@@ -59,7 +59,7 @@ pub(super) struct WeaverDbShared {
     core: Arc<RwLock<WeaverDbCore>>,
     message_queue: Sender<MainQueueItem>,
     main_handle: Option<JoinHandle<()>>,
-    worker_handles: Mutex<Vec<JoinHandle<Result<(), Error>>>>,
+    worker_handles: Mutex<Vec<JoinHandle<Result<(), WeaverError>>>>,
 
     /// Should only be bound to TCP once.
     tcp_bound: AtomicBool,
@@ -83,7 +83,7 @@ pub(super) struct WeaverDbShared {
 impl WeaverDb {
 
     #[cfg(test)]
-    pub fn in_temp_dir() -> Result<(TempDir, Self), Error> {
+    pub fn in_temp_dir() -> Result<(TempDir, Self), WeaverError> {
         let (dir, core) = WeaverDbCore::in_temp_dir()?;
         let auth_config = AuthConfig::in_path(dir.path());
         Self::new(core, auth_config).map(|this| (dir, this))
@@ -91,7 +91,7 @@ impl WeaverDb {
     pub fn new(
         shard: WeaverDbCore,
         auth_config: AuthConfig,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, WeaverError> {
         let path = shard.path().to_path_buf();
         let auth_context = init_auth_context(&auth_config)?;
         let inner = Arc::new_cyclic(move |weak| {
@@ -161,7 +161,7 @@ impl WeaverDb {
                                 .join()
                                 .map_err(|e| {
                                     error!("panic occurred while processing a request");
-                                    Error::ThreadPanicked
+                                    WeaverError::ThreadPanicked
                                 }) {
                                     error!("{}", e);
                                     let resp = e.into_db_resp();
@@ -179,7 +179,7 @@ impl WeaverDb {
                 Layers::new(move |req, cancel: &CancelRecv| {
                     let Some(db) = weak_db.upgrade() else {
                         warn!("db request processing after db dropped");
-                        return Ok(Error::server_error("no db to connect to").into_db_resp());
+                        return Ok(WeaverError::server_error("no db to connect to").into_db_resp());
                     };
                     let mut db = WeaverDb { shared: db };
                     Ok(db.base_service(req, cancel)?.into_db_resp())
@@ -214,7 +214,7 @@ impl WeaverDb {
             let weaver_schema_dir = path.join("weaver");
             let socket = weaver_db.connect();
             let _ = socket
-                .send(DbReq::on_core(move |core, _| -> Result<(), Error> {
+                .send(DbReq::on_core(move |core, _| -> Result<(), WeaverError> {
                     // bootstraps weaver schema
                     bootstrap(core, &weaver_schema_dir)?;
                     init_weaver_schema(core)?;
@@ -265,7 +265,7 @@ impl WeaverDb {
         tx: &Tx,
         query: &Query,
         plan_context: impl Into<Option<&'a WeaverProcessInfo>>,
-    ) -> Result<QueryPlan, Error> {
+    ) -> Result<QueryPlan, WeaverError> {
         info!("query to plan");
         let factory = QueryPlanFactory::new(self.weak());
         debug!("created query factory: {:?}", factory);
@@ -276,10 +276,10 @@ impl WeaverDb {
     }
 
     /// Bind to a tcp port. Can only be done once
-    pub fn bind_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> Result<(), Error> {
+    pub fn bind_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> Result<(), WeaverError> {
         let phase = self.shared.lifecycle_service.phase();
         if phase != LifecyclePhase::Ready {
-            return Err(Error::ServerNotReady(phase));
+            return Err(WeaverError::ServerNotReady(phase));
         }
 
         if self
@@ -295,19 +295,19 @@ impl WeaverDb {
             let self_clone = self.weak();
             let worker = thread::Builder::new()
                 .name("distro-db-tcp".to_string())
-                .spawn(move || -> Result<(), Error> { Self::tcp_handler(listener, self_clone) })?;
+                .spawn(move || -> Result<(), WeaverError> { Self::tcp_handler(listener, self_clone) })?;
             self.shared.worker_handles.lock().push(worker);
             Ok(())
         } else {
-            Err(Error::TcpAlreadyBound)
+            Err(WeaverError::TcpAlreadyBound)
         }
     }
 
     /// Bind to a tcp port. Can only be done once
-    pub fn bind_local_socket<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+    pub fn bind_local_socket<P: AsRef<Path>>(&mut self, path: P) -> Result<(), WeaverError> {
         let phase = self.shared.lifecycle_service.phase();
         if phase != LifecyclePhase::Ready {
-            return Err(Error::ServerNotReady(phase));
+            return Err(WeaverError::ServerNotReady(phase));
         }
 
         let path = path.as_ref().to_path_buf();
@@ -325,17 +325,17 @@ impl WeaverDb {
             let self_clone = self.weak();
             let worker = thread::Builder::new()
                 .name("distro-db-local-socket".to_string())
-                .spawn(move || -> Result<(), Error> {
+                .spawn(move || -> Result<(), WeaverError> {
                     Self::local_socket_handler(listener, self_clone)
                 })?;
             self.shared.worker_handles.lock().push(worker);
             Ok(())
         } else {
-            Err(Error::TcpAlreadyBound)
+            Err(WeaverError::TcpAlreadyBound)
         }
     }
 
-    fn tcp_handler(mut listener: WeaverTcpListener, db: WeakWeaverDb) -> Result<(), Error> {
+    fn tcp_handler(mut listener: WeaverTcpListener, db: WeakWeaverDb) -> Result<(), WeaverError> {
         loop {
             let Ok(mut stream) = listener.accept() else {
                 warn!("Listener closed");
@@ -355,7 +355,7 @@ impl WeaverDb {
     fn local_socket_handler(
         mut listener: WeaverLocalSocketListener,
         db: WeakWeaverDb,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WeaverError> {
         loop {
             let Ok(mut stream) = listener.accept() else {
                 warn!("Listener closed");
@@ -376,7 +376,7 @@ impl WeaverDb {
     pub fn handle_connection<T: Stream + Send + Sync + 'static>(
         &self,
         mut stream: WeaverStream<T>,
-    ) -> Result<WeaverPid, Error> {
+    ) -> Result<WeaverPid, WeaverError> {
         let mut process_manager = self.shared.process_manager.write();
         let user = stream.user().clone();
         let monitor = self.shared.monitor.clone();

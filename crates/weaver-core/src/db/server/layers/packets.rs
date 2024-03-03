@@ -3,7 +3,7 @@ use crate::db::core::WeaverDbCore;
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::Table;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::rows::{OwnedRows, Rows};
 use crate::storage::tables::shared_table::SharedTable;
 use crate::tx::{Tx, TxRef};
@@ -255,7 +255,7 @@ pub enum DbResp {
     TxTable(Tx, SharedTable),
     TxRows(Tx, OwnedRows),
     Rows(OwnedRows),
-    Err(Error),
+    Err(WeaverError),
 }
 
 impl IntoDbResponse for DbResp {
@@ -269,15 +269,15 @@ impl DbResp {
         Self::Rows(rows)
     }
 
-    pub fn to_result(self) -> Result<DbResp, Error> {
+    pub fn to_result(self) -> Result<DbResp, WeaverError> {
         match self {
-            DbResp::Err(e) => Err(Error::custom(e)),
+            DbResp::Err(e) => Err(WeaverError::custom(e)),
             db => Ok(db),
         }
     }
 }
 
-impl<E: Into<Error>> From<E> for DbResp {
+impl<E: Into<WeaverError>> From<E> for DbResp {
     fn from(value: E) -> Self {
         Self::Err(value.into())
     }

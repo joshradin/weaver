@@ -1,5 +1,5 @@
 use crate::data::values::DbVal;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::storage::ReadDataError;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};

@@ -5,13 +5,16 @@ use tracing::{error, info};
 
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{DynamicTable, HasSchema, Table};
-use crate::error::Error;
+use crate::error::WeaverError;
+use crate::queries::execution::executor::expr_executor::ExpressionEvaluator;
 use crate::queries::execution::strategies::join::JoinParameters;
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::Rows;
 use crate::rows::{KeyIndex, OwnedRows};
 use crate::storage::tables::in_memory_table::InMemoryTable;
 use crate::tx::Tx;
+
+mod expr_executor;
 
 /// The query executor is responsible for executing queries against the database
 /// in performant ways.
@@ -33,11 +36,12 @@ impl QueryExecutor {
 
 impl QueryExecutor {
     /// Executes a query
-    pub fn execute(&self, tx: &Tx, plan: &QueryPlan) -> Result<Box<dyn Rows<'_>>, Error> {
+    pub fn execute(&self, tx: &Tx, plan: &QueryPlan) -> Result<Box<dyn Rows<'_>>, WeaverError> {
         let root = plan.root();
-        let core = self.core.upgrade().ok_or(Error::NoCoreAvailable)?;
+        let core = self.core.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
         info!("executing query plan {plan:#?}");
-        let final_table = self.execute_node(tx, root, &core)?;
+        let ref expression_evaluator = ExpressionEvaluator::compile(plan)?;
+        let final_table = self.execute_node(tx, root, expression_evaluator, &core)?;
         Ok(Box::new(OwnedRows::from(final_table)))
     }
 
@@ -45,8 +49,9 @@ impl QueryExecutor {
         &self,
         tx: &Tx,
         node: &QueryPlanNode,
+        expression_evaluator: &ExpressionEvaluator,
         core: &Arc<RwLock<WeaverDbCore>>,
-    ) -> Result<Box<dyn Rows<'_>>, Error> {
+    ) -> Result<Box<dyn Rows<'_>>, WeaverError> {
         match &node.kind {
             QueryPlanKind::TableScan {
                 schema,
@@ -78,13 +83,13 @@ impl QueryExecutor {
                 filtered,
                 condition,
             } => {
-                let to_filter = self.execute_node(tx, &*filtered, core)?;
+                let to_filter = self.execute_node(tx, &*filtered, expression_evaluator, core)?;
 
 
                 todo!("filter")
             }
             QueryPlanKind::Project { columns, node } => {
-                let to_project = self.execute_node(tx, &*node, core)?;
+                let to_project = self.execute_node(tx, &*node, expression_evaluator, core)?;
 
                 todo!("projection")
             }
@@ -95,8 +100,8 @@ impl QueryExecutor {
                 on,
                 strategies,
             } => {
-                let left = self.execute_node(tx, left, core)?;
-                let right = self.execute_node(tx, right, core)?;
+                let left = self.execute_node(tx, left, expression_evaluator, core)?;
+                let right = self.execute_node(tx, right, expression_evaluator, core)?;
 
                 let strategy = strategies.first().unwrap();
 
@@ -113,5 +118,3 @@ impl QueryExecutor {
         }
     }
 }
-
-

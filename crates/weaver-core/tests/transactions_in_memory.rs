@@ -10,12 +10,12 @@ use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::layers::packets::{DbReqBody, DbResp, IntoDbResponse};
 use weaver_core::db::server::WeaverDb;
 use weaver_core::dynamic_table::DynamicTable;
-use weaver_core::error::Error;
+use weaver_core::error::WeaverError;
 use weaver_core::rows::Rows;
 use weaver_core::storage::tables::table_schema::TableSchema;
 
 #[test]
-fn transactions_in_memory() -> Result<(), Error> {
+fn transactions_in_memory() -> Result<(), WeaverError> {
     tracing_subscriber::fmt()
         .with_max_level(LevelFilter::TRACE)
         .with_thread_ids(true)
@@ -30,7 +30,7 @@ fn transactions_in_memory() -> Result<(), Error> {
     let socket = db.connect();
     socket
         .send(DbReqBody::on_core_write(|db, _| {
-            Ok((|| -> Result<_, Error> {
+            Ok((|| -> Result<_, WeaverError> {
                 let ref schema = TableSchema::builder("default", "in_mem")
                     .column("id", Type::Integer, true, None, 0)?
                     .column("name", Type::String(u16::MAX), true, None, None)?

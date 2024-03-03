@@ -14,7 +14,7 @@ use parking_lot::RwLock;
 
 use crate::common::hex_dump::HexDump;
 use crate::common::track_dirty::Mad;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::{Monitor, monitor_fn, Monitorable, MonitorCollector};
 use crate::storage::paging::traits::{Page, PageMut};
 use crate::storage::devices::ram_file::RandomAccessFile;
@@ -31,21 +31,21 @@ pub struct FilePager<F: StorageDevice> {
 
 impl FilePager<RandomAccessFile> {
     /// Creates a new paged file
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, WeaverError> {
         let path = path.as_ref();
         let ram = RandomAccessFile::open(path)?;
         Ok(Self::with_file_and_page_len(ram, PAGE_SIZE))
     }
 
     /// Creates a new paged file
-    pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, WeaverError> {
         let path = path.as_ref();
         let ram = RandomAccessFile::create(path)?;
         Ok(Self::with_file_and_page_len(ram, PAGE_SIZE))
     }
 
     /// Creates a new paged file
-    pub fn open_or_create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn open_or_create<P: AsRef<Path>>(path: P) -> Result<Self, WeaverError> {
         let path = path.as_ref();
         let ram = RandomAccessFile::open_or_create(path)?;
         Ok(Self::with_file_and_page_len(ram, PAGE_SIZE))
@@ -90,7 +90,7 @@ impl<F: StorageDevice> Monitorable for FilePager<F> {
 impl<F: StorageDevice> Pager for FilePager<F> {
     type Page<'a> = FilePage where F: 'a;
     type PageMut<'a> = FilePageMut<F> where F: 'a;
-    type Err = Error;
+    type Err = WeaverError;
 
     fn page_size(&self) -> usize {
         self.page_len
@@ -124,7 +124,7 @@ impl<F: StorageDevice> Pager for FilePager<F> {
                 }
             })
             .map_err(|used| {
-                Error::caused_by(
+                WeaverError::caused_by(
                     "Failed to get page",
                     io::Error::new(
                         ErrorKind::WouldBlock,
@@ -175,7 +175,7 @@ impl<F: StorageDevice> Pager for FilePager<F> {
         token
             .compare_exchange(0, -1, Ordering::SeqCst, Ordering::Relaxed)
             .map_err(|val| {
-                Error::caused_by(
+                WeaverError::caused_by(
                     "Failed to get page",
                     io::Error::new(
                         ErrorKind::WouldBlock,

@@ -14,7 +14,7 @@ use ptree::{print_tree, write_tree, TreeBuilder};
 use tracing::{error, instrument, trace, warn};
 
 use crate::data::row::OwnedRow;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::key::{KeyData, KeyDataRange};
 use crate::monitoring::{Monitor, Monitorable, Stats};
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
@@ -53,7 +53,7 @@ impl<P: Pager> Debug for BPlusTree<P> {
 
 impl<P: Pager> BPlusTree<P>
 where
-    Error: From<P::Err>,
+    WeaverError: From<P::Err>,
 {
     /// Creates a new bplus tree around a pager
     pub fn new(pager: P) -> Self {
@@ -90,7 +90,7 @@ where
         &self,
         k: K,
         v: V,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WeaverError> {
         let key = k.into();
         let value = v.into();
 
@@ -122,7 +122,7 @@ where
         }
     }
 
-    fn insert_cell(&self, cell: Cell, page_id: PageId) -> Result<bool, Error> {
+    fn insert_cell(&self, cell: Cell, page_id: PageId) -> Result<bool, WeaverError> {
         let mut page = self.allocator.get_mut(page_id).expect("no page found");
         match page.insert(cell.clone()) {
             Ok(()) => {
@@ -131,7 +131,7 @@ where
                 }
                 Ok(false)
             }
-            Err(Error::WriteDataError(WriteDataError::AllocationFailed { .. })) => {
+            Err(WeaverError::WriteDataError(WriteDataError::AllocationFailed { .. })) => {
                 // insufficient space requires a split
                 let id = page.page_id();
                 drop(page);
@@ -145,7 +145,7 @@ where
     }
 
     /// splits the page given by a specified ID
-    fn split(&self, page_id: PageId) -> Result<(), Error> {
+    fn split(&self, page_id: PageId) -> Result<(), WeaverError> {
         self.verify_integrity();
         let mut allocator = &self.allocator;
         let mut page = allocator.get_mut(page_id)?;
@@ -236,7 +236,7 @@ where
         emit
     }
 
-    fn get_new_parent(&self, median_key: &KeyData, parent: PageId) -> Result<PageId, Error> {
+    fn get_new_parent(&self, median_key: &KeyData, parent: PageId) -> Result<PageId, WeaverError> {
         let parent_cell = self.allocator.get(parent)?;
         let parent = if let Some(left_parent) = parent_cell.left_sibling() {
             let left_parent_cell = self.allocator.get(left_parent)?;
@@ -289,7 +289,7 @@ where
     ///
     /// Only returns an error if something went wrong trying to find the data, and returns `Ok(None` if no
     /// problems occurred but an associated record was not present.
-    pub fn get(&self, key_data: &KeyData) -> Result<Option<Box<[u8]>>, Error> {
+    pub fn get(&self, key_data: &KeyData) -> Result<Option<Box<[u8]>>, WeaverError> {
         if let Some(monitor) = self.monitor.get() {
             monitor.reads.fetch_add(1, atomic::Ordering::Relaxed);
         }
@@ -300,7 +300,7 @@ where
         match cell {
             None => Ok(None),
             Some(Cell::Key(_)) => {
-                return Err(Error::CellTypeMismatch {
+                return Err(WeaverError::CellTypeMismatch {
                     page_id: leaf.page_id(),
                     expected: PageType::KeyValue,
                     actual: PageType::Key,
@@ -311,7 +311,7 @@ where
     }
 
     /// Gets the set of rows from a given range
-    pub fn range<T: Into<KeyDataRange>>(&self, key_data_range: T) -> Result<Vec<Box<[u8]>>, Error> {
+    pub fn range<T: Into<KeyDataRange>>(&self, key_data_range: T) -> Result<Vec<Box<[u8]>>, WeaverError> {
         let range = key_data_range.into();
         let Some(root) = self.root.read().clone() else {
             return Ok(vec![]);
@@ -363,12 +363,12 @@ where
 
     /// Gets all rows
     #[inline]
-    pub fn all(&self) -> Result<Vec<Box<[u8]>>, Error> {
+    pub fn all(&self) -> Result<Vec<Box<[u8]>>, WeaverError> {
         self.range(..)
     }
 
     /// Gets the minimum key stored in this btree
-    pub fn min_key(&self) -> Result<Option<KeyData>, Error> {
+    pub fn min_key(&self) -> Result<Option<KeyData>, WeaverError> {
         if let Some(root) = self.root.read().as_ref() {
             let left = self.left_most(*root)?;
             let page = self.allocator.get(left)?;
@@ -379,7 +379,7 @@ where
     }
 
     /// Gets the maximum key stored in this btree
-    pub fn max_key(&self) -> Result<Option<KeyData>, Error> {
+    pub fn max_key(&self) -> Result<Option<KeyData>, WeaverError> {
         if let Some(root) = self.root.read().as_ref() {
             let left = self.right_most(*root)?;
             let page = self.allocator.get(left)?;
@@ -390,9 +390,9 @@ where
     }
 
     /// Finds the leaf node that can contain the given key
-    fn find_leaf(&self, key_data: &KeyData, expand: bool) -> Result<PageId, Error> {
+    fn find_leaf(&self, key_data: &KeyData, expand: bool) -> Result<PageId, WeaverError> {
         let Some(mut ptr) = self.root.read().clone() else {
-            return Err(Error::NotFound(key_data.clone()));
+            return Err(WeaverError::NotFound(key_data.clone()));
         };
         let mut traversal = vec![];
         loop {
@@ -443,7 +443,7 @@ where
                                 panic!("no good index found, but could insert a new key cell at index {close}.")
                             } else {
                                 warn!("could not get key {key_data:?} in {cells:#?}");
-                                return Err(Error::NotFound(key_data.clone()));
+                                return Err(WeaverError::NotFound(key_data.clone()));
                             }
                         }
                     }
@@ -458,9 +458,9 @@ where
     }
 
     /// Finds the leaf node that can contain the given key
-    fn find_internal(&self, key_data: &KeyData) -> Result<PageId, Error> {
+    fn find_internal(&self, key_data: &KeyData) -> Result<PageId, WeaverError> {
         let Some(mut ptr) = self.root.read().clone() else {
-            return Err(Error::NotFound(key_data.clone()));
+            return Err(WeaverError::NotFound(key_data.clone()));
         };
         let mut traversal = vec![];
         loop {
@@ -507,7 +507,7 @@ where
                             ptr = key.page_id()
                         }
                         Err(close) => {
-                            return Err(Error::NotFound(key_data.clone()));
+                            return Err(WeaverError::NotFound(key_data.clone()));
                         }
                     }
                 }
@@ -521,7 +521,7 @@ where
     }
 
     /// Increases the max
-    fn increase_max(&self, leaf: PageId, new_max: &KeyData) -> Result<(), Error> {
+    fn increase_max(&self, leaf: PageId, new_max: &KeyData) -> Result<(), WeaverError> {
         let mut prev = self.right_most(leaf)?;
         let mut ptr = self.allocator.get(prev)?.parent();
 
@@ -533,7 +533,7 @@ where
                 .into_iter()
                 .filter_map(|cell| cell.into_key_cell())
                 .find(|cell| cell.page_id() == prev)
-                .ok_or_else(|| Error::ReadDataError(ReadDataError::PageNotFound(prev)))?;
+                .ok_or_else(|| WeaverError::ReadDataError(ReadDataError::PageNotFound(prev)))?;
             let old_key_data = old_cell.key_data();
             if &old_key_data < new_max {
                 let removed = parent_page.delete(&old_key_data)?;
@@ -553,7 +553,7 @@ where
     }
 
     /// Right most (max) page
-    fn right_most(&self, node: PageId) -> Result<PageId, Error> {
+    fn right_most(&self, node: PageId) -> Result<PageId, WeaverError> {
         let page = self.allocator.get(node)?;
         match page.page_type() {
             PageType::Key => {
@@ -574,7 +574,7 @@ where
     }
 
     /// left most (min) page
-    fn left_most(&self, node: PageId) -> Result<PageId, Error> {
+    fn left_most(&self, node: PageId) -> Result<PageId, WeaverError> {
         let page = self.allocator.get(node)?;
         match page.page_type() {
             PageType::Key => {
@@ -610,7 +610,7 @@ where
     }
 
     /// Verifies the integrity of the tree
-    fn verify_integrity_(&self, page_id: PageId) -> Result<(), Error> {
+    fn verify_integrity_(&self, page_id: PageId) -> Result<(), WeaverError> {
         let page = self.allocator.get(page_id)?;
         match page.page_type() {
             PageType::Key => {
@@ -669,7 +669,7 @@ where
         }
     }
 
-    pub fn print(&self) -> Result<(), Error> {
+    pub fn print(&self) -> Result<(), WeaverError> {
         let mut builder = TreeBuilder::new("btree".to_string());
         if let Some(root) = self.root.read().clone() {
             self.print_(root, &mut builder, None)?;
@@ -680,7 +680,7 @@ where
         Ok(())
     }
 
-    pub fn write<W: Write>(&self, writer: W) -> Result<(), Error> {
+    pub fn write<W: Write>(&self, writer: W) -> Result<(), WeaverError> {
         let mut builder = TreeBuilder::new("btree".to_string());
         if let Some(root) = self.root.read().clone() {
             self.print_(root, &mut builder, None)?;
@@ -695,7 +695,7 @@ where
         page_id: PageId,
         builder: &mut TreeBuilder,
         prev: Option<&KeyData>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WeaverError> {
         let page = self.allocator.get(page_id)?;
         builder.begin_child(format!(
             "({:?}) {:?}. nodes {} (l: {:?}, r: {:?})",
@@ -743,7 +743,7 @@ where
     }
 
     /// Gets the number of nodes
-    pub fn nodes_from_page(&self, page_id: PageId) -> Result<usize, Error> {
+    pub fn nodes_from_page(&self, page_id: PageId) -> Result<usize, WeaverError> {
         let page = self.allocator.get(page_id)?;
         match page.page_type() {
             PageType::Key => Ok(page
@@ -759,7 +759,7 @@ where
         }
     }
 
-    pub fn nodes(&self) -> Result<usize, Error> {
+    pub fn nodes(&self) -> Result<usize, WeaverError> {
         let root = self.root.read().clone();
         if let Some(root) = root {
             self.nodes_from_page(root)

@@ -22,7 +22,7 @@ use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::socket::DbSocket;
 use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::{DynamicTable, HasSchema, Table};
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::key::KeyData;
 use crate::queries::execution::strategies::join::JoinStrategySelector;
 use crate::queries::query_cost::{Cost, CostTable};
@@ -55,16 +55,16 @@ impl QueryPlanFactory {
         tx: &Tx,
         query: &Query,
         plan_context: impl Into<Option<&'a WeaverProcessInfo>>,
-    ) -> Result<QueryPlan, Error> {
+    ) -> Result<QueryPlan, WeaverError> {
         error_span!("to_plan").in_scope(|| {
-            let db = self.db.upgrade().ok_or(Error::NoCoreAvailable)?;
+            let db = self.db.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
             debug!("upgraded weaver db from weak");
             let socket = db.connect();
             debug!("connected socket to weaver db");
             debug!("getting cost table...");
             let cost_table = socket
                 .get_table(&("weaver".into(), "cost".into()))
-                .map_err(|_| Error::CostTableNotLoaded)?;
+                .map_err(|_| WeaverError::CostTableNotLoaded)?;
 
             let cost_table = CostTable::from_table(&cost_table, tx);
             if &cost_table != &*self.cost_table.borrow() {
@@ -80,10 +80,10 @@ impl QueryPlanFactory {
         &self,
         query: &Query,
         plan_context: Option<&WeaverProcessInfo>,
-    ) -> Result<HashMap<TableRef, TableSchema>, Error> {
+    ) -> Result<HashMap<TableRef, TableSchema>, WeaverError> {
         let involved = self.get_involved_table_refs(query, plan_context)?;
         let Some(core) = self.db.upgrade() else {
-            return Err(Error::NoCoreAvailable);
+            return Err(WeaverError::NoCoreAvailable);
         };
         let db_socket = core.connect();
         let mut table = HashMap::new();
@@ -98,7 +98,7 @@ impl QueryPlanFactory {
         &self,
         query: &Query,
         plan_context: Option<&WeaverProcessInfo>,
-    ) -> Result<Vec<TableRef>, Error> {
+    ) -> Result<Vec<TableRef>, WeaverError> {
         let mut emit = vec![];
 
         let mut stack = vec![query.clone()];
@@ -126,7 +126,7 @@ impl QueryPlanFactory {
         emit: &mut Vec<TableRef>,
         stack: &mut Vec<Query>,
         plan_context: Option<&WeaverProcessInfo>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WeaverError> {
         match table_ref {
             TableOrSubQuery::Table {
                 schema, table_name, ..
@@ -148,12 +148,12 @@ impl QueryPlanFactory {
         Ok(())
     }
 
-    fn get_cost(&self, key: impl AsRef<str>) -> Result<Cost, Error> {
+    fn get_cost(&self, key: impl AsRef<str>) -> Result<Cost, WeaverError> {
         let key = key.as_ref().to_string();
         self.cost_table
             .borrow()
             .get(&key)
-            .ok_or_else(|| Error::UnknownCostKey(key))
+            .ok_or_else(|| WeaverError::UnknownCostKey(key))
             .copied()
     }
 
@@ -163,7 +163,7 @@ impl QueryPlanFactory {
         query: &Query,
         db: &DbSocket,
         plan_context: Option<&WeaverProcessInfo>,
-    ) -> Result<QueryPlanNode, Error> {
+    ) -> Result<QueryPlanNode, WeaverError> {
         debug!("creating query plan from {}", query);
         let tables = debug_span!("finding involved tables")
             .in_scope(|| self.get_involved_tables(query, plan_context))?;
@@ -202,7 +202,7 @@ impl QueryPlanFactory {
         plan_context: Option<&WeaverProcessInfo>,
         real_tables: &HashMap<TableRef, TableSchema>,
         from: &FromClause,
-    ) -> Result<QueryPlanNode, Error> {
+    ) -> Result<QueryPlanNode, WeaverError> {
         let from = &from.0;
         self.table_or_sub_query_to_plan_node(db, plan_context, real_tables, from)
     }
@@ -213,7 +213,7 @@ impl QueryPlanFactory {
         plan_context: Option<&WeaverProcessInfo>,
         real_tables: &HashMap<TableRef, TableSchema>,
         from: &TableOrSubQuery,
-    ) -> Result<QueryPlanNode, Error> {
+    ) -> Result<QueryPlanNode, WeaverError> {
         match from {
             TableOrSubQuery::Table {
                 schema,
@@ -267,8 +267,8 @@ impl QueryPlanFactory {
         plan_context: Option<&WeaverProcessInfo>,
         real_tables: &HashMap<TableRef, TableSchema>,
         select: &Select,
-    ) -> Result<QueryPlanNode, Error> {
-        error_span!("SELECT").in_scope(|| -> Result<QueryPlanNode, Error> {
+    ) -> Result<QueryPlanNode, WeaverError> {
+        error_span!("SELECT").in_scope(|| -> Result<QueryPlanNode, WeaverError> {
             let Select {
                 columns,
                 from,
@@ -321,11 +321,11 @@ impl QueryPlanFactory {
         })
     }
 
-    fn get_keys_from_condition(&self, plan_context: Option<&WeaverProcessInfo>, real_tables: &&HashMap<TableRef, TableSchema>, condition: &Option<Expr>, from_node: &QueryPlanNode) -> Result<Vec<KeyIndex>, Error> {
+    fn get_keys_from_condition(&self, plan_context: Option<&WeaverProcessInfo>, real_tables: &&HashMap<TableRef, TableSchema>, condition: &Option<Expr>, from_node: &QueryPlanNode) -> Result<Vec<KeyIndex>, WeaverError> {
         let mut applicable_keys =
             match condition
                 .as_ref()
-                .map(|condition| -> Result<VecDeque<&Key>, Error> {
+                .map(|condition| -> Result<VecDeque<&Key>, WeaverError> {
                     let condition: HashSet<ResolvedColumnRef> = condition
                         .columns()
                         .iter()
@@ -398,7 +398,7 @@ impl QueryPlanFactory {
             .collect::<Vec<_>>())
     }
 
-    fn table_schema_for_projection(&self, columns: &Vec<ResultColumn>, from_node: &QueryPlanNode) -> Result<TableSchema, Error> {
+    fn table_schema_for_projection(&self, columns: &Vec<ResultColumn>, from_node: &QueryPlanNode) -> Result<TableSchema, WeaverError> {
         Ok(if columns.len() == 1 && matches!(columns[0], ResultColumn::Wildcard) {
             from_node.schema.clone()
         } else {
@@ -448,8 +448,8 @@ impl QueryPlanFactory {
         plan_context: Option<&WeaverProcessInfo>,
         real_tables: &HashMap<TableRef, TableSchema>,
         join_clause: &JoinClause,
-    ) -> Result<QueryPlanNode, Error> {
-        error_span!("JOIN").in_scope(|| -> Result<QueryPlanNode, Error> {
+    ) -> Result<QueryPlanNode, WeaverError> {
+        error_span!("JOIN").in_scope(|| -> Result<QueryPlanNode, WeaverError> {
             let JoinClause {
                 left,
                 op,
@@ -496,7 +496,7 @@ impl QueryPlanFactory {
         cond: Option<&Expr>,
         involved_tables: &HashMap<TableRef, TableSchema>,
         ctx: Option<&WeaverProcessInfo>,
-    ) -> Result<Vec<KeyIndex>, Error> {
+    ) -> Result<Vec<KeyIndex>, WeaverError> {
         debug!("attempting to get key indices from key: {key:?} and cond: {cond:?}");
         match cond {
             None => Ok(vec![key.all()]),
@@ -568,7 +568,7 @@ impl QueryPlanFactory {
         &self,
         tb_ref: (Option<&str>, &str),
         ctx: Option<&WeaverProcessInfo>,
-    ) -> Result<TableRef, Error> {
+    ) -> Result<TableRef, WeaverError> {
         let in_use = ctx.and_then(|info| info.using.as_ref());
         trace!(
             "creating table ref from tb_ref {:?} and in_use {:?}",
@@ -577,7 +577,7 @@ impl QueryPlanFactory {
         );
         match tb_ref.0 {
             None => in_use
-                .ok_or(Error::UnQualifedTableWithoutInUseSchema)
+                .ok_or(WeaverError::UnQualifedTableWithoutInUseSchema)
                 .map(|schema| (schema.to_string(), tb_ref.1.to_string())),
             Some(schema) => Ok((schema.to_string(), tb_ref.1.to_string())),
         }
@@ -605,7 +605,7 @@ impl QueryPlanFactory {
         column_ref: &UnresolvedColumnRef,
         involved_tables: &HashMap<TableRef, TableSchema>,
         ctx: Option<&WeaverProcessInfo>,
-    ) -> Result<ResolvedColumnRef, Error> {
+    ) -> Result<ResolvedColumnRef, WeaverError> {
         match column_ref.as_tuple() {
             (None, None, col) => {
                 debug!("finding column ?.?.{col}");
@@ -616,13 +616,13 @@ impl QueryPlanFactory {
                     }
                 }
                 match positives.as_slice() {
-                    &[] => Err(Error::ColumnNotFound(col.to_string())),
+                    &[] => Err(WeaverError::ColumnNotFound(col.to_string())),
                     &[(schema, table)] => Ok(ResolvedColumnRef::new(
                         Identifier::new(schema),
                         Identifier::new(table),
                         Identifier::new(col),
                     )),
-                    slice => Err(Error::AmbiguousColumn {
+                    slice => Err(WeaverError::AmbiguousColumn {
                         col: col.to_string(),
                         positives: slice
                             .into_iter()
@@ -647,13 +647,13 @@ impl QueryPlanFactory {
                 }
 
                 match positives.as_slice() {
-                    &[] => Err(Error::ColumnNotFound(col.to_string())),
+                    &[] => Err(WeaverError::ColumnNotFound(col.to_string())),
                     &[(schema, table)] => Ok(ResolvedColumnRef::new(
                         Identifier::new(schema),
                         Identifier::new(table),
                         Identifier::new(col),
                     )),
-                    slice => Err(Error::AmbiguousColumn {
+                    slice => Err(WeaverError::AmbiguousColumn {
                         col: col.to_string(),
                         positives: slice
                             .into_iter()
@@ -695,7 +695,7 @@ pub fn to_col_ref(
 
 struct IdentifierResolver<'a, F>
 where
-    F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, Error> + 'a,
+    F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, WeaverError> + 'a,
 {
     in_use_schema: Option<Identifier>,
     aliases: HashMap<Identifier, (Identifier, Identifier)>,
@@ -705,7 +705,7 @@ where
 
 impl<'a, F> IdentifierResolver<'a, F>
 where
-    F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, Error> + 'a,
+    F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, WeaverError> + 'a,
 {
     fn new(in_use_schema: Option<Identifier>, resolver: F) -> Self {
         Self {
@@ -719,9 +719,9 @@ where
 
 impl<'a, F> VisitorMut for IdentifierResolver<'a, F>
 where
-    F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, Error> + 'a,
+    F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, WeaverError> + 'a,
 {
-    type Err = Error;
+    type Err = WeaverError;
 
     fn visit_column_ref_mut(&mut self, column: &mut ColumnRef) -> Result<(), Self::Err> {
         if let ColumnRef::Unresolved(ref unresolved) = column {
@@ -761,7 +761,7 @@ where
             } => {
                 let schema = schema
                     .as_ref()
-                    .ok_or_else(|| Error::UnQualifedTableWithoutInUseSchema)?;
+                    .ok_or_else(|| WeaverError::UnQualifedTableWithoutInUseSchema)?;
                 debug!("adding alias for {} -> {}.{}", alias, schema, table_name);
                 self.aliases
                     .insert(alias.clone(), (schema.clone(), table_name.clone()));

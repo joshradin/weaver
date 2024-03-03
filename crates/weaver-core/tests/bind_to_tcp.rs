@@ -5,10 +5,10 @@ use weaver_core::cnxn::stream::WeaverStream;
 use weaver_core::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use weaver_core::db::server::layers::packets::{DbReqBody, DbResp};
 use weaver_core::db::server::WeaverDb;
-use weaver_core::error::Error;
+use weaver_core::error::WeaverError;
 
 #[test]
-fn bind_to_tcp() -> Result<(), Error> {
+fn bind_to_tcp() -> Result<(), WeaverError> {
     tracing_subscriber::fmt()
         .with_max_level(LevelFilter::TRACE)
         .with_thread_ids(true)

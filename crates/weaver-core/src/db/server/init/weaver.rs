@@ -13,11 +13,11 @@ use crate::db::core::WeaverDbCore;
 use crate::db::server::layers::packets::DbReq;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::EngineKey;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
 use crate::storage::tables::table_schema::TableSchema;
 
-pub fn init_weaver_schema(core: &mut WeaverDbCore) -> Result<(), Error> {
+pub fn init_weaver_schema(core: &mut WeaverDbCore) -> Result<(), WeaverError> {
     let start = Instant::now();
     let span = info_span!("init-weaver-schema");
     let _enter = span.enter();
@@ -33,7 +33,7 @@ pub fn init_weaver_schema(core: &mut WeaverDbCore) -> Result<(), Error> {
     Ok(())
 }
 
-fn cost_table(db: &mut WeaverDbCore) -> Result<(), Error> {
+fn cost_table(db: &mut WeaverDbCore) -> Result<(), WeaverError> {
     db.open_table(
         &TableSchema::builder("weaver", "cost")
             .column("key", Type::String(32), true, None, None)?

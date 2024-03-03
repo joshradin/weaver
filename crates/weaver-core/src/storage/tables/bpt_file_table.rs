@@ -10,7 +10,7 @@ use crate::data::row::Row;
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, Table};
 use crate::dynamic_table_factory::DynamicTableFactory;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::devices::mmap_file::MMapFile;
@@ -40,7 +40,7 @@ impl DynamicTable for BptfTable {
         self.main_table.next_row_id()
     }
 
-    fn insert(&self, tx: &Tx, row: Row) -> Result<(), Error> {
+    fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         self.main_table.insert(tx, row)
     }
 
@@ -48,15 +48,15 @@ impl DynamicTable for BptfTable {
         &'table self,
         tx: &'tx Tx,
         key: &KeyIndex,
-    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         self.main_table.read(tx, key)
     }
 
-    fn update(&self, tx: &Tx, row: Row) -> Result<(), Error> {
+    fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         self.main_table.update(tx, row)
     }
 
-    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
+    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         self.main_table.delete(tx, key)
     }
 }
@@ -87,7 +87,7 @@ impl BptfTableFactory {
         }
     }
 
-    fn open(&self, schema: &TableSchema) -> Result<BptfTable, Error> {
+    fn open(&self, schema: &TableSchema) -> Result<BptfTable, WeaverError> {
         let file_location = self.base_dir.join(schema.schema()).join(schema.name());
         if let Some(parent) = file_location.parent() {
             std::fs::create_dir_all(parent)?;
@@ -124,7 +124,7 @@ impl Monitorable for BptfTableFactory {
 }
 
 impl DynamicTableFactory for BptfTableFactory {
-    fn open(&self, schema: &TableSchema, _core: &WeaverDbCore) -> Result<Table, Error> {
+    fn open(&self, schema: &TableSchema, _core: &WeaverDbCore) -> Result<Table, WeaverError> {
         self.open(schema).map(|s| Box::new(s) as Table)
     }
 }

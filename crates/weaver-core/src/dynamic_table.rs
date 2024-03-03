@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::data::row::Row;
 use crate::dynamic_table_factory::DynamicTableFactory;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::Monitorable;
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
@@ -47,28 +47,28 @@ pub trait DynamicTable: Monitorable + HasSchema + Send + Sync {
     fn rollback(&self, tx: &Tx) {}
 
     /// Create a row. Fails if row's primary key is already present
-    fn insert(&self, tx: &Tx, row: Row) -> Result<(), Error>;
+    fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError>;
 
     /// Get by a key
     fn read<'tx, 'table: 'tx>(
         &'table self,
         tx: &'tx Tx,
         key: &KeyIndex,
-    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error>;
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError>;
 
     /// Shortcut for all rows
     fn all<'tx, 'table: 'tx>(
         &'table self,
         tx: &'tx Tx,
-    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         self.read(tx, &self.schema().full_index()?)
     }
 
     /// Update an existing row. Fails if no row with primary key is already present
-    fn update(&self, tx: &Tx, row: Row) -> Result<(), Error>;
+    fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError>;
 
     /// Delete by key
-    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error>;
+    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError>;
 }
 
 pub trait HasSchema {

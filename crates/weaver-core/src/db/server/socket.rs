@@ -1,7 +1,7 @@
 use crate::cancellable_task::{CancellableTask, CancellableTaskHandle, Cancelled};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp, Packet, PacketId};
 use crate::db::server::processes::WeaverPid;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::storage::tables::shared_table::SharedTable;
 use crate::storage::tables::TableRef;
 use crate::tx::Tx;
@@ -54,14 +54,14 @@ impl DbSocket {
     }
 
     /// Communicate with the db
-    pub fn send(&self, req: impl Into<DbReq>) -> CancellableTaskHandle<Result<DbResp, Error>> {
+    pub fn send(&self, req: impl Into<DbReq>) -> CancellableTaskHandle<Result<DbResp, WeaverError>> {
         let clone = self.clone();
         let span = Span::current();
 
         CancellableTask::with_cancel(
-            move |req: DbReq, canceler| -> Result<Result<DbResp, Error>, Cancelled> {
+            move |req: DbReq, canceler| -> Result<Result<DbResp, WeaverError>, Cancelled> {
                 trace_span!("req-resp", pid = clone.shared.pid).in_scope(
-                    || -> Result<Result<DbResp, Error>, Cancelled> {
+                    || -> Result<Result<DbResp, WeaverError>, Cancelled> {
                         let mut req: DbReq = req.into();
                         req.span_mut().get_or_insert(span);
                         let packet = Packet::new(req.into());
@@ -94,7 +94,7 @@ impl DbSocket {
         .start(req.into())
     }
 
-    fn get_resp(&self, id: PacketId) -> Result<Packet<DbResp>, Error> {
+    fn get_resp(&self, id: PacketId) -> Result<Packet<DbResp>, WeaverError> {
         loop {
             match self.shared.receiver.try_recv() {
                 Ok(recv) => {
@@ -117,13 +117,13 @@ impl DbSocket {
                 }
                 Err(err) => {
                     warn!("channel returned error: {}", err);
-                    break Err(Error::RecvError(RecvError));
+                    break Err(WeaverError::RecvError(RecvError));
                 }
             }
         }
     }
 
-    pub fn get_table(&self, (schema, table): &TableRef) -> Result<SharedTable, Error> {
+    pub fn get_table(&self, (schema, table): &TableRef) -> Result<SharedTable, WeaverError> {
         let schema = schema.clone();
         let table = table.clone();
         let tx = Tx::default();
@@ -142,7 +142,7 @@ impl DbSocket {
             }))
             .join()??
         else {
-            return Err(Error::NoTableFound {
+            return Err(WeaverError::NoTableFound {
                 table: table.to_string(),
                 schema: schema.to_string(),
             });
@@ -151,25 +151,25 @@ impl DbSocket {
         Ok(table)
     }
 
-    pub fn start_tx(&self) -> Result<Tx, Error> {
+    pub fn start_tx(&self) -> Result<Tx, WeaverError> {
         let DbResp::Tx(tx) = self.send(DbReqBody::StartTransaction).join()?? else {
-            return Err(Error::NoTransaction);
+            return Err(WeaverError::NoTransaction);
         };
 
         Ok(tx)
     }
 
-    pub fn commit_tx(&self, tx: Tx) -> Result<(), Error> {
+    pub fn commit_tx(&self, tx: Tx) -> Result<(), WeaverError> {
         let DbResp::Ok = self.send(DbReqBody::Commit(tx)).join()?? else {
-            return Err(Error::NoTransaction);
+            return Err(WeaverError::NoTransaction);
         };
 
         Ok(())
     }
 
-    pub fn rollback_tx(&self, tx: Tx) -> Result<(), Error> {
+    pub fn rollback_tx(&self, tx: Tx) -> Result<(), WeaverError> {
         let DbResp::Ok = self.send(DbReqBody::Rollback(tx)).join()?? else {
-            return Err(Error::NoTransaction);
+            return Err(WeaverError::NoTransaction);
         };
 
         Ok(())

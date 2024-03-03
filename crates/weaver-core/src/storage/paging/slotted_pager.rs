@@ -13,7 +13,7 @@ use crate::common::linked_list;
 use parking_lot::{Mutex, RwLock};
 
 use crate::common::track_dirty::Mad;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::key::{KeyData, KeyDataRange};
 use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
@@ -76,7 +76,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     ///
     /// If present, `Ok(index)` is returned, and if not present `Err(index)` is returned, where the index
     /// is where the key data could be inserted to maintain sort order.
-    pub fn binary_search(&self, key_data: &KeyData) -> Result<Result<usize, usize>, Error> {
+    pub fn binary_search(&self, key_data: &KeyData) -> Result<Result<usize, usize>, WeaverError> {
         let mut l: usize = 0;
         let mut r: usize = self.count().checked_sub(1).unwrap_or(0);
 
@@ -107,7 +107,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Get a cell by key value
-    pub fn get(&self, key_data: &KeyData) -> Result<Option<Cell>, Error> {
+    pub fn get(&self, key_data: &KeyData) -> Result<Option<Cell>, WeaverError> {
         let index = self.binary_search(key_data)?;
         match index {
             Ok(index) => self.get_cell(index).map(Some),
@@ -121,7 +121,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Get cells within a range
-    pub fn get_range<I: Into<KeyDataRange>>(&self, key_data: I) -> Result<Vec<Cell>, Error> {
+    pub fn get_range<I: Into<KeyDataRange>>(&self, key_data: I) -> Result<Vec<Cell>, WeaverError> {
         if self.count() == 0 {
             return Ok(vec![]);
         }
@@ -156,10 +156,10 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
 
     /// Gets all the cells within this page
     #[inline]
-    pub fn all(&self) -> Result<Vec<Cell>, Error> {
+    pub fn all(&self) -> Result<Vec<Cell>, WeaverError> {
         self.get_range(..)
     }
-    fn get_slot_offset_from_cell_offset(&self, cell_offset: usize) -> Result<Option<usize>, Error> {
+    fn get_slot_offset_from_cell_offset(&self, cell_offset: usize) -> Result<Option<usize>, WeaverError> {
         for slot_offset in self.slots_offsets() {
             let cell_offset_f = self.read_ptr(slot_offset)?;
             if cell_offset == cell_offset_f {
@@ -185,7 +185,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Gets the given cell at a known offset
-    fn get_cell_at_offset(&self, offset: usize) -> Result<Cell, Error> {
+    fn get_cell_at_offset(&self, offset: usize) -> Result<Cell, WeaverError> {
         let slice = self.page.as_slice();
         let slice = Box::from(&slice[offset..]);
         match self.page_type() {
@@ -195,32 +195,32 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Gets the given cell at the slot index
-    fn get_cell(&self, slot: usize) -> Result<Cell, Error> {
+    fn get_cell(&self, slot: usize) -> Result<Cell, WeaverError> {
         let cell_ptr = self.get_cell_offset(slot)?;
         self.get_cell_at_offset(cell_ptr)
     }
 
     /// Gets the key data at the slot index
-    fn get_key_data(&self, slot: usize) -> Result<KeyData, Error> {
+    fn get_key_data(&self, slot: usize) -> Result<KeyData, WeaverError> {
         self.get_cell(slot).map(|cell| cell.key_data())
     }
 
     /// Gets the cell offset of a slot
-    fn get_cell_offset(&self, slot: usize) -> Result<usize, Error> {
+    fn get_cell_offset(&self, slot: usize) -> Result<usize, WeaverError> {
         let slot_offset = self.get_slot_offset(slot)?;
         self.read_ptr(slot_offset)
     }
 
     /// Gets the offset of the slot at the given index
-    fn get_slot_offset(&self, index: usize) -> Result<usize, Error> {
+    fn get_slot_offset(&self, index: usize) -> Result<usize, WeaverError> {
         if index >= self.count() {
-            return Err(Error::ReadDataError(ReadDataError::UnexpectedEof));
+            return Err(WeaverError::ReadDataError(ReadDataError::UnexpectedEof));
         }
         Ok(index * size_of::<u64>())
     }
 
     /// Reads a pointer (offset from page) at a given offset
-    fn read_ptr(&self, offset: usize) -> Result<usize, Error> {
+    fn read_ptr(&self, offset: usize) -> Result<usize, WeaverError> {
         if offset > self.page.body_len() - size_of::<u64>() {
             return Err(ReadDataError::NotEnoughSpace.into());
         }
@@ -231,17 +231,17 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
         ) as usize)
     }
 
-    fn assert_cell_type(&self, cell: &Cell) -> Result<(), Error> {
+    fn assert_cell_type(&self, cell: &Cell) -> Result<(), WeaverError> {
         match (cell, self.page_type()) {
             (Cell::Key(_), PageType::KeyValue) => {
-                return Err(Error::CellTypeMismatch {
+                return Err(WeaverError::CellTypeMismatch {
                     page_id: self.page_id(),
                     expected: PageType::KeyValue,
                     actual: PageType::Key,
                 });
             }
             (Cell::KeyValue(_), PageType::Key) => {
-                return Err(Error::CellTypeMismatch {
+                return Err(WeaverError::CellTypeMismatch {
                     page_id: self.page_id(),
                     expected: PageType::Key,
                     actual: PageType::KeyValue,
@@ -281,7 +281,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Gets the max key in this cell
-    pub fn max_key(&self) -> Result<Option<KeyData>, Error> {
+    pub fn max_key(&self) -> Result<Option<KeyData>, WeaverError> {
         if self.count() == 0 {
             return Ok(None);
         }
@@ -290,7 +290,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Gets the min key in this cell
-    pub fn min_key(&self) -> Result<Option<KeyData>, Error> {
+    pub fn min_key(&self) -> Result<Option<KeyData>, WeaverError> {
         if self.count() == 0 {
             return Ok(None);
         }
@@ -298,7 +298,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Gets the median key in this cell
-    pub fn median_key(&self) -> Result<Option<KeyData>, Error> {
+    pub fn median_key(&self) -> Result<Option<KeyData>, WeaverError> {
         let count = self.count();
         if count == 0 {
             return Ok(None);
@@ -308,7 +308,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Gets the range of the key data
-    pub fn key_range(&self) -> Result<KeyDataRange, Error> {
+    pub fn key_range(&self) -> Result<KeyDataRange, WeaverError> {
         let min = self
             .min_key()?
             .map(Bound::Included)
@@ -323,7 +323,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
 
 impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     /// Insert a cell into a slotted page. Must lock the cell
-    pub fn insert(&mut self, cell: Cell) -> Result<(), Error> {
+    pub fn insert(&mut self, cell: Cell) -> Result<(), WeaverError> {
         self.assert_cell_type(&cell)?;
         self.lock()?;
         let ref key_data = cell.key_data();
@@ -361,7 +361,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
 
     /// Locks this page, granting exclusive access to it. Required when performing insertions or deletions.
     /// Repeatedly locking the page has no effect once successful. Unlocked upon dropping
-    pub fn lock(&mut self) -> Result<(), Error> {
+    pub fn lock(&mut self) -> Result<(), WeaverError> {
         Ok(())
     }
 
@@ -371,7 +371,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     pub fn unlock(&mut self) {}
 
     /// Deletes the cell with a given key if present
-    pub fn delete(&mut self, key_data: &KeyData) -> Result<Option<Cell>, Error> {
+    pub fn delete(&mut self, key_data: &KeyData) -> Result<Option<Cell>, WeaverError> {
         if !self.contains(key_data) {
             return Ok(None);
         }
@@ -389,7 +389,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Drains the cells from this page that are within a given key data range
-    pub fn drain<I: Into<KeyDataRange>>(&mut self, key_data: I) -> Result<Vec<Cell>, Error> {
+    pub fn drain<I: Into<KeyDataRange>>(&mut self, key_data: I) -> Result<Vec<Cell>, WeaverError> {
         let range = key_data.into();
         let min = match &range.0 {
             Bound::Included(i) => match self.binary_search(i)? {
@@ -494,9 +494,9 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Frees the slot at the given offset
-    fn free_slot(&mut self, slot_offset: usize) -> Result<(), Error> {
+    fn free_slot(&mut self, slot_offset: usize) -> Result<(), WeaverError> {
         if slot_offset >= self.slot_ptr {
-            return Err(Error::WriteDataError(WriteDataError::InsufficientSpace));
+            return Err(WeaverError::WriteDataError(WriteDataError::InsufficientSpace));
         }
         let cell_ptr = self.read_ptr(slot_offset)?;
         let cell_len = self.get_cell_at_offset(cell_ptr)?.len();
@@ -532,9 +532,9 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Frees the slot at the given offset to an end slot, exclusuive
-    fn free_slot_chunk(&mut self, slot_offset: usize, end_slot_offset: usize) -> Result<(), Error> {
+    fn free_slot_chunk(&mut self, slot_offset: usize, end_slot_offset: usize) -> Result<(), WeaverError> {
         if slot_offset >= self.slot_ptr || slot_offset > end_slot_offset {
-            return Err(Error::WriteDataError(WriteDataError::InsufficientSpace));
+            return Err(WeaverError::WriteDataError(WriteDataError::InsufficientSpace));
         }
         let chunk_size = end_slot_offset - slot_offset;
         assert_eq!(
@@ -642,7 +642,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     }
 
     /// Writes a pointer (offset from page) at a given offset
-    fn write_ptr(&mut self, offset: usize, ptr: usize) -> Result<(), Error> {
+    fn write_ptr(&mut self, offset: usize, ptr: usize) -> Result<(), WeaverError> {
         if offset > self.page.body_len() - size_of::<u64>() {
             return Err(ReadDataError::NotEnoughSpace.into());
         }
@@ -692,10 +692,10 @@ impl<'a, P: PageMut<'a>> SlottedPageMut<'a, P> {
         make_slotted_mut(page)
     }
 
-    pub fn init(page: P, page_type: PageType) -> Result<Self, Error> {
+    pub fn init(page: P, page_type: PageType) -> Result<Self, WeaverError> {
         let mut slotted = Self::new(page);
         if slotted.header.page_type.is_some() {
-            return Err(Error::custom("slotted page already initialized"));
+            return Err(WeaverError::custom("slotted page already initialized"));
         }
         slotted.header.to_mut().set_page_type(page_type);
         Ok(slotted)
@@ -996,7 +996,7 @@ impl<P: Pager> SlottedPager<P> {
     }
 
     /// Gets the page by a given page_id
-    pub fn get(&self, id: PageId) -> Result<SlottedPage<P::Page<'_>>, Error> {
+    pub fn get(&self, id: PageId) -> Result<SlottedPage<P::Page<'_>>, WeaverError> {
         let lock = self.usage.lock().entry(id).or_default().clone();
         lock.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
             if v >= 0 {
@@ -1010,16 +1010,16 @@ impl<P: Pager> SlottedPager<P> {
                 "could not acquired slotted page {:?} with r access. (reads: {v})",
                 id
             );
-            Error::ReadDataError(ReadDataError::PageLocked(id))
+            WeaverError::ReadDataError(ReadDataError::PageLocked(id))
         })?;
 
         self.page_id_to_index
             .read()
             .get(&id)
-            .ok_or_else(|| Error::ReadDataError(ReadDataError::PageNotFound(id)))
+            .ok_or_else(|| WeaverError::ReadDataError(ReadDataError::PageNotFound(id)))
             .and_then(|index| {
                 Pager::get(self, *index)
-                    .map_err(|e| Error::caused_by(format!("could not read page {}", index), e))
+                    .map_err(|e| WeaverError::caused_by(format!("could not read page {}", index), e))
             })
             .map(|page| {
                 page.lock.set(lock).expect("lock should be empty");
@@ -1028,7 +1028,7 @@ impl<P: Pager> SlottedPager<P> {
     }
 
     /// Gets a mutable version of the page by a given page_id
-    pub fn get_mut(&self, id: PageId) -> Result<SlottedPageMut<P::PageMut<'_>>, Error> {
+    pub fn get_mut(&self, id: PageId) -> Result<SlottedPageMut<P::PageMut<'_>>, WeaverError> {
         let lock = self.usage.lock().entry(id).or_default().clone();
         lock.compare_exchange(0, -1, Ordering::SeqCst, Ordering::SeqCst)
             .map_err(|v| {
@@ -1036,16 +1036,16 @@ impl<P: Pager> SlottedPager<P> {
                     "could not acquired slotted page {:?} with r/w access. (reads: {})",
                     id, v
                 );
-                Error::ReadDataError(ReadDataError::PageLocked(id))
+                WeaverError::ReadDataError(ReadDataError::PageLocked(id))
             })?;
 
         self.page_id_to_index
             .read()
             .get(&id)
-            .ok_or_else(|| Error::ReadDataError(ReadDataError::PageNotFound(id)))
+            .ok_or_else(|| WeaverError::ReadDataError(ReadDataError::PageNotFound(id)))
             .and_then(|index| {
                 Pager::get_mut(self, *index)
-                    .map_err(|e| Error::caused_by(format!("could not read page {}", index), e))
+                    .map_err(|e| WeaverError::caused_by(format!("could not read page {}", index), e))
             })
             .map(|page| {
                 page.lock.set(lock).expect("lock should be empty");
@@ -1202,7 +1202,7 @@ impl<P: Pager> Pager for SlottedPager<P> {
         };
         let lock = self.usage.lock().entry(id).or_default().clone();
         lock.compare_exchange(0, -1, Ordering::SeqCst, Ordering::SeqCst)
-            .map_err(|v| Error::ReadDataError(ReadDataError::PageLocked(id)))
+            .map_err(|v| WeaverError::ReadDataError(ReadDataError::PageLocked(id)))
             .expect("could not secure");
         let _ = page.lock.set(lock);
         Ok((page, index))
@@ -1238,7 +1238,7 @@ mod tests {
     use tempfile::tempfile;
 
     use crate::data::values::DbVal;
-    use crate::error::Error;
+    use crate::error::WeaverError;
     use crate::key::KeyData;
     use crate::storage::cells::{Cell, KeyCell, PageId};
     use crate::storage::paging::file_pager::FilePager;
@@ -1333,7 +1333,7 @@ mod tests {
         assert!(
             matches!(
                 err,
-                Error::WriteDataError(WriteDataError::AllocationFailed { .. })
+                WeaverError::WriteDataError(WriteDataError::AllocationFailed { .. })
             ),
             "should be an allocation failed error: {err:?}"
         );

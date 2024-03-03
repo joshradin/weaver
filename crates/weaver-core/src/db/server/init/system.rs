@@ -14,12 +14,12 @@ use crate::db::server::socket::DbSocket;
 use crate::db::server::WeaverDb;
 use crate::db::SYSTEM_SCHEMA;
 use crate::dynamic_table::EngineKey;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::rows::OwnedRows;
 use crate::storage::tables::system_tables::{SystemTable, SYSTEM_TABLE_KEY};
 use crate::storage::tables::table_schema::TableSchema;
 
-pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
+pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), WeaverError> {
     let start = Instant::now();
     let span = info_span!("init-system-tables");
     let _enter = span.enter();
@@ -27,7 +27,7 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
     let connection = Arc::new(db.connect());
     let clone = connection.clone();
     connection
-        .send(DbReq::on_core(move |core, cancel| -> Result<(), Error> {
+        .send(DbReq::on_core(move |core, cancel| -> Result<(), WeaverError> {
             add_process_list(core, &clone)?;
             init_auth(core, &clone)?;
             Ok(())
@@ -42,7 +42,7 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), Error> {
     Ok(())
 }
 
-fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(), Error> {
+fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(), WeaverError> {
     let schema = TableSchema::builder(SYSTEM_SCHEMA, "processes")
         .column("pid", Type::Integer, true, None, None)?
         .column("user", Type::String(128), true, None, None)?
@@ -92,7 +92,7 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
     Ok(())
 }
 
-fn init_auth(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(), Error> {
+fn init_auth(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(), WeaverError> {
     let users = UserTable::default();
     core.add_table(users)?;
     Ok(())

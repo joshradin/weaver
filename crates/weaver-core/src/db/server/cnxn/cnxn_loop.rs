@@ -18,7 +18,7 @@ use crate::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use crate::db::server::layers::packets::{DbReqBody, DbResp, IntoDbResponse};
 use crate::db::server::processes::{ProcessState, WeaverProcessChild};
 use crate::db::server::socket::DbSocket;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::rows::Rows;
 use crate::tx::Tx;
 
@@ -28,7 +28,7 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
     mut child: WeaverProcessChild,
     cancel: &Receiver<Cancel>,
     span: &Span,
-) -> Result<(), Error> {
+) -> Result<(), WeaverError> {
     let socket = child.db().upgrade().unwrap().connect();
     let mut tx = Option::<Tx>::None;
     let mut rows = Option::<Box<dyn Rows>>::None;
@@ -74,14 +74,14 @@ fn handle_message<S: MessageStream + Send>(
     mut tx: &mut Option<Tx>,
     mut rows: &mut Option<Box<dyn Rows>>,
     span: &Span,
-) -> Result<bool, Error> {
+) -> Result<bool, WeaverError> {
     match message {
         Message::Req(req) => {
             trace!("Received req {:?}", req);
             child.set_state(ProcessState::Active);
 
             let mut send_request =
-                |body: DbReqBody, tx: &mut Option<Tx>| -> Result<RemoteDbResp, Error> {
+                |body: DbReqBody, tx: &mut Option<Tx>| -> Result<RemoteDbResp, WeaverError> {
                     let mut resp = socket.send((body, span.clone()));
                     resp.on_cancel(cancel.clone());
                     let resp = resp.join()?;
@@ -112,7 +112,7 @@ fn handle_message<S: MessageStream + Send>(
                     })
                 };
 
-            let resp: Result<RemoteDbResp, Error> = match req {
+            let resp: Result<RemoteDbResp, WeaverError> = match req {
                 RemoteDbReq::ConnectionInfo => {
                     child.set_info("Getting connection info");
                     Ok(RemoteDbResp::ConnectionInfo(child.info()))
@@ -178,7 +178,7 @@ fn handle_message<S: MessageStream + Send>(
         }
         _other => {
             error!("only requests allowed at this point");
-            return Err(Error::IoError(io::Error::new(
+            return Err(WeaverError::IoError(io::Error::new(
                 ErrorKind::Unsupported,
                 "unexpected message kind",
             ))

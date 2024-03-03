@@ -1,13 +1,13 @@
 //! Handshake between two connections
 
 use crate::cnxn::{Message, MessageStream};
-use crate::error::Error;
+use crate::error::WeaverError;
 use rand::Rng;
 use std::time::Duration;
 use tracing::{debug, error, info_span, instrument, span, trace, Level};
 
 /// The client connecting to a listener should be the handshake driver
-pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), Error> {
+pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), WeaverError> {
     let span = info_span!("client handshake");
     let _enter = span.enter();
 
@@ -33,12 +33,12 @@ pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), Error> {
     })
     else {
         error!("Response from server didn't match expected handshake form");
-        return Err(Error::HandshakeFailed);
+        return Err(WeaverError::HandshakeFailed);
     };
 
     if &nonce != &nonce_resp[..] {
         error!("Handshake response nonce was not equal");
-        return Err(Error::HandshakeFailed);
+        return Err(WeaverError::HandshakeFailed);
     }
 
     debug!("Client handshake completed");
@@ -49,7 +49,7 @@ pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), Error> {
 pub fn handshake_listener<T: MessageStream>(
     client: &mut T,
     timeout: Duration,
-) -> Result<(), Error> {
+) -> Result<(), WeaverError> {
     let span = info_span!("server handshake");
     let _enter = span.enter();
     debug!("Starting handshake from listener, waiting for client handshake request...");
@@ -61,7 +61,7 @@ pub fn handshake_listener<T: MessageStream>(
         }
     }) else {
         error!("Response from client didn't match expected handshake form");
-        return Err(Error::HandshakeFailed);
+        return Err(WeaverError::HandshakeFailed);
     };
 
     let ref resp = Message::Handshake { ack: true, nonce };

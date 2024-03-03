@@ -1,9 +1,11 @@
 use std::fmt::{Debug, Formatter, Pointer};
 use std::sync::Arc;
+use uuid::Uuid;
 
 use weaver_ast::ast::{Expr, JoinConstraint, JoinOperator};
 
 use crate::dynamic_table::HasSchema;
+use crate::error::WeaverError;
 use crate::queries::execution::strategies::join::JoinStrategy;
 use crate::queries::query_cost::Cost;
 use crate::rows::KeyIndex;
@@ -27,6 +29,7 @@ impl QueryPlan {
 
 
 pub struct QueryPlanNode {
+    id: Uuid,
     pub cost: Cost,
     pub rows: u64,
     pub kind: QueryPlanKind,
@@ -38,7 +41,8 @@ pub struct QueryPlanNode {
 impl Debug for QueryPlanNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("QueryPlanNode")
-            .field("cost", &self.cost)
+            .field("id", &self.id)
+            .field("cost", &self.cost())
             .field("rows", &self.rows)
             .field("kind", &self.kind)
             .field("cols", &self.schema().columns())
@@ -47,6 +51,10 @@ impl Debug for QueryPlanNode {
 }
 
 impl QueryPlanNode {
+
+    pub fn new(cost: Cost, rows: u64, kind: QueryPlanKind, schema: TableSchema, alias: Option<String>) -> Self {
+        Self { id: Uuid::new_v4(), cost, rows, kind, schema, alias }
+    }
     /// Tries to find the plan node with a given alias. Aliases are shadowed.
     pub fn get_alias(&self, alias: impl AsRef<str>) -> Option<&QueryPlanNode> {
         let alias = alias.as_ref();
@@ -67,11 +75,39 @@ impl QueryPlanNode {
     pub fn cost(&self) -> f64 {
         self.cost.get_cost(self.rows as usize)
     }
+
+    /// Gets the uuid for this query plan
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
+
 }
 
 impl HasSchema for QueryPlanNode {
     fn schema(&self) -> &TableSchema {
         &self.schema
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct QueryPlanNodeBuilder {
+    cost: Option<Cost>,
+    rows: Option<u64>,
+    kind: Option<QueryPlanKind>,
+    /// The table schema at this point
+    schema: Option<TableSchema>,
+    alias: Option<String>,
+}
+
+impl QueryPlanNodeBuilder {
+
+    /// Creates a new query plan node builder
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn build(&mut self) -> Result<QueryPlanNode, WeaverError> {
+
     }
 }
 

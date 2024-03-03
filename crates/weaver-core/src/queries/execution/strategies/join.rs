@@ -14,7 +14,7 @@ use crate::data::row::Row;
 use crate::data::values::DbVal;
 use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::Table;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::key::KeyData;
 use crate::queries::execution::strategies::Strategy;
 use crate::queries::query_cost::Cost;
@@ -30,7 +30,7 @@ pub trait JoinStrategy: Strategy {
     fn join_cost(&self, join_parameters: &JoinClause) -> Option<Cost>;
 
     /// Attempts to perform a join
-    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r>>, Error>;
+    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r>>, WeaverError>;
 }
 
 impl Debug for dyn JoinStrategy {
@@ -91,7 +91,7 @@ impl JoinStrategySelector {
     pub fn get_strategies_for_join(
         &self,
         join: &JoinClause,
-    ) -> Result<Vec<Arc<dyn JoinStrategy>>, Error> {
+    ) -> Result<Vec<Arc<dyn JoinStrategy>>, WeaverError> {
         let mut vec = self
             .strategies
             .iter()
@@ -99,7 +99,7 @@ impl JoinStrategySelector {
             .filter_map(|strat| strat.join_cost(join).map(|cost| (cost, strat)))
             .collect::<Vec<_>>();
         if vec.is_empty() {
-            return Err(Error::NoStrategyForJoin(join.clone()));
+            return Err(WeaverError::NoStrategyForJoin(join.clone()));
         }
         vec.sort_by_key(|c| c.0);
         Ok(vec.into_iter().map(|(_, strat)| strat.clone()).collect())
@@ -148,7 +148,7 @@ impl JoinStrategy for HashJoinTableStrategy {
         Some(Cost::new(1.1, 1))
     }
 
-    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r>>, Error> {
+    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r>>, WeaverError> {
         let Expr::Binary {
             left,
             op: BinaryOp::Eq,

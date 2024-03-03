@@ -14,7 +14,7 @@ use weaver_core::cnxn::interprocess::LocalSocketStream;
 use weaver_core::common::dual_result::DualResult;
 use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::WeaverDb;
-use weaver_core::error::Error;
+use weaver_core::error::WeaverError;
 use weaver_core::monitoring::{Monitor, Monitorable};
 
 pub fn start_server(

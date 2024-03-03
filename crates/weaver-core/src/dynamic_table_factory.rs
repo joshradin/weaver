@@ -1,12 +1,12 @@
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::Table;
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::tables::table_schema::TableSchema;
 use std::fmt::{Debug, Formatter};
 
 pub trait DynamicTableFactory: Send + Sync + Monitorable {
-    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, Error>;
+    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, WeaverError>;
 }
 
 /// A delegated dynamic table that allows for object safe access over arbitrary types
@@ -21,7 +21,7 @@ impl Monitorable for DynamicTableFactoryDelegate {
 }
 
 impl DynamicTableFactory for DynamicTableFactoryDelegate {
-    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, Error> {
+    fn open(&self, schema: &TableSchema, core: &WeaverDbCore) -> Result<Table, WeaverError> {
         self.table_factory.open(schema, core)
     }
 }

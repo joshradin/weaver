@@ -2,7 +2,7 @@
 
 use crate::data::row::Row;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, Table};
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::{Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::table_schema::TableSchema;
@@ -41,7 +41,7 @@ impl DynamicTable for SharedTable {
         self.0.next_row_id()
     }
 
-    fn insert(&self, tx: &Tx, row: Row) -> Result<(), Error> {
+    fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         self.0.insert(tx, row)
     }
 
@@ -49,15 +49,15 @@ impl DynamicTable for SharedTable {
         &'table self,
         tx: &'tx Tx,
         key: &KeyIndex,
-    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, Error> {
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         self.0.read(tx, key)
     }
 
-    fn update(&self, tx: &Tx, row: Row) -> Result<(), Error> {
+    fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         self.0.update(tx, row)
     }
 
-    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, Error> {
+    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         self.0.delete(tx, key)
     }
 }

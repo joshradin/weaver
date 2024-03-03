@@ -4,7 +4,7 @@ use crate::access_control::auth::error::{AuthInitError, AuthInitErrorKind};
 use crate::access_control::auth::secured::Secured;
 use crate::common::stream_support::Stream;
 use crate::db::server::cnxn::transport::Transport;
-use crate::error::Error;
+use crate::error::WeaverError;
 use openssl::pkey::{PKey, Private};
 use openssl::rsa::Rsa;
 use openssl::ssl::{HandshakeError, NameType, SslAcceptor, SslMethod};
@@ -20,7 +20,7 @@ pub struct AuthContext {
 
 impl AuthContext {
     /// Creates a ssl protected stream
-    pub fn stream<S: Stream + Debug>(&self, stream: S) -> Result<Secured<S>, Error> {
+    pub fn stream<S: Stream + Debug>(&self, stream: S) -> Result<Secured<S>, WeaverError> {
         trace!("sending stream to acceptor (stream: {stream:?}");
         debug_span!("ssl accept stream")
             .in_scope(|| Ok(self.acceptor.accept(stream).map(Secured::wrap)?))
@@ -29,7 +29,7 @@ impl AuthContext {
     pub fn secure_transport<S: Stream + Debug>(
         &self,
         transport: &mut Option<Transport<S>>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), WeaverError> {
         if let Some(Transport::Insecure(_)) = transport.as_ref() {
             let mut taken = std::mem::replace(transport, Option::None);
             trace!("took insecure transport");

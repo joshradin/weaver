@@ -11,7 +11,7 @@ use std::thread::JoinHandle;
 use crossbeam::channel::{bounded, Receiver, SendError, Sender};
 use tracing::Span;
 
-use crate::error::Error;
+use crate::error::WeaverError;
 
 /// A task that can be cancelled
 ///
@@ -73,7 +73,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
         self,
         input: I,
         name: String,
-    ) -> Result<CancellableTaskHandle<O>, Error> {
+    ) -> Result<CancellableTaskHandle<O>, WeaverError> {
         let CancellableTask {
             cancel_send,
             cancel_receiver: _,
@@ -301,13 +301,13 @@ impl<O> CancellableTaskHandle<O> {
         });
     }
 
-    pub fn join(self) -> Result<O, Error> {
+    pub fn join(self) -> Result<O, WeaverError> {
         match { self }
             .handle
             .take()
             .unwrap()
             .join()
-            .map_err(|e| Error::ThreadPanicked)
+            .map_err(|e| WeaverError::ThreadPanicked)
         {
             Ok(ok) => Ok(ok?),
             Err(err) => Err(err),
@@ -348,7 +348,7 @@ mod tests {
     use std::time::Duration;
 
     use crate::cancellable_task::{Cancel, CancellableTask, Cancelled};
-    use crate::error::Error;
+    use crate::error::WeaverError;
 
     /// Join a non-cancelled task
     #[test]
@@ -368,7 +368,7 @@ mod tests {
         })
         .start(0);
         cancellable.cancel().expect("could not cancel");
-        assert!(matches!(cancellable.join(), Err(Error::TaskCancelled)));
+        assert!(matches!(cancellable.join(), Err(WeaverError::TaskCancelled)));
     }
 
     /// Cancel a task using a spawned canceller from a separate thread
@@ -387,7 +387,7 @@ mod tests {
         })
         .join()
         .unwrap();
-        assert!(matches!(cancellable.join(), Err(Error::TaskCancelled)));
+        assert!(matches!(cancellable.join(), Err(WeaverError::TaskCancelled)));
     }
 
     /// Cancel long loop
@@ -410,7 +410,7 @@ mod tests {
         let handle = cancellable.start(100);
         sleep(Duration::from_secs(5));
         handle.cancel().expect("could not cancel");
-        assert!(matches!(handle.join(), Err(Error::TaskCancelled)));
+        assert!(matches!(handle.join(), Err(WeaverError::TaskCancelled)));
     }
 
     /// Cancel long loop
@@ -440,7 +440,7 @@ mod tests {
         let handle = cancellable.start(100);
         sleep(Duration::from_secs(5));
         handle.cancel().expect("could not cancel");
-        assert!(matches!(handle.join(), Err(Error::TaskCancelled)));
+        assert!(matches!(handle.join(), Err(WeaverError::TaskCancelled)));
     }
 
     #[test]

@@ -18,7 +18,7 @@ use crate::data::serde::{deserialize_data_untyped, serialize_data_untyped};
 use crate::data::types::Type;
 use crate::data::values::DbVal;
 use crate::dynamic_table::{Col, DynamicTable, EngineKey, ROW_ID_COLUMN};
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::key::KeyData;
 use crate::rows::KeyIndex;
 use crate::storage::tables::in_memory_table::IN_MEMORY_KEY;
@@ -36,11 +36,11 @@ pub struct TableSchema {
 }
 
 impl TableSchema {
-    pub fn get_key(&self, key_name: &str) -> Result<&Key, Error> {
+    pub fn get_key(&self, key_name: &str) -> Result<&Key, WeaverError> {
         self.keys
             .iter()
             .find(|key| key.name() == key_name)
-            .ok_or(Error::BadKeyName(key_name.to_string()))
+            .ok_or(WeaverError::BadKeyName(key_name.to_string()))
     }
     pub fn builder(schema: impl AsRef<str>, name: impl AsRef<str>) -> TableSchemaBuilder {
         TableSchemaBuilder::new(schema, name)
@@ -71,7 +71,7 @@ impl TableSchema {
     }
 
     /// Add a system column
-    pub fn add_sys_column(&mut self, column_definition: ColumnDefinition) -> Result<(), Error> {
+    pub fn add_sys_column(&mut self, column_definition: ColumnDefinition) -> Result<(), WeaverError> {
         Ok(self.sys_columns.push(column_definition))
     }
 
@@ -79,9 +79,9 @@ impl TableSchema {
     ///
     /// # Error
     /// Returns an error if `index >= sys_columns.len()`
-    pub fn remove_sys_column(&mut self, index: usize) -> Result<(), Error> {
+    pub fn remove_sys_column(&mut self, index: usize) -> Result<(), WeaverError> {
         if index >= self.sys_columns.len() {
-            return Err(Error::OutOfRange);
+            return Err(WeaverError::OutOfRange);
         }
         self.sys_columns.remove(index);
         Ok(())
@@ -124,18 +124,18 @@ impl TableSchema {
     }
 
     /// Gets the primary key of this table
-    pub fn primary_key(&self) -> Result<&Key, Error> {
+    pub fn primary_key(&self) -> Result<&Key, WeaverError> {
         self.keys
             .iter()
             .find(|key| key.primary())
             .or_else(|| self.keys.iter().find(|key| key.primary_eligible()))
-            .ok_or(Error::NoPrimaryKey)
+            .ok_or(WeaverError::NoPrimaryKey)
     }
 
     /// Gets the full index.
     ///
     /// This is equivalent to a full range search over the primary key.
-    pub fn full_index(&self) -> Result<KeyIndex, Error> {
+    pub fn full_index(&self) -> Result<KeyIndex, WeaverError> {
         self.primary_key().map(|key| KeyIndex::all(key.name()))
     }
 
@@ -145,7 +145,7 @@ impl TableSchema {
     }
 
     /// Decodes a row
-    pub fn decode(&self, bytes: &[u8]) -> Result<OwnedRow, Error> {
+    pub fn decode(&self, bytes: &[u8]) -> Result<OwnedRow, WeaverError> {
         deserialize_data_untyped(bytes, self.all_columns().iter().map(|col| col.data_type))
             .map(|vals| Row::from(vals).to_owned())
             .map_err(|e| e.into())
@@ -165,14 +165,14 @@ impl TableSchema {
         mut row: Row<'a>,
         tx: &Tx,
         table: &T,
-    ) -> Result<Row<'a>, Error> {
+    ) -> Result<Row<'a>, WeaverError> {
         trace!("validating: {:?}", row);
         if row.len() != self.columns().len() {
             warn!(
                 "row {row:?} does match public columns {:?}",
                 self.columns().iter().map(|c| &c.name).collect::<Vec<_>>()
             );
-            return Err(Error::BadColumnCount {
+            return Err(WeaverError::BadColumnCount {
                 expected: self.columns().len(),
                 actual: row.len(),
             });
@@ -306,13 +306,13 @@ impl ColumnDefinition {
         non_null: bool,
         default_value: impl Into<Option<DbVal>>,
         auto_increment: impl Into<Option<i64>>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, WeaverError> {
         let name = name.as_ref().to_string();
-        (|| -> Result<Self, Error> {
+        (|| -> Result<Self, WeaverError> {
             let auto_increment = auto_increment.into();
             if let Some(ref auto_increment) = auto_increment {
                 if data_type != Type::Integer {
-                    return Err(Error::IllegalAutoIncrement {
+                    return Err(WeaverError::IllegalAutoIncrement {
                         reason: "only number types can be auto incremented".to_string(),
                     });
                 }
@@ -321,11 +321,11 @@ impl ColumnDefinition {
             let default_value = default_value.into();
             if let Some(ref default) = default_value {
                 if auto_increment.is_some() {
-                    return Err(Error::IllegalAutoIncrement {
+                    return Err(WeaverError::IllegalAutoIncrement {
                         reason: "can not specify both auto increment and default value".to_string(),
                     });
                 } else if !data_type.validate(default) {
-                    return Err(Error::TypeError {
+                    return Err(WeaverError::TypeError {
                         expected: data_type,
                         actual: default.clone(),
                     });
@@ -340,7 +340,7 @@ impl ColumnDefinition {
                 auto_increment,
             })
         })()
-        .map_err(|e| Error::IllegalColumnDefinition {
+        .map_err(|e| WeaverError::IllegalColumnDefinition {
             col: name,
             reason: Box::new(e),
         })
@@ -365,9 +365,9 @@ impl ColumnDefinition {
     }
 
     /// Validates a value
-    pub fn validate(&self, value: &mut Cow<DbVal>) -> Result<(), Error> {
+    pub fn validate(&self, value: &mut Cow<DbVal>) -> Result<(), WeaverError> {
         if !self.data_type().validate(value) {
-            return Err(Error::TypeError {
+            return Err(WeaverError::TypeError {
                 expected: self.data_type.clone(),
                 actual: (&**value).clone(),
             });
@@ -450,9 +450,9 @@ impl Key {
         non_null: bool,
         unique: bool,
         is_primary: bool,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, WeaverError> {
         if is_primary && !(unique && non_null) {
-            return Err(Error::PrimaryKeyMustBeUniqueAndNonNull);
+            return Err(WeaverError::PrimaryKeyMustBeUniqueAndNonNull);
         }
 
         Ok(Self {
@@ -523,7 +523,7 @@ impl TableSchemaBuilder {
         non_null: bool,
         default_value: impl Into<Option<DbVal>>,
         auto_increment: impl Into<Option<i64>>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, WeaverError> {
         self.columns.push(ColumnDefinition::new(
             name,
             data_type,
@@ -540,7 +540,7 @@ impl TableSchemaBuilder {
     }
 
     /// Sets the primary key
-    pub fn primary(mut self, cols: &[&str]) -> Result<Self, Error> {
+    pub fn primary(mut self, cols: &[&str]) -> Result<Self, WeaverError> {
         self.keys.push(Key::new(
             "PRIMARY",
             cols.into_iter().map(ToString::to_string).collect(),
@@ -553,12 +553,12 @@ impl TableSchemaBuilder {
     }
 
     /// Sets the primary key
-    pub fn index(mut self, name: &str, cols: &[&str], unique: bool) -> Result<Self, Error> {
+    pub fn index(mut self, name: &str, cols: &[&str], unique: bool) -> Result<Self, WeaverError> {
         let non_null = cols.iter().try_fold(true, |accum, col| {
             if let Some(col) = self.columns.iter().find(|column| &column.name == col) {
                 Ok(col.non_null && accum)
             } else {
-                Err(Error::ColumnNotFound(col.to_string()))
+                Err(WeaverError::ColumnNotFound(col.to_string()))
             }
         })?;
 
@@ -584,7 +584,7 @@ impl TableSchemaBuilder {
         self.engine(EngineKey::new(IN_MEMORY_KEY))
     }
 
-    pub fn build(self) -> Result<TableSchema, Error> {
+    pub fn build(self) -> Result<TableSchema, WeaverError> {
         let mut columns = self.columns;
         let mut sys_columns = vec![];
         let mut keys = self.keys;

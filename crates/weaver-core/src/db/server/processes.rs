@@ -16,7 +16,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, error_span, info, span, Level};
 
-use crate::error::Error;
+use crate::error::WeaverError;
 
 pub type WeaverPid = u32;
 
@@ -36,7 +36,7 @@ pub struct WeaverProcess {
     state: Arc<RwLock<ProcessState>>,
     info: Arc<RwLock<String>>,
     kill_channel: Sender<Kill>,
-    handle: OnceLock<CancellableTaskHandle<Result<(), Error>>>,
+    handle: OnceLock<CancellableTaskHandle<Result<(), WeaverError>>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -84,7 +84,7 @@ impl WeaverProcess {
         )
     }
 
-    fn set_handle(&mut self, join_handle: CancellableTaskHandle<Result<(), Error>>) {
+    fn set_handle(&mut self, join_handle: CancellableTaskHandle<Result<(), WeaverError>>) {
         let _ = self.handle.set(join_handle);
     }
 
@@ -101,26 +101,26 @@ impl WeaverProcess {
         }
     }
 
-    pub fn kill(mut self) -> Result<(), Error> {
+    pub fn kill(mut self) -> Result<(), WeaverError> {
         self.handle
             .take()
-            .ok_or(Error::ProcessFailed(self.shared.pid))
+            .ok_or(WeaverError::ProcessFailed(self.shared.pid))
             .and_then(|t| match t.cancel() {
                 Ok(ok) => Ok(ok),
-                Err(e) => Err(Error::ProcessFailed(self.shared.pid)),
+                Err(e) => Err(WeaverError::ProcessFailed(self.shared.pid)),
             })
     }
 
-    pub fn join(mut self) -> Result<(), Error> {
+    pub fn join(mut self) -> Result<(), WeaverError> {
         self.handle
             .take()
-            .ok_or(Error::ProcessFailed(self.shared.pid))
+            .ok_or(WeaverError::ProcessFailed(self.shared.pid))
             .and_then(|t| match t.join() {
                 Ok(ok) => match ok {
                     Ok(ok) => Ok(ok),
-                    Err(err) => Err(Error::TaskCancelled),
+                    Err(err) => Err(WeaverError::TaskCancelled),
                 },
-                Err(_) => Err(Error::ProcessFailed(self.shared.pid)),
+                Err(_) => Err(WeaverError::ProcessFailed(self.shared.pid)),
             })
     }
 }
@@ -248,8 +248,8 @@ impl ProcessManager {
     pub fn start(
         &mut self,
         user: &User,
-        func: CancellableTask<WeaverProcessChild, Result<(), Error>>,
-    ) -> Result<WeaverPid, Error> {
+        func: CancellableTask<WeaverProcessChild, Result<(), WeaverError>>,
+    ) -> Result<WeaverPid, WeaverError> {
         let pid = self.next_pid.fetch_add(1, Ordering::SeqCst);
 
         let (mut parent, child) = WeaverProcess::new(pid, user, self.weak.clone());

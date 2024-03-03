@@ -6,7 +6,7 @@ use weaver_core::data::values::DbVal;
 
 use weaver_core::db::core::WeaverDbCore;
 use weaver_core::dynamic_table::DynamicTable;
-use weaver_core::error::Error;
+use weaver_core::error::WeaverError;
 use weaver_core::rows::Rows;
 use weaver_core::storage::tables::table_schema::TableSchema;
 

@@ -9,7 +9,7 @@ use crate::data::types::Type;
 use crate::data::values::DbVal;
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{DynamicTable, EngineKey};
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
@@ -27,7 +27,7 @@ use crate::tx::Tx;
 /// 3. Create the `weaver.tables` table with a stored table schema within this program.
 /// 4. Insert `weaver.schemata` and `weaver.tables` entries into `weaver.tables` with protected flag on
 ///
-pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<(), Error> {
+pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<(), WeaverError> {
     let span = error_span!("bootstrap");
     let _enter = span.enter();
     let ref tx = Tx::default(); // base transaction
@@ -70,7 +70,7 @@ pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<()
 }
 
 /// The `weaver.schemata` schema
-fn weaver_schemata_schema() -> Result<TableSchema, Error> {
+fn weaver_schemata_schema() -> Result<TableSchema, WeaverError> {
     TableSchema::builder("weaver", "schemata")
         .column("id", Type::Integer, true, None, 1)?
         .column("name", Type::String(256), true, None, None)?
@@ -80,7 +80,7 @@ fn weaver_schemata_schema() -> Result<TableSchema, Error> {
 }
 
 /// The `weaver.tables` schema
-fn weaver_tables_schema() -> Result<TableSchema, Error> {
+fn weaver_tables_schema() -> Result<TableSchema, WeaverError> {
     TableSchema::builder("weaver", "tables")
         .column("id", Type::Integer, true, None, 1)?
         .column("schema_id", Type::Integer, true, None, None)?
@@ -96,7 +96,7 @@ fn weaver_tables_schema() -> Result<TableSchema, Error> {
 mod tests {
     use crate::db::core::bootstrap::weaver_tables_schema;
     use crate::db::core::{bootstrap, WeaverDbCore};
-    use crate::error::Error;
+    use crate::error::WeaverError;
 
     #[test]
     fn can_create_weaver_tables_schema() {
@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bootstrap() -> Result<(), Error> {
+    fn test_bootstrap() -> Result<(), WeaverError> {
         let (temp, mut core) = WeaverDbCore::in_temp_dir()?;
         bootstrap(&mut core, &temp.path().join("weaver"))?;
 

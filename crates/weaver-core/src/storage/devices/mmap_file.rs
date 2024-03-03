@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use memmap2::MmapMut;
 
-use crate::error::Error;
+use crate::error::WeaverError;
 use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::devices::{StorageDevice, StorageDeviceMonitor};
 
@@ -21,7 +21,7 @@ pub struct MMapFile {
 }
 
 impl MMapFile {
-    pub fn with_file(file: File) -> Result<Self, Error> {
+    pub fn with_file(file: File) -> Result<Self, WeaverError> {
         unsafe {
             let mmap = MmapMut::map_mut(&file)?;
             Ok(Self {

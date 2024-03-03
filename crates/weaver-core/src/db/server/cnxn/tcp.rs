@@ -14,14 +14,14 @@ use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::transport::Transport;
 use crate::cnxn::{stream, WeaverStreamListener};
 use crate::db::server::WeakWeaverDb;
-use crate::error::Error;
+use crate::error::WeaverError;
 
 impl WeaverStream<TcpStream> {
     /// Connect to a tcp stream
     pub fn connect<A: ToSocketAddrs>(
         socket_addr: A,
         login_context: LoginContext,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, WeaverError> {
         Self::connect_timeout(socket_addr, Duration::MAX, login_context)
     }
 
@@ -30,7 +30,7 @@ impl WeaverStream<TcpStream> {
         socket_addr: A,
         timeout: Duration,
         login_context: LoginContext,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, WeaverError> {
         let connected = {
             let mut iter = socket_addr.to_socket_addrs()?;
             let mut found_stream = None;
@@ -41,7 +41,7 @@ impl WeaverStream<TcpStream> {
                     break;
                 }
             }
-            found_stream.ok_or(Error::IoError(io::Error::new(
+            found_stream.ok_or(WeaverError::IoError(io::Error::new(
                 ErrorKind::NotConnected,
                 "could not connect to socket addr",
             )))?
@@ -67,14 +67,14 @@ pub struct WeaverTcpListener {
 
 impl WeaverTcpListener {
     /// Bind a listener to a [`WeakWeaverDb`](WeakWeaverDb)
-    pub fn bind<A: ToSocketAddrs>(addr: A, weak: WeakWeaverDb) -> Result<Self, Error> {
+    pub fn bind<A: ToSocketAddrs>(addr: A, weak: WeakWeaverDb) -> Result<Self, WeaverError> {
         let tcp_listener = TcpListener::bind(addr)?;
         debug!("bound tcp listener to {:?}", tcp_listener.local_addr());
         Ok(Self { tcp_listener, weak })
     }
 
     /// Gets the local address of this listener
-    pub fn local_addr(&self) -> Result<SocketAddr, Error> {
+    pub fn local_addr(&self) -> Result<SocketAddr, WeaverError> {
         Ok(self.tcp_listener.local_addr()?)
     }
 }
@@ -83,10 +83,10 @@ impl WeaverStreamListener for WeaverTcpListener {
     type Stream = TcpStream;
 
     /// Accepts an incoming connection
-    fn accept(&self) -> Result<WeaverStream<TcpStream>, Error> {
+    fn accept(&self) -> Result<WeaverStream<TcpStream>, WeaverError> {
         let (mut stream, socket_addr) = self.tcp_listener.accept()?;
 
-        let mut db = self.weak.upgrade().ok_or(Error::NoCoreAvailable)?;
+        let mut db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
 
         let mut socket = WeaverStream::new(
             Some(socket_addr),

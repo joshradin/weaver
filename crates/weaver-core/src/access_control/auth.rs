@@ -32,7 +32,7 @@ pub mod handshake {
     use crate::db::server::cnxn::RemoteDbResp;
     use crate::db::server::layers::packets::{DbReqBody, DbResp};
     use crate::db::server::socket::DbSocket;
-    use crate::error::Error;
+    use crate::error::WeaverError;
     use crate::rows::Rows;
     use weaver_ast::ast::{BinaryOp, Query};
 
@@ -41,7 +41,7 @@ pub mod handshake {
         mut stream: WeaverStream<T>,
         auth_context: &AuthContext,
         db_socket: &DbSocket,
-    ) -> Result<WeaverStream<T>, Error> {
+    ) -> Result<WeaverStream<T>, WeaverError> {
         error_span!("server-auth").in_scope(|| {
             debug!(
                 "performing server-side authentication of peer {:?}",
@@ -60,7 +60,7 @@ pub mod handshake {
             let resp = db_socket
                 .send((tx, query))
                 .join()
-                .map_err(|e| Error::ThreadPanicked)??
+                .map_err(|e| WeaverError::ThreadPanicked)??
                 .to_result();
             debug!("resp={resp:?}");
             let resp = resp?;
@@ -72,7 +72,7 @@ pub mod handshake {
                     "user query was empty, no user found with name {:?}",
                     login_ctx.user
                 );
-                return Err(Error::custom("no user found"));
+                return Err(WeaverError::custom("no user found"));
             };
             debug!("row = {row:?}");
             let auth_string = &row[2];
@@ -96,13 +96,13 @@ pub mod handshake {
     pub fn client_auth<T: Stream>(
         stream: WeaverStream<T>,
         login_context: LoginContext,
-    ) -> Result<WeaverStream<T>, Error> {
+    ) -> Result<WeaverStream<T>, WeaverError> {
         error_span!("client-auth").in_scope(|| {
             debug!("performing client side authentication");
             debug!("securing client-side stream...");
             let remote_host = stream
                 .peer_addr()
-                .ok_or(Error::NoHostName)
+                .ok_or(WeaverError::NoHostName)
                 .map(|addr| addr.ip().to_string())?;
             debug!("using remote host: {:?}", remote_host);
 
