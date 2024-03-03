@@ -236,6 +236,37 @@ impl TableSchema {
             .collect::<Row>();
         KeyData::from(row)
     }
+
+    /// Join two table schemas, one after eachother
+    pub fn join(&self, other: &Self) -> TableSchema {
+        let mut ret = TableSchema::builder("<query>", "<join>");
+        let left_columns = self.columns();
+        let right_columns = other.columns();
+
+        for column in left_columns {
+            if right_columns.iter().any(|c| c.name() == column.name()) {
+                let mut col = column.clone();
+                col.name = format!("{}.{}", self.name, col.name);
+                ret = ret.column_definition(col);
+            } else {
+                ret = ret.column_definition(column.clone())
+            }
+        }
+
+        for column in right_columns {
+            if left_columns.iter().any(|c| c.name() == column.name()) {
+                let mut col = column.clone();
+                col.name = format!("{}.{}", other.name, col.name);
+                ret = ret.column_definition(col);
+            } else {
+                ret = ret.column_definition(column.clone())
+            }
+        }
+
+
+        ret.build().unwrap()
+    }
+
 }
 
 impl ToSql for TableSchema {

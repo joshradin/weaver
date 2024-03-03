@@ -51,10 +51,6 @@ visit_mut! {
             offset,
         } = select;
 
-        columns.iter_mut().try_for_each(|col| {
-            visitor.visit_result_column_mut(col)
-        })?;
-
         if let Some(from) = from {
             visitor.visit_from_clause_mut(from)?;
         }
@@ -63,6 +59,9 @@ visit_mut! {
             visitor.visit_expr_mut(from)?;
         }
 
+        columns.iter_mut().try_for_each(|col| {
+            visitor.visit_result_column_mut(col)
+        })?;
 
         Ok(())
     }

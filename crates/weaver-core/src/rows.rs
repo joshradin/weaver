@@ -81,6 +81,18 @@ pub trait Rows<'t> {
             _lf: PhantomData,
         }
     }
+
+    fn map_owned<F: Fn(Row<'t>) -> OwnedRow>(self, callback: F) -> MappedOwnedRows<'t, Self, F>
+        where
+            Self: Sized,
+    {
+        MappedOwnedRows {
+            inner: self,
+            mapper: callback,
+            _lf: PhantomData,
+        }
+    }
+
     fn into_iter(self) -> OwnedRows
     where
         Self: Sized,
@@ -104,7 +116,9 @@ pub trait Rows<'t> {
     }
 }
 
-impl Debug for Box<dyn for<'a> Rows<'a> + Send> {
+
+
+impl<'a> Debug for dyn Rows<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BoxedRow").finish_non_exhaustive()
     }
@@ -123,6 +137,12 @@ impl<'t> Rows<'t> for Box<dyn Rows<'t> + Send + 't> {
 pub struct OwnedRows {
     schema: TableSchema,
     rows: VecDeque<OwnedRow>,
+}
+
+impl From<Box<dyn Rows<'_>>> for OwnedRows {
+    fn from(value: Box<dyn Rows>) -> Self {
+        todo!()
+    }
 }
 
 impl OwnedRows {
@@ -203,5 +223,22 @@ impl<'t, R: Rows<'t>, F: Fn(Row<'t>) -> Row<'t>> Rows<'t> for MappedRows<'t, R, 
 
     fn next(&mut self) -> Option<Row<'t>> {
         self.inner.next().map(|next| (self.mapper)(next))
+    }
+}
+
+#[derive(Debug)]
+pub struct MappedOwnedRows<'a, R: Rows<'a>, F: Fn(Row<'a>) -> OwnedRow> {
+    inner: R,
+    mapper: F,
+    _lf: PhantomData<fn(&'a ()) -> ()>,
+}
+
+impl<'t, R: Rows<'t>, F: Fn(Row<'t>) -> OwnedRow> Rows<'t> for MappedOwnedRows<'t, R, F> {
+    fn schema(&self) -> &TableSchema {
+        self.inner.schema()
+    }
+
+    fn next(&mut self) -> Option<Row<'t>> {
+        self.inner.next().map(|next| (self.mapper)(next).into())
     }
 }

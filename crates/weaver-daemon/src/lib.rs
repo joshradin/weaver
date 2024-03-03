@@ -26,7 +26,6 @@ pub fn run(app: App) -> Result<(), Error> {
     };
 
     let mut weaver = WeaverDb::new(
-        app.num_workers.unwrap_or_else(num_cpus::get),
         core,
         auth_config,
     )?;

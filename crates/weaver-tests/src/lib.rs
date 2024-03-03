@@ -25,7 +25,6 @@ pub fn start_server(
     let (send, recv) = bounded(0);
     let socket_path = in_path.join("weaverdb.socket");
     let mut weaver = WeaverDb::new(
-        num_workers.into().unwrap_or(1),
         WeaverDbCore::with_path(in_path)?,
         AuthConfig {
             key_store: in_path.join("keys"),

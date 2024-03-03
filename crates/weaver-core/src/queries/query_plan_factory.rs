@@ -1,5 +1,6 @@
 //! Creates an unoptimized [query plan](QueryPlan) from a [query](Query)
 
+use std::borrow::Cow;
 use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::From;
@@ -7,14 +8,14 @@ use std::marker::PhantomData;
 
 use parking_lot::RwLock;
 use rand::Rng;
-use tracing::{debug, error_span, trace};
+use tracing::{debug, debug_span, error_span, trace};
 
 use weaver_ast::ast;
+use weaver_ast::ast::visitor::{visit_table_or_sub_query_mut, VisitorMut};
 use weaver_ast::ast::{
     BinaryOp, ColumnRef, Expr, FromClause, Identifier, JoinClause, JoinConstraint, Query,
     ReferencesCols, ResolvedColumnRef, ResultColumn, Select, TableOrSubQuery, UnresolvedColumnRef,
 };
-use weaver_ast::ast::visitor::VisitorMut;
 
 use crate::data::types::Type;
 use crate::db::server::processes::WeaverProcessInfo;
@@ -163,24 +164,25 @@ impl QueryPlanFactory {
         db: &DbSocket,
         plan_context: Option<&WeaverProcessInfo>,
     ) -> Result<QueryPlanNode, Error> {
-
         debug!("creating query plan from {}", query);
-        let tables = self.get_involved_tables(query, plan_context)?;
-        debug!("collected tables: {:#?}", tables);
+        let tables = debug_span!("finding involved tables")
+            .in_scope(|| self.get_involved_tables(query, plan_context))?;
+        debug!("collected tables: {:?}", tables.keys());
         debug!("resolving all identifiers");
         let ref query = {
             let mut query = query.clone();
-            let mut resolved = IdentifierResolver::new(|column_ref| {
-                self.resolve_column_ref(
-                    column_ref,
-                    &tables,
-                    plan_context
-                )
+
+            let in_use = plan_context
+                .and_then(|info| info.using.as_ref())
+                .map(|s| Identifier::new(s));
+
+            let mut resolved = IdentifierResolver::new(in_use, |column_ref| {
+                self.resolve_column_ref(column_ref, &tables, plan_context)
             });
-            resolved.visit_query_mut(&mut query)?;
+            debug_span!("column references resolver")
+                .in_scope(|| resolved.visit_query_mut(&mut query))?;
             query
         };
-
 
         let node = match query {
             Query::Select(select) => self.select_to_plan_node(db, plan_context, &tables, select),
@@ -232,7 +234,11 @@ impl QueryPlanFactory {
                 Ok(QueryPlanNode {
                     cost: self.get_cost("LOAD_TABLE")?,
                     rows: u64::MAX,
-                    kind: QueryPlanKind::LoadTable { schema, table },
+                    kind: QueryPlanKind::TableScan {
+                        schema,
+                        table,
+                        keys: None,
+                    },
                     schema: table_schema,
                     alias: alias.as_ref().map(|i| i.to_string()),
                 })
@@ -277,141 +283,164 @@ impl QueryPlanFactory {
                 }
                 Some(from) => {
                     let from_node = self.from_to_plan_node(db, plan_context, real_tables, from)?;
+                    // let keys = self.get_keys_from_condition(plan_context, &real_tables, condition, &from_node)?;
 
-                    let mut applicable_keys =
-                        match condition
-                            .as_ref()
-                            .map(|condition| -> Result<VecDeque<&Key>, Error> {
-                                let condition: HashSet<ResolvedColumnRef> = condition
-                                    .columns()
-                                    .iter()
-                                    .map(|c| {
-                                        c.resolved()
-                                            .expect("all columns should be resolved at this point")
-                                            .clone()
-                                    })
-                                    .collect();
-                                debug!("columns used in condition: {condition:?}");
-                                Ok(from_node
-                                    .schema()
-                                    .keys()
-                                    .iter()
-                                    .filter_map(|key| {
-                                        debug!(
-                                            "checking if all of {:?} in condition columns {:?}",
-                                            key.columns(),
-                                            condition
-                                        );
-                                        if key.columns().iter().all(|column| {
-                                            let column_ref = self.parse_column_ref(column);
-
-                                            let resolved = match column_ref {
-                                                ColumnRef::Unresolved(column_ref) => self
-                                                    .resolve_column_ref(
-                                                        &column_ref,
-                                                        real_tables,
-                                                        plan_context,
-                                                    )
-                                                    .expect("could not resolve"),
-                                                ColumnRef::Resolved(resolved) => resolved,
-                                            };
-
-                                            debug!("resolved key column: {resolved:?}");
-                                            debug!("does {condition:?} contain {resolved:?}?");
-                                            condition.contains(&resolved)
-                                        }) {
-                                            Some(key)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .collect::<VecDeque<_>>())
-                            }) {
-                            None => VecDeque::default(),
-                            Some(res) => res?,
-                        };
-
-                    if applicable_keys.is_empty() {
-                        applicable_keys.push_front(from_node.schema().primary_key()?);
-                    }
-                    let mut applicable_keys = Vec::from(applicable_keys);
-                    debug!("applicable keys: {applicable_keys:?}");
-                    applicable_keys.sort_by_cached_key(|key| {
-                        if key.primary() {
-                            -1_isize
-                        } else {
-                            key.columns().len() as isize
+                    let filtered = match condition {
+                        None => {
+                            from_node
                         }
-                    });
-
-                    let keys = applicable_keys
-                        .into_iter()
-                        .map(|key| {
-                            self.to_key_index(key, condition.as_ref(), &real_tables, plan_context)
-                        })
-                        .collect::<Result<Vec<_>, _>>()?
-                        .into_iter()
-                        .flatten()
-                        .collect();
-
-                    debug!("keys: {:?}", keys);
-
-                    let schema =
-                        if columns.len() == 1 && matches!(columns[0], ResultColumn::Wildcard) {
-                            from_node.schema.clone()
-                        } else {
-                            let mut schema_builder = TableSchemaBuilder::new(
-                                "*",
-                                format!("table_{}", rand::random::<u64>()),
-                            );
-
-                            for result_column in columns {
-                                match result_column {
-                                    ResultColumn::Wildcard => {
-                                        // all columns from previous node
-                                        for col in from_node.schema.columns() {
-                                            schema_builder =
-                                                schema_builder.column_definition(col.clone());
-                                        }
-                                    }
-                                    ResultColumn::TableWildcard(table) => {}
-                                    ResultColumn::Expr { expr, alias } => {
-                                        let name = match alias {
-                                            None => expr.to_string(),
-                                            Some(alias) => alias.to_string(),
-                                        };
-                                        let non_null = match expr {
-                                            Expr::Column { column } => true,
-                                            _ => false,
-                                        };
-
-                                        schema_builder = schema_builder.column(
-                                            name,
-                                            Type::Boolean,
-                                            non_null,
-                                            None,
-                                            None,
-                                        )?;
-                                    }
-                                }
+                        Some(condition) => {
+                            let schema = from_node.schema().clone();
+                            QueryPlanNode {
+                                cost: self.get_cost("FILTER")?,
+                                rows: u64::MAX,
+                                kind: QueryPlanKind::Filter {
+                                    filtered: Box::new(from_node),
+                                    condition: condition.clone(),
+                                },
+                                schema,
+                                alias: None,
                             }
-                            schema_builder.build()?
-                        };
+                        }
+                    };
+
+                    let projected_schema = self.table_schema_for_projection(columns, &filtered)?;
 
                     Ok(QueryPlanNode {
                         cost: self.get_cost("SELECT")?,
                         rows: u64::MAX,
-                        kind: QueryPlanKind::SelectByKey {
-                            to_select: Box::new(from_node),
-                            keys: keys,
+                        kind: QueryPlanKind::Project {
+                            columns: vec![],
+                            node: Box::new(filtered),
                         },
-                        schema,
+                        schema: projected_schema,
                         alias: None,
                     })
                 }
             }
         })
     }
+
+    fn get_keys_from_condition(&self, plan_context: Option<&WeaverProcessInfo>, real_tables: &&HashMap<TableRef, TableSchema>, condition: &Option<Expr>, from_node: &QueryPlanNode) -> Result<Vec<KeyIndex>, Error> {
+        let mut applicable_keys =
+            match condition
+                .as_ref()
+                .map(|condition| -> Result<VecDeque<&Key>, Error> {
+                    let condition: HashSet<ResolvedColumnRef> = condition
+                        .columns()
+                        .iter()
+                        .map(|c| {
+                            c.resolved()
+                             .expect("all columns should be resolved at this point")
+                             .clone()
+                        })
+                        .collect();
+                    debug!("columns used in condition: {condition:?}");
+                    Ok(from_node
+                        .schema()
+                        .keys()
+                        .iter()
+                        .filter_map(|key| {
+                            debug!(
+                                            "checking if all of {:?} in condition columns {:?}",
+                                            key.columns(),
+                                            condition
+                                        );
+                            if key.columns().iter().all(|column| {
+                                let column_ref = self.parse_column_ref(column);
+
+                                let resolved = match column_ref {
+                                    ColumnRef::Unresolved(column_ref) => self
+                                        .resolve_column_ref(
+                                            &column_ref,
+                                            real_tables,
+                                            plan_context,
+                                        )
+                                        .expect("could not resolve"),
+                                    ColumnRef::Resolved(resolved) => resolved,
+                                };
+
+                                debug!("resolved key column: {resolved:?}");
+                                debug!("does {condition:?} contain {resolved:?}?");
+                                condition.contains(&resolved)
+                            }) {
+                                Some(key)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<VecDeque<_>>())
+                }) {
+                None => VecDeque::default(),
+                Some(res) => res?,
+            };
+
+        if applicable_keys.is_empty() {
+            applicable_keys.push_front(from_node.schema().primary_key()?);
+        }
+        let mut applicable_keys = Vec::from(applicable_keys);
+        debug!("applicable keys: {applicable_keys:?}");
+        applicable_keys.sort_by_cached_key(|key| {
+            if key.primary() {
+                -1_isize
+            } else {
+                key.columns().len() as isize
+            }
+        });
+        Ok(applicable_keys
+            .into_iter()
+            .map(|key| {
+                self.to_key_index(key, condition.as_ref(), &real_tables, plan_context)
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>())
+    }
+
+    fn table_schema_for_projection(&self, columns: &Vec<ResultColumn>, from_node: &QueryPlanNode) -> Result<TableSchema, Error> {
+        Ok(if columns.len() == 1 && matches!(columns[0], ResultColumn::Wildcard) {
+            from_node.schema.clone()
+        } else {
+            let mut schema_builder = TableSchemaBuilder::new(
+                "*",
+                format!("table_{}", rand::random::<u64>()),
+            );
+
+            for result_column in columns {
+                match result_column {
+                    ResultColumn::Wildcard => {
+                        // all columns from previous node
+                        for col in from_node.schema.columns() {
+                            schema_builder =
+                                schema_builder.column_definition(col.clone());
+                        }
+                    }
+                    ResultColumn::TableWildcard(table) => {}
+                    ResultColumn::Expr { expr, alias } => {
+                        let name = match alias {
+                            None => expr.to_string(),
+                            Some(alias) => alias.to_string(),
+                        };
+                        let non_null = match expr {
+                            Expr::Column { column } => true,
+                            _ => false,
+                        };
+
+                        schema_builder = schema_builder.column(
+                            name,
+                            Type::Boolean,
+                            non_null,
+                            None,
+                            None,
+                        )?;
+                    }
+                }
+            }
+            schema_builder.build()?
+        })
+    }
+
 
     fn join_to_plan_node(
         &self,
@@ -432,12 +461,26 @@ impl QueryPlanFactory {
             let right =
                 self.table_or_sub_query_to_plan_node(db, plan_context, real_tables, right)?;
 
-            let strategy = self
+            let strategies = self
                 .join_strategy_selector
-                .get_strategy_for_join(join_clause)?;
-            trace!("chose strategy for join {join_clause}: {strategy:?}");
+                .get_strategies_for_join(join_clause)?;
+            debug!("join strategies for {join_clause}: {strategies:#?}");
 
-            todo!("join")
+            let built_schema = left.schema().join(right.schema());
+
+            Ok(QueryPlanNode {
+                cost: self.get_cost("JOIN")?,
+                rows: u64::MAX,
+                kind: QueryPlanKind::Join {
+                    left: Box::new(left),
+                    right: Box::new(right),
+                    join_kind: op.clone(),
+                    on: constraint.clone(),
+                    strategies,
+                },
+                schema: built_schema,
+                alias: None,
+            })
         })
     }
 
@@ -654,15 +697,23 @@ struct IdentifierResolver<'a, F>
 where
     F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, Error> + 'a,
 {
+    in_use_schema: Option<Identifier>,
+    aliases: HashMap<Identifier, (Identifier, Identifier)>,
     resolver: F,
     _lf: PhantomData<&'a ()>,
 }
 
-impl<'a, F> IdentifierResolver<'a, F> where
-    F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, Error> + 'a
+impl<'a, F> IdentifierResolver<'a, F>
+where
+    F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, Error> + 'a,
 {
-    fn new(resolver: F) -> Self {
-        Self { resolver, _lf: PhantomData }
+    fn new(in_use_schema: Option<Identifier>, resolver: F) -> Self {
+        Self {
+            in_use_schema,
+            aliases: Default::default(),
+            resolver,
+            _lf: PhantomData,
+        }
     }
 }
 
@@ -674,11 +725,53 @@ where
 
     fn visit_column_ref_mut(&mut self, column: &mut ColumnRef) -> Result<(), Self::Err> {
         if let ColumnRef::Unresolved(ref unresolved) = column {
-            debug!("resolving column {unresolved:?}...");
-            let resolved = (self.resolver)(unresolved)?;
-            debug!("resolved = {resolved}");
-            *column = ColumnRef::Resolved(resolved);
+            if let Some((schema, table)) = unresolved.table().and_then(|i| self.aliases.get(i)) {
+                debug!(
+                    "found alias {}.{} for {}",
+                    schema,
+                    table,
+                    unresolved.table().unwrap()
+                );
+                let resolved = ResolvedColumnRef::new(
+                    schema.clone(),
+                    table.clone(),
+                    unresolved.column().clone(),
+                );
+                *column = ColumnRef::Resolved(resolved);
+            } else {
+                debug!("resolving column {unresolved:?}...");
+                let resolved = (self.resolver)(unresolved)?;
+                debug!("resolved = {resolved}");
+                *column = ColumnRef::Resolved(resolved);
+            }
         }
+
         Ok(())
+    }
+
+    fn visit_table_or_sub_query_mut(
+        &mut self,
+        table_or_sub_query: &mut TableOrSubQuery,
+    ) -> Result<(), Self::Err> {
+        match table_or_sub_query {
+            TableOrSubQuery::Table {
+                schema,
+                table_name,
+                alias: Some(alias),
+            } => {
+                let schema = schema
+                    .as_ref()
+                    .ok_or_else(|| Error::UnQualifedTableWithoutInUseSchema)?;
+                debug!("adding alias for {} -> {}.{}", alias, schema, table_name);
+                self.aliases
+                    .insert(alias.clone(), (schema.clone(), table_name.clone()));
+            }
+            TableOrSubQuery::Select { select, alias } => {
+                panic!("don't know how to handle subquery and aliases");
+            }
+            _ => {}
+        }
+
+        visit_table_or_sub_query_mut(self, table_or_sub_query)
     }
 }

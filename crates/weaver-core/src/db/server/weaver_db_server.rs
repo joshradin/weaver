@@ -9,6 +9,7 @@ use std::time::Instant;
 use crossbeam::channel::{unbounded, Sender};
 use parking_lot::{Mutex, RwLock};
 use rayon::{ThreadPool, ThreadPoolBuilder};
+use tempfile::TempDir;
 use tracing::{
     debug, error, error_span, info, info_span, span_enabled, trace, trace_span, warn, Level, Span,
 };
@@ -42,6 +43,7 @@ use crate::monitoring::{Monitor, Monitorable, Stats};
 use crate::queries::execution::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
+use crate::rows::OwnedRows;
 use crate::tx::coordinator::TxCoordinator;
 use crate::tx::Tx;
 
@@ -79,8 +81,14 @@ pub(super) struct WeaverDbShared {
 }
 
 impl WeaverDb {
+
+    #[cfg(test)]
+    pub fn in_temp_dir() -> Result<(TempDir, Self), Error> {
+        let (dir, core) = WeaverDbCore::in_temp_dir()?;
+        let auth_config = AuthConfig::in_path(dir.path());
+        Self::new(core, auth_config).map(|this| (dir, this))
+    }
     pub fn new(
-        workers: usize,
         shard: WeaverDbCore,
         auth_config: AuthConfig,
     ) -> Result<Self, Error> {
@@ -463,10 +471,11 @@ impl WeaverDb {
                 };
                 debug!("created plan: {plan:#?}");
                 let executor = self.query_executor();
-                match executor.execute(&tx, plan) {
-                    Ok(rows) => Ok(DbResp::TxRows(tx, rows)),
+                let x = match executor.execute(&tx, plan) {
+                    Ok(rows) => Ok(DbResp::TxRows(tx, OwnedRows::from(rows))),
                     Err(err) => Ok(DbResp::Err(err)),
-                }
+                };
+                x
             }
             DbReqBody::StartTransaction => error_span!("core", mode = "write").in_scope(|| {
                 trace!("getting write access to core");
@@ -489,7 +498,6 @@ impl WeaverDb {
 impl Default for WeaverDb {
     fn default() -> Self {
         Self::new(
-            num_cpus::get(),
             WeaverDbCore::default(),
             AuthConfig::default(),
         )

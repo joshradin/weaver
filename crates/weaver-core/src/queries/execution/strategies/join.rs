@@ -1,16 +1,25 @@
 //! Join strategies
 
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
+
+use static_assertions::assert_obj_safe;
+use tracing::{debug, instrument, trace, Level};
+
+use weaver_ast::ast::{BinaryOp, Expr, JoinClause, JoinConstraint, JoinOperator};
+
+use crate::data::row::Row;
+use crate::data::values::DbVal;
 use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::Table;
 use crate::error::Error;
+use crate::key::KeyData;
 use crate::queries::execution::strategies::Strategy;
 use crate::queries::query_cost::Cost;
-use static_assertions::assert_obj_safe;
-use std::cmp::Ordering;
-use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
-use tracing::{instrument, trace, Level};
-use weaver_ast::ast::{BinaryOp, Expr, JoinClause, JoinOperator};
+use crate::rows::Rows;
+use crate::storage::tables::InMemoryTable;
 
 /// A join strategy
 pub trait JoinStrategy: Strategy {
@@ -21,7 +30,7 @@ pub trait JoinStrategy: Strategy {
     fn join_cost(&self, join_parameters: &JoinClause) -> Option<Cost>;
 
     /// Attempts to perform a join
-    fn try_join(&self, join_parameters: JoinParameters) -> Result<Table, Error>;
+    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r>>, Error>;
 }
 
 impl Debug for dyn JoinStrategy {
@@ -33,8 +42,11 @@ impl Debug for dyn JoinStrategy {
 assert_obj_safe!(JoinStrategy);
 
 #[derive(Debug)]
-pub struct JoinParameters {
-    op: JoinOperator,
+pub struct JoinParameters<'a> {
+    pub op: JoinOperator,
+    pub left: Box<dyn Rows<'a>>,
+    pub right: Box<dyn Rows<'a>>,
+    pub constraint: JoinConstraint,
 }
 
 /// Responsible for selecting a join strategy
@@ -74,26 +86,23 @@ impl JoinStrategySelector {
         self
     }
 
-    /// Tries to get a strategy for a given join clause
+    /// Gets all applicable strategies for a given join
     #[instrument(level = Level::TRACE, skip(self), fields(join=%join), ret, err)]
-    pub fn get_strategy_for_join(&self, join: &JoinClause) -> Result<Arc<dyn JoinStrategy>, Error> {
-        self.strategies
+    pub fn get_strategies_for_join(
+        &self,
+        join: &JoinClause,
+    ) -> Result<Vec<Arc<dyn JoinStrategy>>, Error> {
+        let mut vec = self
+            .strategies
             .iter()
             .inspect(|strat| trace!("checking if {strat:?} is applicable"))
             .filter_map(|strat| strat.join_cost(join).map(|cost| (cost, strat)))
-            .inspect(|strat| {
-                trace!(
-                    "found applicable strategy {:?} with cost {:?}",
-                    strat.1,
-                    strat.0
-                )
-            })
-            .reduce(|acc, next| match acc.0.cmp(&next.0) {
-                Ordering::Less | Ordering::Equal => acc,
-                Ordering::Greater => next,
-            })
-            .map(|(_, arc)| arc.clone())
-            .ok_or_else(|| Error::NoStrategyForJoin(join.clone()))
+            .collect::<Vec<_>>();
+        if vec.is_empty() {
+            return Err(Error::NoStrategyForJoin(join.clone()));
+        }
+        vec.sort_by_key(|c| c.0);
+        Ok(vec.into_iter().map(|(_, strat)| strat.clone()).collect())
     }
 }
 
@@ -121,14 +130,60 @@ impl JoinStrategy for HashJoinTableStrategy {
             return None;
         };
 
-        let Expr::Column { column } = &**left else {
+        let Expr::Column {
+            column: left_column,
+        } = &**left
+        else {
             return None;
         };
 
-        todo!()
+        let Expr::Column {
+            column: right_column,
+        } = &**right
+        else {
+            return None;
+        };
+
+        debug!("can run a hash-join on {left_column} and {right_column}");
+        Some(Cost::new(1.1, 1))
     }
 
-    fn try_join(&self, join_parameters: JoinParameters) -> Result<Table, Error> {
+    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r>>, Error> {
+        let Expr::Binary {
+            left,
+            op: BinaryOp::Eq,
+            right,
+        } = &join_parameters.constraint.on
+        else {
+            unreachable!();
+        };
+        let Expr::Column {
+            column: left_column,
+        } = &**left
+        else {
+            unreachable!();
+        };
+
+        let Expr::Column {
+            column: right_column,
+        } = &**right
+        else {
+            unreachable!();
+        };
+
+        let left_table = join_parameters.left;
+        let right_table = join_parameters.right;
+
+        let mut hash_map = HashMap::<DbVal, Row>::new();
+        let left_idx = left_table
+            .schema()
+            .column_index(left_column.resolved().expect("must be resolved").column())
+            .expect("could not get index of column for left side");
+        let right_idx = right_table
+            .schema()
+            .column_index(right_column.resolved().expect("must be resolved").column())
+            .expect("could not get index of column for right side");
+
         todo!()
     }
 }

@@ -5,15 +5,15 @@ use std::fmt::Formatter;
 use std::str::FromStr;
 
 use derive_more::{Display, From as FromDerive};
-use nom::combinator::cond;
 use serde::{Deserialize, Serialize};
 
-use crate::error::ParseQueryError;
-use crate::QueryParser;
 pub use expr::*;
 pub use from::*;
 pub use identifier::{Identifier, ResolvedColumnRef, UnresolvedColumnRef};
 pub use literal::Literal;
+
+use crate::error::ParseQueryError;
+use crate::QueryParser;
 
 mod expr;
 mod identifier;

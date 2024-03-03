@@ -23,7 +23,7 @@ fn transactions_in_memory() -> Result<(), Error> {
 
     let dir = TempDir::new()?;
     let core = WeaverDbCore::with_path(dir.path())?;
-    let mut db = WeaverDb::new(num_cpus::get(), core, AuthConfig::in_path(dir.path()))?;
+    let mut db = WeaverDb::new(core, AuthConfig::in_path(dir.path()))?;
     let mut service = db.lifecycle_service();
     service.startup()?;
 

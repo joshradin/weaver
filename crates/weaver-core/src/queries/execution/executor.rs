@@ -1,14 +1,17 @@
+use std::sync::{Arc, Weak};
+
+use parking_lot::RwLock;
+use tracing::{error, info};
+
 use crate::db::core::WeaverDbCore;
-use crate::dynamic_table::Table;
+use crate::dynamic_table::{DynamicTable, HasSchema, Table};
 use crate::error::Error;
+use crate::queries::execution::strategies::join::JoinParameters;
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
-use crate::rows::OwnedRows;
 use crate::rows::Rows;
+use crate::rows::{KeyIndex, OwnedRows};
 use crate::storage::tables::in_memory_table::InMemoryTable;
 use crate::tx::Tx;
-use parking_lot::RwLock;
-use std::sync::{Arc, Weak};
-use tracing::{error, info};
 
 /// The query executor is responsible for executing queries against the database
 /// in performant ways.
@@ -30,17 +33,12 @@ impl QueryExecutor {
 
 impl QueryExecutor {
     /// Executes a query
-    pub fn execute(&self, tx: &Tx, plan: &QueryPlan) -> Result<OwnedRows, Error> {
+    pub fn execute(&self, tx: &Tx, plan: &QueryPlan) -> Result<Box<dyn Rows<'_>>, Error> {
         let root = plan.root();
         let core = self.core.upgrade().ok_or(Error::NoCoreAvailable)?;
-        let mut output: Option<Table> = None;
         info!("executing query plan {plan:#?}");
-
         let final_table = self.execute_node(tx, root, &core)?;
-        final_table.all(tx).map(|rows| {
-            rows.map(|row| final_table.schema().public_only(row))
-                .to_owned()
-        })
+        Ok(Box::new(OwnedRows::from(final_table)))
     }
 
     fn execute_node(
@@ -48,49 +46,72 @@ impl QueryExecutor {
         tx: &Tx,
         node: &QueryPlanNode,
         core: &Arc<RwLock<WeaverDbCore>>,
-    ) -> Result<Table, Error> {
+    ) -> Result<Box<dyn Rows<'_>>, Error> {
         match &node.kind {
-            QueryPlanKind::SelectByKey {
-                to_select,
-                keys: key_index,
+            QueryPlanKind::TableScan {
+                schema,
+                table,
+                keys,
             } => {
-                let table = self.execute_node(tx, to_select, core)?;
-
-                let read = table
-                    .read(tx, &key_index[0])?
-                    .map(|row| table.schema().public_only(row));
-                let in_memory = match InMemoryTable::from_rows(table.schema().clone(), read) {
-                    Ok(table) => table,
-                    Err(e) => {
-                        error!("creating in memory table from select result failed: {e}");
-                        if let Error::BadColumnCount { .. } = &e {
-                            error!("table schema: {:#?}", table.schema())
-                        }
-                        return Err(e);
-                    }
+                let table = {
+                    let core = core.read();
+                    core.get_open_table(schema, table)?
                 };
-                Ok(Box::new(in_memory))
-            }
-            QueryPlanKind::Project { .. } => {
-                todo!("projection")
-            }
-            QueryPlanKind::LoadTable { schema, table } => {
-                let core = core.read();
+                let key_index = keys
+                    .as_ref()
+                    .and_then(|keys| keys.get(0).cloned())
+                    .unwrap_or_else(|| {
+                        table
+                            .schema()
+                            .full_index()
+                            .expect("no way of getting all from table")
+                    });
+                let read = table
+                    .read(tx, &key_index)?
+                    .map(|row| table.schema().public_only(row))
+                    .to_owned()
+                    ;
 
-                let table = core.get_open_table(schema, table)?;
-                Ok(Box::new(table))
+                Ok(Box::new(read))
+            }
+            QueryPlanKind::Filter {
+                filtered,
+                condition,
+            } => {
+                let to_filter = self.execute_node(tx, &*filtered, core)?;
+
+
+                todo!("filter")
+            }
+            QueryPlanKind::Project { columns, node } => {
+                let to_project = self.execute_node(tx, &*node, core)?;
+
+                todo!("projection")
             }
             QueryPlanKind::Join {
                 left,
                 right,
                 join_kind,
                 on,
+                strategies,
             } => {
                 let left = self.execute_node(tx, left, core)?;
                 let right = self.execute_node(tx, right, core)?;
 
-                todo!("join tables")
+                let strategy = strategies.first().unwrap();
+
+                strategy.try_join(JoinParameters {
+                    op: join_kind.clone(),
+                    left,
+                    right,
+                    constraint: on.clone(),
+                })
+            }
+            _kind => {
+                todo!("implement execution of {_kind:?}")
             }
         }
     }
 }
+
+

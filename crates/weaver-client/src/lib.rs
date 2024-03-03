@@ -74,7 +74,7 @@ impl WeaverClient<LocalSocketStream> {
 }
 impl<T: Stream> WeaverClient<T> {
     pub fn query(&mut self, query: &Query) -> eyre::Result<(impl Rows, Duration)> {
-        debug!("query: {query:#?}");
+        debug!("query: {query}");
         let start = Instant::now();
         match self.stream.send(&RemoteDbReq::Query(query.clone()))? {
             RemoteDbResp::Ok => {}

@@ -1,10 +1,13 @@
+use std::fmt::{Debug, Formatter, Pointer};
+use std::sync::Arc;
+
+use weaver_ast::ast::{Expr, JoinConstraint, JoinOperator};
+
 use crate::dynamic_table::HasSchema;
+use crate::queries::execution::strategies::join::JoinStrategy;
 use crate::queries::query_cost::Cost;
 use crate::rows::KeyIndex;
-use crate::storage::tables::table_schema::{ColumnDefinition, TableSchema};
-use crate::storage::tables::TableRef;
-use std::collections::HashMap;
-use weaver_ast::ast::JoinOperator;
+use crate::storage::tables::table_schema::TableSchema;
 
 #[derive(Debug)]
 pub struct QueryPlan {
@@ -22,7 +25,7 @@ impl QueryPlan {
     }
 }
 
-#[derive(Debug)]
+
 pub struct QueryPlanNode {
     pub cost: Cost,
     pub rows: u64,
@@ -30,6 +33,17 @@ pub struct QueryPlanNode {
     /// The table schema at this point
     pub schema: TableSchema,
     pub alias: Option<String>,
+}
+
+impl Debug for QueryPlanNode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QueryPlanNode")
+            .field("cost", &self.cost)
+            .field("rows", &self.rows)
+            .field("kind", &self.kind)
+            .field("cols", &self.schema().columns())
+            .finish()
+    }
 }
 
 impl QueryPlanNode {
@@ -45,7 +59,6 @@ impl QueryPlanNode {
             return Some(self);
         }
         match &self.kind {
-            QueryPlanKind::SelectByKey { to_select, .. } => to_select.get_alias(alias),
             _ => None,
         }
     }
@@ -64,13 +77,16 @@ impl HasSchema for QueryPlanNode {
 
 #[derive(Debug)]
 pub enum QueryPlanKind {
-    LoadTable {
+    /// Gets rows from a given table, this is usually used as a leaf node
+    TableScan {
         schema: String,
         table: String,
+        /// The keys that can be used
+        keys: Option<Vec<KeyIndex>>,
     },
-    SelectByKey {
-        to_select: Box<QueryPlanNode>,
-        keys: Vec<KeyIndex>,
+    Filter {
+        filtered: Box<QueryPlanNode>,
+        condition: Expr
     },
     Project {
         columns: Vec<usize>,
@@ -80,6 +96,7 @@ pub enum QueryPlanKind {
         left: Box<QueryPlanNode>,
         right: Box<QueryPlanNode>,
         join_kind: JoinOperator,
-        on: (),
+        on: JoinConstraint,
+        strategies: Vec<Arc<dyn JoinStrategy>>,
     },
 }

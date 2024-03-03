@@ -57,7 +57,7 @@ fn bench_device<T : StorageDevice + ?Sized>(device: &mut T, group: &mut Benchmar
         b.iter(|| write_device(device))
     });
     group.bench_function("write-flush throughput", |b| {
-        b.iter(|| write_device(device))
+        b.iter(|| write_device_then_flush(device))
     });
     group.bench_function("read+write throughput", |b| {
         b.iter(|| mixed_device(device))
@@ -70,6 +70,7 @@ fn ram_file(criterion: &mut Criterion) {
     let mut ram = RandomAccessFile::with_file(temp).expect("could not make ram file");
     init_device(&mut ram);
     let mut group = criterion.benchmark_group("ram_file");
+    group.sample_size(1000);
     bench_device(&mut ram, &mut group);
 }
 
@@ -79,7 +80,7 @@ fn mmap_file(criterion: &mut Criterion) {
     let mut mmap = MMapFile::with_file(temp).expect("could not make ram file");
     init_device(&mut mmap);
     let mut group = criterion.benchmark_group("mmap file");
-
+    group.sample_size(1000);
     bench_device(&mut mmap, &mut group);
 }
 
