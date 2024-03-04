@@ -33,8 +33,8 @@ macro_rules! visit_mut {
 visit_mut! {
     pub visit (visitor, query: &mut Query) -> Result<()> {
         match query {
-                Query::Explain(_) => {
-                    todo!("visit explain")
+                Query::Explain(explain) => {
+                    visitor.visit_query_mut(explain)
                 }
                 Query::Select(select) => visitor.visit_select_mut(select),
                 Query::QueryList(_) => {

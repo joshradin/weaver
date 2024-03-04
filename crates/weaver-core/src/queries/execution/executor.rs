@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::sync::{Arc, Weak};
 
 use parking_lot::RwLock;
+use tracing::log::trace;
 use tracing::{debug, debug_span, error, info};
 
 use crate::data::row::{OwnedRow, Row};
@@ -40,8 +41,13 @@ impl QueryExecutor {
 impl QueryExecutor {
     /// Executes a query
     pub fn execute(&self, tx: &Tx, plan: &QueryPlan) -> Result<OwnedRows, WeaverError> {
+        if matches!(plan.root().kind, QueryPlanKind::Explain { .. }) {
+            let explained = plan.as_rows();
+            return Ok(explained);
+        }
+
         let core = self.core.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
-        info!("executing query plan {plan:#?}");
+        trace!("executing query plan {plan:#?}");
         let ref expression_evaluator = ExpressionEvaluator::compile(plan)?;
         self.execute_node_non_recursive(tx, plan.root(), expression_evaluator, &core)
     }
@@ -56,7 +62,7 @@ impl QueryExecutor {
         expression_evaluator: &ExpressionEvaluator,
         core: &Arc<RwLock<WeaverDbCore>>,
     ) -> Result<OwnedRows, WeaverError> {
-        let mut stack = pre_order(root);
+        let mut stack = root.prefix_order();
         let mut row_stack: Vec<Box<dyn Rows>> = vec![];
 
         while let Some(node) = stack.pop() {
@@ -66,7 +72,7 @@ impl QueryExecutor {
                     table,
                     keys,
                 } => {
-                    debug_span!("table-scan").in_scope(||-> Result<(), WeaverError> {
+                    debug_span!("table-scan").in_scope(|| -> Result<(), WeaverError> {
                         let table = {
                             let core = core.read();
                             core.get_open_table(schema, table)?
@@ -93,16 +99,14 @@ impl QueryExecutor {
                     filtered,
                     condition,
                 } => {
-                    debug_span!("filter").in_scope(|| -> Result<(), WeaverError>{
+                    debug_span!("filter").in_scope(|| -> Result<(), WeaverError> {
                         let mut to_filter = row_stack.pop().expect("nothing to filter");
                         let mut owned = vec![];
                         while let Some(row) = to_filter.next() {
-                            if expression_evaluator.evaluate(
-                                condition,
-                                &row,
-                                to_filter.schema(),
-                                filtered.id(),
-                            )?.bool_value() == Some(true)
+                            if expression_evaluator
+                                .evaluate(condition, &row, to_filter.schema(), filtered.id())?
+                                .bool_value()
+                                == Some(true)
                             {
                                 owned.push(row);
                             }
@@ -113,7 +117,7 @@ impl QueryExecutor {
                     })?;
                 }
                 QueryPlanKind::Project { columns, node: _ } => {
-                    debug_span!("project").in_scope(|| -> Result<(), WeaverError>{
+                    debug_span!("project").in_scope(|| -> Result<(), WeaverError> {
                         let mut to_project = row_stack.pop().expect("nothing to project");
                         let mut owned = vec![];
                         while let Some(row) = to_project.next() {
@@ -145,11 +149,11 @@ impl QueryExecutor {
                     on,
                     strategies,
                 } => {
-                    debug_span!("join").in_scope(|| -> Result<(), WeaverError>{
+                    debug_span!("join").in_scope(|| -> Result<(), WeaverError> {
                         let left = row_stack.pop().expect("no left side of join");
                         let right = row_stack.pop().expect("no right side of join");
 
-                        let strategy = strategies.first().unwrap();
+                        let (strategy, _) = strategies.first().unwrap();
 
                         let joined = strategy.try_join(JoinParameters {
                             op: join_kind.clone(),
@@ -171,22 +175,4 @@ impl QueryExecutor {
         let result = row_stack.pop().expect("no row at top of stack");
         Ok(OwnedRows::from(result))
     }
-}
-
-/// Converts the query plan node tree into a pre order list. This is done
-/// recursively.
-fn pre_order(root: &QueryPlanNode) -> Vec<&QueryPlanNode> {
-    let mut output = vec![];
-    output.push(root);
-    match &root.kind {
-        QueryPlanKind::TableScan { .. } => {}
-        QueryPlanKind::Filter { filtered, .. } => output.extend(pre_order(filtered)),
-        QueryPlanKind::Project { node, .. } => output.extend(pre_order(node)),
-        QueryPlanKind::Join { left, right, .. } => {
-            output.extend(pre_order(left));
-            output.extend(pre_order(right))
-        }
-    }
-
-    output
 }

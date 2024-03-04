@@ -9,6 +9,8 @@ use thiserror::Error;
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token<'a> {
     Select,
+    Explain,
+
     From,
     As,
     Join,

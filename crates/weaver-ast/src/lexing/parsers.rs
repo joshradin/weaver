@@ -51,6 +51,7 @@ fn ident(input: &str) -> IResult<&str, Token> {
 fn keyword(input: &str) -> IResult<&str, Token> {
     alt((
         value(Token::Select, ignore_case("select")),
+        value(Token::Explain, ignore_case("explain")),
         value(Token::From, ignore_case("from")),
         value(Token::On, ignore_case("on")),
         value(Token::Join, ignore_case("join")),

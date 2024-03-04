@@ -309,6 +309,47 @@ where
             Some(Cell::KeyValue(value)) => Ok(Some(Box::from(value.record()))),
         }
     }
+    pub fn count<T: Into<KeyDataRange>>(&self, key_data_range: T) -> Result<u64, WeaverError> {
+        let range = key_data_range.into();
+        let Some(root) = self.root.read().clone() else {
+            return Ok(0);
+        };
+        let start_node = match range.start_bound() {
+            Bound::Included(k) | Bound::Excluded(k) => self.find_leaf(k, false)?,
+            Bound::Unbounded => self.left_most(root)?,
+        };
+        let end_node = match range.end_bound() {
+            Bound::Included(k) | Bound::Excluded(k) => self.find_leaf(k, false)?,
+            Bound::Unbounded => self.right_most(root)?,
+        };
+
+        let mut pages = vec![];
+        let mut page_ptr = start_node;
+        loop {
+            pages.push(page_ptr);
+            if page_ptr == end_node {
+                break;
+            }
+            let page = self.allocator.get(page_ptr)?;
+            let right = page.right_sibling().expect("siblings should always be set");
+            page_ptr = right;
+        }
+
+        pages
+            .into_iter()
+            .try_fold(0_u64, |accum, page_id| {
+                let page = self.allocator.get(page_id)?;
+                let page_range = page.key_range()?;
+                if let Some(on_page) = page_range.intersection(&range) {
+                    let page_cells = page
+                        .get_range(on_page)?
+                        .into_iter().count();
+                    Ok(accum + page_cells as u64)
+                } else {
+                    Ok(accum)
+                }
+            })
+    }
 
     /// Gets the set of rows from a given range
     pub fn range<T: Into<KeyDataRange>>(&self, key_data_range: T) -> Result<Vec<Box<[u8]>>, WeaverError> {

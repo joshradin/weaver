@@ -52,7 +52,7 @@ impl DynamicTable for BptfTable {
         self.main_table.read(tx, key)
     }
 
-    fn size_estimate(&self, key_index: &KeyIndex) -> Result<usize, WeaverError> {
+    fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError> {
         self.main_table.size_estimate(key_index)
     }
 

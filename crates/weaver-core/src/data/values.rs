@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
+use uuid::Uuid;
 use weaver_ast::ast;
 
 /// A single value within a row
@@ -92,6 +93,15 @@ impl From<String> for DbVal {
         Self::string(value, None)
     }
 }
+
+impl From<Uuid> for DbVal {
+    fn from(value: Uuid) -> Self {
+        let as_binary = value.as_bytes();
+        let binary = Vec::from(as_binary.as_slice());
+        DbVal::Binary(binary, 16)
+    }
+}
+
 impl Display for DbVal {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {

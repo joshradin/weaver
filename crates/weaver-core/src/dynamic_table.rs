@@ -69,7 +69,7 @@ pub trait DynamicTable: Monitorable + HasSchema + Send + Sync {
     /// number of rows stored in an index.
     ///
     /// Since this is approximate-based, there will also be no transaction support.
-    fn size_estimate(&self, key_index: &KeyIndex) -> Result<usize, WeaverError>;
+    fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError>;
 
     /// Update an existing row. Fails if no row with primary key is already present
     fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError>;

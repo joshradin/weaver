@@ -78,8 +78,8 @@ impl DynamicTable for InMemoryTable {
         self.0.read(tx, key)
     }
 
-    fn size_estimate(&self, key_index: &KeyIndex) -> Result<usize, WeaverError> {
-        todo!()
+    fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError> {
+        self.0.size_estimate(key_index)
     }
 
     fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {

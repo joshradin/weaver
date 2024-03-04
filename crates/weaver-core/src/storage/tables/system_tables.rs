@@ -67,7 +67,7 @@ impl DynamicTable for SystemTable {
         (self.on_read)(arc, key)
     }
 
-    fn size_estimate(&self, key_index: &KeyIndex) -> Result<usize, WeaverError> {
+    fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError> {
         Ok(0)
     }
 

@@ -227,8 +227,16 @@ where
         }
     }
 
-    fn size_estimate(&self, key_index: &KeyIndex) -> Result<usize, WeaverError> {
-        todo!()
+    fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError> {
+        match key_index.kind() {
+            KeyIndexKind::All => {
+                self.main_buffer.count(KeyDataRange::from(..))
+            }
+            KeyIndexKind::Range { low, high } => {
+                self.main_buffer.count(KeyDataRange::from((low.clone(), high.clone())))
+            }
+            KeyIndexKind::One(_) => { Ok(1)}
+        }
     }
 
     fn update(&self, tx: &Tx, row: Row) -> Result<(), crate::error::WeaverError> {

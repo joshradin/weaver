@@ -469,7 +469,7 @@ impl WeaverDb {
                     Ok(ok) => ok,
                     Err(err) => return Ok(DbResp::Err(err)),
                 };
-                debug!("created plan: {plan:#?}");
+                trace!("created plan: {plan:#?}");
                 let executor = self.query_executor();
                 let x = match executor.execute(&tx, plan) {
                     Ok(rows) => Ok(DbResp::TxRows(tx, OwnedRows::from(rows))),

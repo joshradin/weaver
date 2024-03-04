@@ -9,6 +9,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::ops::Mul;
+use tracing::instrument;
 
 use crate::data::values::DbVal;
 use crate::dynamic_table::DynamicTable;
@@ -16,34 +17,12 @@ use crate::rows::Rows;
 use crate::tx::Tx;
 
 /// Represents the cost of an operation over some unknown amount of rows
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Cost {
     /// The base cost per `row^row_factor`
     pub base: f64,
     /// The exponent the rows are raised to
     pub row_factor: u32,
-}
-
-impl Debug for Cost {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if self.base == 0.0 {
-            return write!(f, "0");
-        }
-
-        if self.base != 1.0 || self.row_factor == 0 {
-            write!(f, "{}*", self.base)?;
-            // if self.row_factor != 0 {
-            //     write!(f, "*")?;
-            // }
-        }
-        write!(f, "rows")?;
-        if self.row_factor != 0 {
-            if self.row_factor != 1 {
-                write!(f, "^{}", self.row_factor)?;
-            }
-        }
-        Ok(())
-    }
 }
 
 impl Cost {
@@ -87,9 +66,9 @@ pub struct CostTable {
 }
 
 static QUERY_COSTS: &[(&str, Cost)] = &[
-    ("LOAD_TABLE", Cost::new(1.0, 0)),
+    ("LOAD_TABLE", Cost::new(1.4, 1)),
     ("SELECT", Cost::new(1.0, 1)),
-    ("JOIN", Cost::new(1.0, 0)),
+    ("JOIN", Cost::new(1.0, 1)),
     ("FILTER", Cost::new(1.0, 1)),
 ];
 

@@ -13,8 +13,9 @@ use tracing::{debug, debug_span, error_span, trace};
 use weaver_ast::ast;
 use weaver_ast::ast::visitor::{visit_table_or_sub_query_mut, VisitorMut};
 use weaver_ast::ast::{
-    BinaryOp, ColumnRef, Expr, FromClause, Identifier, JoinClause, JoinConstraint, Query,
-    ReferencesCols, ResolvedColumnRef, ResultColumn, Select, TableOrSubQuery, UnresolvedColumnRef,
+    BinaryOp, ColumnRef, Expr, FromClause, Identifier, JoinClause, JoinConstraint, JoinOperator,
+    Query, ReferencesCols, ResolvedColumnRef, ResultColumn, Select, TableOrSubQuery,
+    UnresolvedColumnRef,
 };
 
 use crate::data::types::Type;
@@ -28,7 +29,9 @@ use crate::queries::execution::strategies::join::JoinStrategySelector;
 use crate::queries::query_cost::{Cost, CostTable};
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode, QueryPlanNodeBuilder};
 use crate::rows::{KeyIndex, KeyIndexKind};
-use crate::storage::tables::table_schema::{ColumnDefinition, Key, TableSchema, TableSchemaBuilder};
+use crate::storage::tables::table_schema::{
+    ColumnDefinition, Key, TableSchema, TableSchemaBuilder,
+};
 use crate::storage::tables::{table_schema, TableRef};
 use crate::tx::Tx;
 
@@ -186,8 +189,14 @@ impl QueryPlanFactory {
 
         let node = match query {
             Query::Select(select) => self.select_to_plan_node(db, plan_context, &tables, select),
-            Query::Explain(_) => {
-                todo!("explain")
+            Query::Explain(explained) => {
+                let query = self.to_plan_node(explained, db, plan_context)?;
+                QueryPlanNode::builder()
+                    .rows(0)
+                    .cost(Cost::new(1.0, 0))
+                    .kind(QueryPlanKind::Explain { explained: Box::new(query) })
+                    .schema(QueryPlan::explain_schema())
+                    .build()
             }
             Query::QueryList(_) => {
                 todo!("query list")
@@ -229,11 +238,15 @@ impl QueryPlanFactory {
                     .expect("could not get schema")
                     .clone();
 
+                let rows = db
+                    .get_table(&table_ref)?
+                    .size_estimate(&table_schema.primary_key()?.all())?;
+
                 let (schema, table) = table_ref;
 
                 Ok(QueryPlanNode::builder()
                     .cost(self.get_cost("LOAD_TABLE")?)
-                    .rows(u64::MAX)
+                    .rows(rows)
                     .kind(QueryPlanKind::TableScan {
                         schema,
                         table,
@@ -285,13 +298,19 @@ impl QueryPlanFactory {
                     let from_node = self.from_to_plan_node(db, plan_context, real_tables, from)?;
                     // let keys = self.get_keys_from_condition(plan_context, &real_tables, condition, &from_node)?;
 
+                    let from_node_rows = from_node.rows;
+
                     let filtered = match condition {
                         None => from_node,
                         Some(condition) => {
                             let schema = from_node.schema().clone();
                             QueryPlanNode::builder()
                                 .cost(self.get_cost("FILTER")?)
-                                .rows(u64::MAX)
+                                .rows(
+                                    limit
+                                        .map(|i| i.min(from_node_rows))
+                                        .unwrap_or(from_node_rows),
+                                )
                                 .kind(QueryPlanKind::Filter {
                                     filtered: Box::new(from_node),
                                     condition: condition.clone(),
@@ -311,7 +330,7 @@ impl QueryPlanFactory {
 
                     Ok(QueryPlanNode::builder()
                         .cost(self.get_cost("SELECT")?)
-                        .rows(u64::MAX)
+                        .rows(filtered.rows)
                         .kind(QueryPlanKind::Project {
                             columns: columns,
                             node: Box::new(filtered),
@@ -423,7 +442,6 @@ impl QueryPlanFactory {
                                 Identifier::new(source_schema.name()),
                                 Identifier::new(col.name()),
                             )
-
                         };
 
                         let mut col_def = col.clone();
@@ -431,13 +449,12 @@ impl QueryPlanFactory {
 
                         schema_builder = schema_builder.column_definition(col_def);
                         let expr = Expr::Column {
-                            column: resolved.into()
+                            column: resolved.into(),
                         };
                         cols.push(expr);
                     }
                 }
-                ResultColumn::TableWildcard(table) => {
-                }
+                ResultColumn::TableWildcard(table) => {}
                 ResultColumn::Expr { expr, alias } => {
                     let name = match alias {
                         None => expr.to_string(),
@@ -451,11 +468,10 @@ impl QueryPlanFactory {
                     cols.push(expr.clone());
 
                     let mut cd = ColumnDefinition::new(name, Type::Boolean, non_null, None, None)?;
-                    if let Expr::Column { column} = expr {
+                    if let Expr::Column { column } = expr {
                         if let Some(resolved) = column.resolved() {
                             cd.set_source_column(resolved.clone());
                         }
-
                     }
 
                     schema_builder = schema_builder.column_definition(cd);
@@ -491,9 +507,18 @@ impl QueryPlanFactory {
 
             let built_schema = left.schema().join(right.schema());
 
+            let rows = match join_clause.op {
+                JoinOperator::Left => left.rows,
+                JoinOperator::Right => right.rows,
+                JoinOperator::Full => left.rows.max(right.rows),
+                JoinOperator::Inner => left.rows.max(right.rows),
+                JoinOperator::Cross => left.rows * right.rows,
+                JoinOperator::Outer => left.rows + right.rows,
+            };
+
             Ok(QueryPlanNode::builder()
                 .cost(self.get_cost("JOIN")?)
-                .rows(u64::MAX)
+                .rows(rows)
                 .kind(QueryPlanKind::Join {
                     left: Box::new(left),
                     right: Box::new(right),

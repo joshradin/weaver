@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
 use static_assertions::assert_obj_safe;
@@ -38,6 +38,12 @@ pub trait JoinStrategy: Strategy {
 impl Debug for dyn JoinStrategy {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "JoinStrategy[{}]", self.name())
+    }
+}
+
+impl Display for dyn JoinStrategy {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
     }
 }
 
@@ -94,18 +100,18 @@ impl JoinStrategySelector {
     pub fn get_strategies_for_join(
         &self,
         join: &JoinClause,
-    ) -> Result<Vec<Arc<dyn JoinStrategy>>, WeaverError> {
+    ) -> Result<Vec<(Arc<dyn JoinStrategy>, Cost)>, WeaverError> {
         let mut vec = self
             .strategies
             .iter()
             .inspect(|strat| trace!("checking if {strat:?} is applicable"))
-            .filter_map(|strat| strat.join_cost(join).map(|cost| (cost, strat)))
+            .filter_map(|strat| strat.join_cost(join).map(|cost| (strat, cost)))
             .collect::<Vec<_>>();
         if vec.is_empty() {
             return Err(WeaverError::NoStrategyForJoin(join.clone()));
         }
-        vec.sort_by_key(|c| c.0);
-        Ok(vec.into_iter().map(|(_, strat)| strat.clone()).collect())
+        vec.sort_by_key(|c| c.1);
+        Ok(vec.into_iter().map(|(arc, cost)| (arc.clone(), cost)).collect())
     }
 }
 
@@ -114,7 +120,7 @@ struct HashJoinTableStrategy;
 
 impl Strategy for HashJoinTableStrategy {
     fn name(&self) -> &str {
-        "HashJoinTable"
+        "eq-ref-hash"
     }
 }
 

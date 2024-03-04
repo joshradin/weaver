@@ -111,7 +111,7 @@ impl DynamicTable for UserTable {
         self.in_memory.read(tx, key)
     }
 
-    fn size_estimate(&self, key_index: &KeyIndex) -> Result<usize, WeaverError> {
+    fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError> {
         self.in_memory.size_estimate(key_index)
     }
 

@@ -6,11 +6,11 @@ use std::borrow::Cow;
 grammar<'input>(input: &'input str);
 
 pub Query: ast::Query = {
-
     <mut queries: Query_+> => if queries.len() == 1 { queries.remove(0) } else { ast::Query::QueryList(<>) }
 }
 
 Query_: ast::Query = {
+    "explain" <Query_> => ast::Query::Explain(Box::new(<>)),
     <SelectStmt> ";" => ast::Query::Select(<>)
 }
 
@@ -201,6 +201,8 @@ extern {
         "id" => Token::Ident(<Cow<'input, str>>),
 
         "select" => Token::Select,
+        "explain" => Token::Explain,
+
         "from" => Token::From,
         "on" => Token::On,
         "where" => Token::Where,

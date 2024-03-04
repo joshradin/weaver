@@ -77,3 +77,28 @@ fn get_tables_with_schema() -> eyre::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn explain_get_tables_with_schema() -> eyre::Result<()> {
+    let _ = init_tracing();
+    let temp_dir = TempDir::new()?;
+    run_full_stack(temp_dir.path(), |server, client| {
+        info!("trying to get tables");
+        let (rows, elapsed) = client.query(&Query::parse(
+            r"
+        EXPLAIN SELECT s.name, t.name, t.table_ddl
+        FROM
+            weaver.tables as t
+        JOIN
+            weaver.schemata as s ON t.schema_id = s.id
+        WHERE
+            s.name = 'weaver'
+            ",
+        )?)?;
+        write_rows(stdout(), rows, elapsed).expect("could not write rows");
+
+        Ok(())
+    })?;
+
+    Ok(())
+}
