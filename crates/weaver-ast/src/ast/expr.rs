@@ -34,7 +34,7 @@ impl ColumnRef {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Hash)]
 pub enum Expr {
     Column {
         column: ColumnRef,
@@ -208,6 +208,23 @@ impl Expr {
             _ => {}
         }
     }
+
+    /// Get this expression this in a series of post fix expressions
+    pub fn postfix(&self) -> Vec<&Expr> {
+        let mut ret = vec![];
+        match self {
+            Expr::Unary { expr, .. } => {
+                ret.extend(expr.postfix());
+            }
+            Expr::Binary { left, right, .. } => {
+                ret.extend(left.postfix());
+                ret.extend(right.postfix());
+            }
+            _ => { }
+        }
+        ret.push(self);
+        ret
+    }
 }
 
 impl ReferencesCols for Expr {
@@ -226,7 +243,7 @@ impl ReferencesCols for Expr {
 }
 
 /// Operator for where clauses
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Display)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Display, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum BinaryOp {
     #[display("=")]
@@ -256,7 +273,7 @@ pub enum BinaryOp {
 }
 
 /// Operator for where clauses
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Display)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Display, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum UnaryOp {
     #[display("!")]

@@ -52,7 +52,7 @@ pub mod handshake {
             debug!("received login context: {:?}", login_ctx);
             let tx = db_socket.start_tx()?;
             let query = Query::parse(&format!(
-                r#"select user, host from weaver.users where user = '{}'"#,
+                r#"select user, host, auth_string from weaver.users where user = '{}'"#,
                 login_ctx.user
             ))
             .expect("failed to parse");

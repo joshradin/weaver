@@ -227,6 +227,10 @@ where
         }
     }
 
+    fn size_estimate(&self, key_index: &KeyIndex) -> Result<usize, WeaverError> {
+        todo!()
+    }
+
     fn update(&self, tx: &Tx, row: Row) -> Result<(), crate::error::WeaverError> {
         todo!()
     }

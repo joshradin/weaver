@@ -1,16 +1,19 @@
+use std::borrow::Cow;
 use std::sync::{Arc, Weak};
 
 use parking_lot::RwLock;
-use tracing::{error, info};
+use tracing::{debug, debug_span, error, info};
 
+use crate::data::row::{OwnedRow, Row};
+use crate::data::values::DbVal;
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{DynamicTable, HasSchema, Table};
 use crate::error::WeaverError;
 use crate::queries::execution::executor::expr_executor::ExpressionEvaluator;
 use crate::queries::execution::strategies::join::JoinParameters;
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
-use crate::rows::Rows;
 use crate::rows::{KeyIndex, OwnedRows};
+use crate::rows::{RefRows, Rows};
 use crate::storage::tables::in_memory_table::InMemoryTable;
 use crate::tx::Tx;
 
@@ -36,85 +39,154 @@ impl QueryExecutor {
 
 impl QueryExecutor {
     /// Executes a query
-    pub fn execute(&self, tx: &Tx, plan: &QueryPlan) -> Result<Box<dyn Rows<'_>>, WeaverError> {
-        let root = plan.root();
+    pub fn execute(&self, tx: &Tx, plan: &QueryPlan) -> Result<OwnedRows, WeaverError> {
         let core = self.core.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
         info!("executing query plan {plan:#?}");
         let ref expression_evaluator = ExpressionEvaluator::compile(plan)?;
-        let final_table = self.execute_node(tx, root, expression_evaluator, &core)?;
-        Ok(Box::new(OwnedRows::from(final_table)))
+        self.execute_node_non_recursive(tx, plan.root(), expression_evaluator, &core)
     }
 
-    fn execute_node(
+    /// executes the nodes in DFS post order traversal.
+    ///
+    /// Probably easiest to create the pre order list stack first, then just pop from the stack
+    fn execute_node_non_recursive<'tx>(
         &self,
-        tx: &Tx,
-        node: &QueryPlanNode,
+        tx: &'tx Tx,
+        root: &QueryPlanNode,
         expression_evaluator: &ExpressionEvaluator,
         core: &Arc<RwLock<WeaverDbCore>>,
-    ) -> Result<Box<dyn Rows<'_>>, WeaverError> {
-        match &node.kind {
-            QueryPlanKind::TableScan {
-                schema,
-                table,
-                keys,
-            } => {
-                let table = {
-                    let core = core.read();
-                    core.get_open_table(schema, table)?
-                };
-                let key_index = keys
-                    .as_ref()
-                    .and_then(|keys| keys.get(0).cloned())
-                    .unwrap_or_else(|| {
-                        table
-                            .schema()
-                            .full_index()
-                            .expect("no way of getting all from table")
-                    });
-                let read = table
-                    .read(tx, &key_index)?
-                    .map(|row| table.schema().public_only(row))
-                    .to_owned()
-                    ;
+    ) -> Result<OwnedRows, WeaverError> {
+        let mut stack = pre_order(root);
+        let mut row_stack: Vec<Box<dyn Rows>> = vec![];
 
-                Ok(Box::new(read))
-            }
-            QueryPlanKind::Filter {
-                filtered,
-                condition,
-            } => {
-                let to_filter = self.execute_node(tx, &*filtered, expression_evaluator, core)?;
+        while let Some(node) = stack.pop() {
+            match &node.kind {
+                QueryPlanKind::TableScan {
+                    schema,
+                    table,
+                    keys,
+                } => {
+                    debug_span!("table-scan").in_scope(||-> Result<(), WeaverError> {
+                        let table = {
+                            let core = core.read();
+                            core.get_open_table(schema, table)?
+                        };
+                        let key_index = keys
+                            .as_ref()
+                            .and_then(|keys| keys.get(0).cloned())
+                            .unwrap_or_else(|| {
+                                table
+                                    .schema()
+                                    .full_index()
+                                    .expect("no way of getting all from table")
+                            });
+                        let read = table
+                            .read(tx, &key_index)?
+                            .map(|row| table.schema().public_only(row))
+                            .to_owned();
 
+                        row_stack.push(Box::new(read));
+                        Ok(())
+                    })?;
+                }
+                QueryPlanKind::Filter {
+                    filtered,
+                    condition,
+                } => {
+                    debug_span!("filter").in_scope(|| -> Result<(), WeaverError>{
+                        let mut to_filter = row_stack.pop().expect("nothing to filter");
+                        let mut owned = vec![];
+                        while let Some(row) = to_filter.next() {
+                            if expression_evaluator.evaluate(
+                                condition,
+                                &row,
+                                to_filter.schema(),
+                                filtered.id(),
+                            )?.bool_value() == Some(true)
+                            {
+                                owned.push(row);
+                            }
+                        }
 
-                todo!("filter")
-            }
-            QueryPlanKind::Project { columns, node } => {
-                let to_project = self.execute_node(tx, &*node, expression_evaluator, core)?;
+                        row_stack.push(Box::new(RefRows::new(node.schema.clone(), owned)));
+                        Ok(())
+                    })?;
+                }
+                QueryPlanKind::Project { columns, node: _ } => {
+                    debug_span!("project").in_scope(|| -> Result<(), WeaverError>{
+                        let mut to_project = row_stack.pop().expect("nothing to project");
+                        let mut owned = vec![];
+                        while let Some(row) = to_project.next() {
+                            let mut new_row = Row::new(columns.len());
+                            debug!("projecting row {row:?}");
+                            for (idx, column_expr) in columns.iter().enumerate() {
+                                debug!("evaluating {column_expr}");
+                                let eval = expression_evaluator.evaluate(
+                                    column_expr,
+                                    &row,
+                                    to_project.schema(),
+                                    node.id(),
+                                )?;
+                                debug!("got {eval}");
+                                new_row[idx] = Cow::Owned(eval.as_ref().clone());
+                            }
 
-                todo!("projection")
-            }
-            QueryPlanKind::Join {
-                left,
-                right,
-                join_kind,
-                on,
-                strategies,
-            } => {
-                let left = self.execute_node(tx, left, expression_evaluator, core)?;
-                let right = self.execute_node(tx, right, expression_evaluator, core)?;
+                            owned.push(new_row);
+                        }
 
-                let strategy = strategies.first().unwrap();
+                        row_stack.push(Box::new(RefRows::new(node.schema.clone(), owned)));
+                        Ok(())
+                    })?;
+                }
+                QueryPlanKind::Join {
+                    left: _,
+                    right: _,
+                    join_kind,
+                    on,
+                    strategies,
+                } => {
+                    debug_span!("join").in_scope(|| -> Result<(), WeaverError>{
+                        let left = row_stack.pop().expect("no left side of join");
+                        let right = row_stack.pop().expect("no right side of join");
 
-                strategy.try_join(JoinParameters {
-                    op: join_kind.clone(),
-                    left,
-                    right,
-                    constraint: on.clone(),
-                })
-            }
-            _kind => {
-                todo!("implement execution of {_kind:?}")
+                        let strategy = strategies.first().unwrap();
+
+                        let joined = strategy.try_join(JoinParameters {
+                            op: join_kind.clone(),
+                            left,
+                            right,
+                            constraint: on.clone(),
+                            schema: node.schema.clone(),
+                        })?;
+                        row_stack.push(joined);
+                        Ok(())
+                    })?;
+                }
+                _kind => {
+                    todo!("implement execution of {_kind:?}")
+                }
             }
         }
+
+        let result = row_stack.pop().expect("no row at top of stack");
+        Ok(OwnedRows::from(result))
     }
+}
+
+/// Converts the query plan node tree into a pre order list. This is done
+/// recursively.
+fn pre_order(root: &QueryPlanNode) -> Vec<&QueryPlanNode> {
+    let mut output = vec![];
+    output.push(root);
+    match &root.kind {
+        QueryPlanKind::TableScan { .. } => {}
+        QueryPlanKind::Filter { filtered, .. } => output.extend(pre_order(filtered)),
+        QueryPlanKind::Project { node, .. } => output.extend(pre_order(node)),
+        QueryPlanKind::Join { left, right, .. } => {
+            output.extend(pre_order(left));
+            output.extend(pre_order(right))
+        }
+    }
+
+    output
 }

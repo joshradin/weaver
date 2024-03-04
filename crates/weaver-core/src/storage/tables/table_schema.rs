@@ -11,6 +11,7 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 use tracing::{info, trace, warn};
 
+use weaver_ast::ast::{Identifier, ResolvedColumnRef};
 use weaver_ast::ToSql;
 
 use crate::data::row::{OwnedRow, Row};
@@ -71,7 +72,10 @@ impl TableSchema {
     }
 
     /// Add a system column
-    pub fn add_sys_column(&mut self, column_definition: ColumnDefinition) -> Result<(), WeaverError> {
+    pub fn add_sys_column(
+        &mut self,
+        column_definition: ColumnDefinition,
+    ) -> Result<(), WeaverError> {
         Ok(self.sys_columns.push(column_definition))
     }
 
@@ -111,6 +115,25 @@ impl TableSchema {
     /// Returns `None` if not present
     pub fn column_index(&self, name: &str) -> Option<usize> {
         self.all_columns().iter().position(|col| col.name == name)
+    }
+
+    /// Gets the index of a column by source, if present. If not present, matches by name if table
+    /// and schema match up.
+    ///
+    /// Returns `None` if not present
+    pub fn column_index_by_source(&self, source: &ResolvedColumnRef) -> Option<usize> {
+        if let Some(ret) = self
+            .all_columns()
+            .iter()
+            .position(|col| col.source_column.as_ref() == Some(source))
+        {
+            return Some(ret);
+        }
+
+        if source.schema().as_ref() != self.schema || source.table().as_ref() != self.name {
+            return None;
+        }
+        self.column_index(source.column().as_ref())
     }
 
     /// Gets a column definition by name
@@ -244,6 +267,14 @@ impl TableSchema {
         let right_columns = other.columns();
 
         for column in left_columns {
+            // always tag source
+            let mut column = column.clone();
+            column.set_source_column(ResolvedColumnRef::new(
+                Identifier::new(&self.schema),
+                Identifier::new(&self.name),
+                Identifier::new(&column.name),
+            ));
+
             if right_columns.iter().any(|c| c.name() == column.name()) {
                 let mut col = column.clone();
                 col.name = format!("{}.{}", self.name, col.name);
@@ -254,6 +285,13 @@ impl TableSchema {
         }
 
         for column in right_columns {
+            // always tag source
+            let mut column = column.clone();
+            column.set_source_column(ResolvedColumnRef::new(
+                Identifier::new(&other.schema),
+                Identifier::new(&other.name),
+                Identifier::new(&column.name),
+            ));
             if left_columns.iter().any(|c| c.name() == column.name()) {
                 let mut col = column.clone();
                 col.name = format!("{}.{}", other.name, col.name);
@@ -263,10 +301,8 @@ impl TableSchema {
             }
         }
 
-
         ret.build().unwrap()
     }
-
 }
 
 impl ToSql for TableSchema {
@@ -297,6 +333,7 @@ pub struct ColumnDefinition {
     non_null: bool,
     default_value: Option<DbVal>,
     auto_increment: Option<i64>,
+    source_column: Option<ResolvedColumnRef>,
 }
 
 impl ColumnDefinition {
@@ -338,6 +375,7 @@ impl ColumnDefinition {
                 non_null,
                 default_value,
                 auto_increment,
+                source_column: None,
             })
         })()
         .map_err(|e| WeaverError::IllegalColumnDefinition {
@@ -380,6 +418,14 @@ impl ColumnDefinition {
         self.name = name.as_ref().to_string();
         self
     }
+
+    pub(crate) fn source_column(&self) -> Option<&ResolvedColumnRef> {
+        self.source_column.as_ref()
+    }
+
+    pub(crate) fn set_source_column(&mut self, source: ResolvedColumnRef) {
+        self.source_column = Some(source);
+    }
 }
 
 impl Debug for ColumnDefinition {
@@ -405,6 +451,9 @@ impl ToSql for ColumnDefinition {
         }
         if let Some(default) = self.default_value.as_ref() {
             write!(f, " default {default}")?;
+        }
+        if let Some(source_column) = self.source_column() {
+            write!(f, " comment \"source-column: {source_column}\"")?;
         }
         Ok(())
     }

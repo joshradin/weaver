@@ -117,7 +117,6 @@ pub trait Rows<'t> {
 }
 
 
-
 impl<'a> Debug for dyn Rows<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BoxedRow").finish_non_exhaustive()
@@ -133,6 +132,7 @@ impl<'t> Rows<'t> for Box<dyn Rows<'t> + Send + 't> {
         (**self).next()
     }
 }
+
 #[derive(Debug)]
 pub struct OwnedRows {
     schema: TableSchema,
@@ -140,8 +140,15 @@ pub struct OwnedRows {
 }
 
 impl From<Box<dyn Rows<'_>>> for OwnedRows {
-    fn from(value: Box<dyn Rows>) -> Self {
-        todo!()
+    fn from(mut value: Box<dyn Rows>) -> Self {
+        let schema = value.schema().clone();
+        let mut vec = Vec::new();
+        while let Some(next) = value.next() {
+            vec.push(next.to_owned());
+        }
+        OwnedRows {
+            schema, rows: VecDeque::from(vec)
+        }
     }
 }
 
@@ -194,12 +201,22 @@ impl<'t> Rows<'t> for OwnedRows {
 }
 
 #[derive(Debug)]
-pub struct DefaultRows<'a> {
+pub struct RefRows<'a> {
     schema: TableSchema,
     rows: VecDeque<Row<'a>>,
 }
 
-impl<'a> Rows<'a> for DefaultRows<'a> {
+impl<'a> RefRows<'a> {
+    pub fn new(schema: TableSchema, rows: impl IntoIterator<Item=Row<'a>>) -> Self{
+        Self {
+            schema,
+            rows: rows.into_iter().collect(),
+        }
+    }
+}
+
+
+impl<'a> Rows<'a> for RefRows<'a> {
     fn schema(&self) -> &TableSchema {
         &self.schema
     }
@@ -208,6 +225,8 @@ impl<'a> Rows<'a> for DefaultRows<'a> {
         self.rows.pop_front()
     }
 }
+
+
 
 #[derive(Debug)]
 pub struct MappedRows<'a, R: Rows<'a>, F: Fn(Row<'a>) -> Row<'a>> {

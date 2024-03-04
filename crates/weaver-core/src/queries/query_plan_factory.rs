@@ -26,9 +26,9 @@ use crate::error::WeaverError;
 use crate::key::KeyData;
 use crate::queries::execution::strategies::join::JoinStrategySelector;
 use crate::queries::query_cost::{Cost, CostTable};
-use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
+use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode, QueryPlanNodeBuilder};
 use crate::rows::{KeyIndex, KeyIndexKind};
-use crate::storage::tables::table_schema::{Key, TableSchema, TableSchemaBuilder};
+use crate::storage::tables::table_schema::{ColumnDefinition, Key, TableSchema, TableSchemaBuilder};
 use crate::storage::tables::{table_schema, TableRef};
 use crate::tx::Tx;
 
@@ -231,17 +231,17 @@ impl QueryPlanFactory {
 
                 let (schema, table) = table_ref;
 
-                Ok(QueryPlanNode {
-                    cost: self.get_cost("LOAD_TABLE")?,
-                    rows: u64::MAX,
-                    kind: QueryPlanKind::TableScan {
+                Ok(QueryPlanNode::builder()
+                    .cost(self.get_cost("LOAD_TABLE")?)
+                    .rows(u64::MAX)
+                    .kind(QueryPlanKind::TableScan {
                         schema,
                         table,
                         keys: None,
-                    },
-                    schema: table_schema,
-                    alias: alias.as_ref().map(|i| i.to_string()),
-                })
+                    })
+                    .schema(table_schema)
+                    .alias(alias.as_ref().map(|i| i.to_string()))
+                    .build()?)
             }
             TableOrSubQuery::Select { select, alias } => {
                 let node = self.select_to_plan_node(db, plan_context, real_tables, select)?;
@@ -286,42 +286,50 @@ impl QueryPlanFactory {
                     // let keys = self.get_keys_from_condition(plan_context, &real_tables, condition, &from_node)?;
 
                     let filtered = match condition {
-                        None => {
-                            from_node
-                        }
+                        None => from_node,
                         Some(condition) => {
                             let schema = from_node.schema().clone();
-                            QueryPlanNode {
-                                cost: self.get_cost("FILTER")?,
-                                rows: u64::MAX,
-                                kind: QueryPlanKind::Filter {
+                            QueryPlanNode::builder()
+                                .cost(self.get_cost("FILTER")?)
+                                .rows(u64::MAX)
+                                .kind(QueryPlanKind::Filter {
                                     filtered: Box::new(from_node),
                                     condition: condition.clone(),
-                                },
-                                schema,
-                                alias: None,
-                            }
+                                })
+                                .schema(schema)
+                                .build()?
                         }
                     };
 
-                    let projected_schema = self.table_schema_for_projection(columns, &filtered)?;
+                    // if columns.len() == 1 && matches!(columns[0], ResultColumn::Wildcard) {
+                    //     // if just * wildcard then no projection is needed
+                    //     return Ok(filtered);
+                    // }
 
-                    Ok(QueryPlanNode {
-                        cost: self.get_cost("SELECT")?,
-                        rows: u64::MAX,
-                        kind: QueryPlanKind::Project {
-                            columns: vec![],
+                    let (projected_schema, columns) =
+                        self.table_schema_for_projection(columns, &filtered)?;
+
+                    Ok(QueryPlanNode::builder()
+                        .cost(self.get_cost("SELECT")?)
+                        .rows(u64::MAX)
+                        .kind(QueryPlanKind::Project {
+                            columns: columns,
                             node: Box::new(filtered),
-                        },
-                        schema: projected_schema,
-                        alias: None,
-                    })
+                        })
+                        .schema(projected_schema)
+                        .build()?)
                 }
             }
         })
     }
 
-    fn get_keys_from_condition(&self, plan_context: Option<&WeaverProcessInfo>, real_tables: &&HashMap<TableRef, TableSchema>, condition: &Option<Expr>, from_node: &QueryPlanNode) -> Result<Vec<KeyIndex>, WeaverError> {
+    fn get_keys_from_condition(
+        &self,
+        plan_context: Option<&WeaverProcessInfo>,
+        real_tables: &&HashMap<TableRef, TableSchema>,
+        condition: &Option<Expr>,
+        from_node: &QueryPlanNode,
+    ) -> Result<Vec<KeyIndex>, WeaverError> {
         let mut applicable_keys =
             match condition
                 .as_ref()
@@ -331,8 +339,8 @@ impl QueryPlanFactory {
                         .iter()
                         .map(|c| {
                             c.resolved()
-                             .expect("all columns should be resolved at this point")
-                             .clone()
+                                .expect("all columns should be resolved at this point")
+                                .clone()
                         })
                         .collect();
                     debug!("columns used in condition: {condition:?}");
@@ -342,20 +350,16 @@ impl QueryPlanFactory {
                         .iter()
                         .filter_map(|key| {
                             debug!(
-                                            "checking if all of {:?} in condition columns {:?}",
-                                            key.columns(),
-                                            condition
-                                        );
+                                "checking if all of {:?} in condition columns {:?}",
+                                key.columns(),
+                                condition
+                            );
                             if key.columns().iter().all(|column| {
                                 let column_ref = self.parse_column_ref(column);
 
                                 let resolved = match column_ref {
                                     ColumnRef::Unresolved(column_ref) => self
-                                        .resolve_column_ref(
-                                            &column_ref,
-                                            real_tables,
-                                            plan_context,
-                                        )
+                                        .resolve_column_ref(&column_ref, real_tables, plan_context)
                                         .expect("could not resolve"),
                                     ColumnRef::Resolved(resolved) => resolved,
                                 };
@@ -389,58 +393,77 @@ impl QueryPlanFactory {
         });
         Ok(applicable_keys
             .into_iter()
-            .map(|key| {
-                self.to_key_index(key, condition.as_ref(), &real_tables, plan_context)
-            })
+            .map(|key| self.to_key_index(key, condition.as_ref(), &real_tables, plan_context))
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .flatten()
             .collect::<Vec<_>>())
     }
 
-    fn table_schema_for_projection(&self, columns: &Vec<ResultColumn>, from_node: &QueryPlanNode) -> Result<TableSchema, WeaverError> {
-        Ok(if columns.len() == 1 && matches!(columns[0], ResultColumn::Wildcard) {
-            from_node.schema.clone()
-        } else {
-            let mut schema_builder = TableSchemaBuilder::new(
-                "*",
-                format!("table_{}", rand::random::<u64>()),
-            );
+    fn table_schema_for_projection(
+        &self,
+        columns: &Vec<ResultColumn>,
+        from_node: &QueryPlanNode,
+    ) -> Result<(TableSchema, Vec<Expr>), WeaverError> {
+        let source_schema = &from_node.schema;
+        let mut schema_builder =
+            TableSchemaBuilder::new("*", format!("table_{}", rand::random::<u64>()));
+        let mut cols = vec![];
 
-            for result_column in columns {
-                match result_column {
-                    ResultColumn::Wildcard => {
-                        // all columns from previous node
-                        for col in from_node.schema.columns() {
-                            schema_builder =
-                                schema_builder.column_definition(col.clone());
-                        }
-                    }
-                    ResultColumn::TableWildcard(table) => {}
-                    ResultColumn::Expr { expr, alias } => {
-                        let name = match alias {
-                            None => expr.to_string(),
-                            Some(alias) => alias.to_string(),
-                        };
-                        let non_null = match expr {
-                            Expr::Column { column } => true,
-                            _ => false,
+        for result_column in columns {
+            match result_column {
+                ResultColumn::Wildcard => {
+                    // all columns from previous node
+                    for col in from_node.schema.columns() {
+                        let resolved = if let Some(source_column) = col.source_column() {
+                            source_column.clone()
+                        } else {
+                            ResolvedColumnRef::new(
+                                Identifier::new(source_schema.schema()),
+                                Identifier::new(source_schema.name()),
+                                Identifier::new(col.name()),
+                            )
+
                         };
 
-                        schema_builder = schema_builder.column(
-                            name,
-                            Type::Boolean,
-                            non_null,
-                            None,
-                            None,
-                        )?;
+                        let mut col_def = col.clone();
+                        col_def.set_source_column(resolved.clone());
+
+                        schema_builder = schema_builder.column_definition(col_def);
+                        let expr = Expr::Column {
+                            column: resolved.into()
+                        };
+                        cols.push(expr);
                     }
                 }
-            }
-            schema_builder.build()?
-        })
-    }
+                ResultColumn::TableWildcard(table) => {
+                }
+                ResultColumn::Expr { expr, alias } => {
+                    let name = match alias {
+                        None => expr.to_string(),
+                        Some(alias) => alias.to_string(),
+                    };
+                    let non_null = match expr {
+                        Expr::Column { column } => true,
+                        _ => false,
+                    };
 
+                    cols.push(expr.clone());
+
+                    let mut cd = ColumnDefinition::new(name, Type::Boolean, non_null, None, None)?;
+                    if let Expr::Column { column} = expr {
+                        if let Some(resolved) = column.resolved() {
+                            cd.set_source_column(resolved.clone());
+                        }
+
+                    }
+
+                    schema_builder = schema_builder.column_definition(cd);
+                }
+            }
+        }
+        Ok((schema_builder.build()?, cols))
+    }
 
     fn join_to_plan_node(
         &self,
@@ -468,19 +491,18 @@ impl QueryPlanFactory {
 
             let built_schema = left.schema().join(right.schema());
 
-            Ok(QueryPlanNode {
-                cost: self.get_cost("JOIN")?,
-                rows: u64::MAX,
-                kind: QueryPlanKind::Join {
+            Ok(QueryPlanNode::builder()
+                .cost(self.get_cost("JOIN")?)
+                .rows(u64::MAX)
+                .kind(QueryPlanKind::Join {
                     left: Box::new(left),
                     right: Box::new(right),
                     join_kind: op.clone(),
                     on: constraint.clone(),
                     strategies,
-                },
-                schema: built_schema,
-                alias: None,
-            })
+                })
+                .schema(built_schema)
+                .build()?)
         })
     }
 

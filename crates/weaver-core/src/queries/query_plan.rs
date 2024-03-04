@@ -1,8 +1,10 @@
 use std::fmt::{Debug, Formatter, Pointer};
 use std::sync::Arc;
+
 use uuid::Uuid;
 
 use weaver_ast::ast::{Expr, JoinConstraint, JoinOperator};
+use weaver_ast::ToSql;
 
 use crate::dynamic_table::HasSchema;
 use crate::error::WeaverError;
@@ -27,7 +29,7 @@ impl QueryPlan {
     }
 }
 
-
+#[derive(Clone)]
 pub struct QueryPlanNode {
     id: Uuid,
     pub cost: Cost,
@@ -45,15 +47,33 @@ impl Debug for QueryPlanNode {
             .field("cost", &self.cost())
             .field("rows", &self.rows)
             .field("kind", &self.kind)
-            .field("cols", &self.schema().columns())
+            .field("schema", &self.schema())
+
             .finish()
     }
 }
 
 impl QueryPlanNode {
 
-    pub fn new(cost: Cost, rows: u64, kind: QueryPlanKind, schema: TableSchema, alias: Option<String>) -> Self {
-        Self { id: Uuid::new_v4(), cost, rows, kind, schema, alias }
+    /// Gets a query plan node builder
+    pub fn builder() -> QueryPlanNodeBuilder {
+        QueryPlanNodeBuilder::default()
+    }
+    pub fn new(
+        cost: Cost,
+        rows: u64,
+        kind: QueryPlanKind,
+        schema: TableSchema,
+        alias: Option<String>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            cost,
+            rows,
+            kind,
+            schema,
+            alias,
+        }
     }
     /// Tries to find the plan node with a given alias. Aliases are shadowed.
     pub fn get_alias(&self, alias: impl AsRef<str>) -> Option<&QueryPlanNode> {
@@ -80,7 +100,6 @@ impl QueryPlanNode {
     pub fn id(&self) -> Uuid {
         self.id
     }
-
 }
 
 impl HasSchema for QueryPlanNode {
@@ -100,18 +119,57 @@ pub struct QueryPlanNodeBuilder {
 }
 
 impl QueryPlanNodeBuilder {
-
     /// Creates a new query plan node builder
     pub fn new() -> Self {
         Self::default()
     }
-
-    pub fn build(&mut self) -> Result<QueryPlanNode, WeaverError> {
-
+    pub fn cost(&mut self, cost: Cost) -> &mut Self {
+        let _ = self.cost.insert(cost);
+        self
     }
+    pub fn rows(&mut self, rows: u64) -> &mut Self {
+        let _ = self.rows.insert(rows);
+        self
+    }
+    pub fn kind(&mut self, kind: QueryPlanKind) -> &mut Self {
+        let _ = self.kind.insert(kind);
+        self
+    }
+    pub fn schema(&mut self, schema: TableSchema) -> &mut Self {
+        let _ = self.schema.insert(schema);
+        self
+    }
+    pub fn alias(&mut self, alias: impl Into<Option<String>>) -> &mut Self {
+        self.alias = alias.into();
+        self
+    }
+    pub fn build(&mut self) -> Result<QueryPlanNode, WeaverError> {
+        let Self {
+            cost: Some(cost),
+            rows: Some(rest),
+            kind: Some(kind),
+            schema: Some(schema),
+            alias,
+        } = self
+        else {
+            let mut missing = vec![];
+            missing.extend(self.cost.map(|_| "cost".to_string()));
+            missing.extend(self.rows.map(|_| "rows".to_string()));
+            missing.extend(self.kind.as_ref().map(|_| "kind".to_string()));
+            missing.extend(self.schema.as_ref().map(|_| "schema".to_string()));
+
+            return Err(WeaverError::BuilderIncomplete(
+                "QueryPlanNodeBuilder".to_string(),
+                missing,
+            ));
+        };
+
+        Ok(QueryPlanNode::new(*cost, *rest, kind.clone(), schema.clone(), alias.clone()))
+    }
+
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum QueryPlanKind {
     /// Gets rows from a given table, this is usually used as a leaf node
     TableScan {
@@ -122,10 +180,10 @@ pub enum QueryPlanKind {
     },
     Filter {
         filtered: Box<QueryPlanNode>,
-        condition: Expr
+        condition: Expr,
     },
     Project {
-        columns: Vec<usize>,
+        columns: Vec<Expr>,
         node: Box<QueryPlanNode>,
     },
     Join {

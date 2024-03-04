@@ -1,5 +1,6 @@
 //! Join strategies
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
@@ -18,8 +19,9 @@ use crate::error::WeaverError;
 use crate::key::KeyData;
 use crate::queries::execution::strategies::Strategy;
 use crate::queries::query_cost::Cost;
-use crate::rows::Rows;
+use crate::rows::{RefRows, Rows};
 use crate::storage::tables::InMemoryTable;
+use crate::storage::tables::table_schema::TableSchema;
 
 /// A join strategy
 pub trait JoinStrategy: Strategy {
@@ -30,7 +32,7 @@ pub trait JoinStrategy: Strategy {
     fn join_cost(&self, join_parameters: &JoinClause) -> Option<Cost>;
 
     /// Attempts to perform a join
-    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r>>, WeaverError>;
+    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r> + 'r>, WeaverError>;
 }
 
 impl Debug for dyn JoinStrategy {
@@ -47,6 +49,7 @@ pub struct JoinParameters<'a> {
     pub left: Box<dyn Rows<'a>>,
     pub right: Box<dyn Rows<'a>>,
     pub constraint: JoinConstraint,
+    pub schema: TableSchema
 }
 
 /// Responsible for selecting a join strategy
@@ -148,7 +151,7 @@ impl JoinStrategy for HashJoinTableStrategy {
         Some(Cost::new(1.1, 1))
     }
 
-    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r>>, WeaverError> {
+    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r> + 'r>, WeaverError> {
         let Expr::Binary {
             left,
             op: BinaryOp::Eq,
@@ -171,10 +174,10 @@ impl JoinStrategy for HashJoinTableStrategy {
             unreachable!();
         };
 
-        let left_table = join_parameters.left;
-        let right_table = join_parameters.right;
+        let mut left_table = join_parameters.left;
+        let mut right_table = join_parameters.right;
 
-        let mut hash_map = HashMap::<DbVal, Row>::new();
+        let mut hash_map = HashMap::<Cow<DbVal>, (bool, Vec<Row>)>::new();
         let left_idx = left_table
             .schema()
             .column_index(left_column.resolved().expect("must be resolved").column())
@@ -184,6 +187,44 @@ impl JoinStrategy for HashJoinTableStrategy {
             .column_index(right_column.resolved().expect("must be resolved").column())
             .expect("could not get index of column for right side");
 
-        todo!()
+        let mut i = 0;
+
+        while let Some(row) = left_table.next() {
+            let db_val = row[left_idx].clone();
+            hash_map.entry(db_val)
+                .or_insert_with(|| (false, vec![]))
+                .1
+                .push(row);
+            i += 1;
+        }
+        while let Some(right_row) = right_table.next() {
+            let db_val = &right_row[right_idx];
+            if let Some((used, rows)) = hash_map.get_mut(db_val) {
+                *used = true;
+                for left_row in rows {
+                    let joined = Row::from_iter(
+                        left_row.iter().chain(right_row.iter()).cloned()
+                    );
+                    *left_row = joined;
+                    i += 1;
+                }
+            }
+            i += 1;
+        }
+        debug!("join completed in {i} iterations");
+
+        let rows = hash_map
+            .into_values()
+            .into_iter()
+            .filter_map(|(used, rows)| {
+                if used {
+                    Some(rows)
+                } else {
+                    None
+                }
+            })
+            .flatten();
+
+        Ok(Box::new(RefRows::new(join_parameters.schema, rows)))
     }
 }

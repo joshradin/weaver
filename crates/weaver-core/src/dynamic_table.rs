@@ -64,6 +64,13 @@ pub trait DynamicTable: Monitorable + HasSchema + Send + Sync {
         self.read(tx, &self.schema().full_index()?)
     }
 
+    /// Gets a size estimate for a given key index, returning an approximate amount
+    /// of rows retrievable by said key. This is meant to be a quick operation, and not the exact
+    /// number of rows stored in an index.
+    ///
+    /// Since this is approximate-based, there will also be no transaction support.
+    fn size_estimate(&self, key_index: &KeyIndex) -> Result<usize, WeaverError>;
+
     /// Update an existing row. Fails if no row with primary key is already present
     fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError>;
 

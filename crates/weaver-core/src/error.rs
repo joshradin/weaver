@@ -6,7 +6,7 @@ use crossbeam::channel::{RecvError, SendError};
 use openssl::error::ErrorStack;
 use openssl::ssl::HandshakeError;
 use serde::ser::StdError;
-use weaver_ast::ast::{JoinClause, ResolvedColumnRef, UnresolvedColumnRef};
+use weaver_ast::ast::{Expr, JoinClause, ResolvedColumnRef, UnresolvedColumnRef};
 use weaver_ast::error::ParseQueryError;
 
 use crate::access_control::auth::error::AuthInitError;
@@ -140,6 +140,8 @@ pub enum WeaverError {
 
     #[error("{0} builder incomplete, need {1:?}")]
     BuilderIncomplete(String, Vec<String>),
+    #[error("Failed to evaluate {0}: {1}")]
+    EvaluationFailed(Expr, String),
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {

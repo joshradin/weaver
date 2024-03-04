@@ -28,6 +28,14 @@ impl DbVal {
         }
     }
 
+    pub fn bool_value(&self) -> Option<bool> {
+        if let Self::Boolean(b) = self {
+            Some(*b)
+        } else {
+            None
+        }
+    }
+
     pub fn value_type(&self) -> Option<Type> {
         Some(match self {
             &DbVal::String(_, max_len) => Type::String(max_len),
@@ -58,7 +66,7 @@ impl AsRef<DbVal> for DbVal {
 impl From<ast::Literal> for DbVal {
     fn from(value: ast::Literal) -> Self {
         match value {
-            ast::Literal::String(s) => DbVal::String(s.to_string(), u16::MAX),
+            ast::Literal::String(s) => DbVal::String(s, u16::MAX),
             ast::Literal::Integer(i) => DbVal::Integer(i),
             ast::Literal::Float(f) => DbVal::Float(f),
             ast::Literal::Boolean(b) => DbVal::Boolean(b),

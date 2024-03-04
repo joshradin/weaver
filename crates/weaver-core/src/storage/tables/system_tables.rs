@@ -67,6 +67,10 @@ impl DynamicTable for SystemTable {
         (self.on_read)(arc, key)
     }
 
+    fn size_estimate(&self, key_index: &KeyIndex) -> Result<usize, WeaverError> {
+        Ok(0)
+    }
+
     fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         unimplemented!("can not update information in a system table")
     }
