@@ -13,6 +13,7 @@ use tempfile::TempDir;
 use tracing::{
     debug, error, error_span, info, info_span, span_enabled, trace, trace_span, warn, Level, Span,
 };
+use tracing::field::debug;
 
 use weaver_ast::ast::Query;
 
@@ -43,6 +44,7 @@ use crate::monitoring::{Monitor, Monitorable, Stats};
 use crate::queries::execution::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
+use crate::queries::query_plan_optimizer::QueryPlanOptimizer;
 use crate::rows::OwnedRows;
 use crate::tx::coordinator::TxCoordinator;
 use crate::tx::Tx;
@@ -269,8 +271,11 @@ impl WeaverDb {
         info!("query to plan");
         let factory = QueryPlanFactory::new(self.weak());
         debug!("created query factory: {:?}", factory);
-        let plan = factory.to_plan(tx, query, plan_context)?;
-        warn!("plan optimization not yet implemented");
+        let mut plan = factory.to_plan(tx, query, plan_context)?;
+        debug!("created initial plan {plan:#?}");
+        let optimizer = QueryPlanOptimizer::new(self.weak());
+        debug!("created query optimizer: {optimizer:?}");
+        optimizer.optimize(tx, &mut plan)?;
 
         Ok(plan)
     }

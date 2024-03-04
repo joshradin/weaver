@@ -150,7 +150,7 @@ fn handle_message<S: MessageStream + Send>(
                     send_request(DbReqBody::Commit(this_tx), tx)
                 }
                 RemoteDbReq::GetRow => {
-                    debug!("attempting to get next row");
+                    trace!("attempting to get next row");
                     match &mut rows {
                         None => Ok(RemoteDbResp::Err("no table".to_string())),
                         Some(table) => {

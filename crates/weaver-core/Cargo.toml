@@ -51,6 +51,7 @@ indexmap = "2.2.3"
 static_assertions = "1.1.0"
 memmap2 = "0.9.4"
 uuid = { version = "1.7.0", features = ["v4", "serde"] }
+paste = "1.0.14"
 
 [dev-dependencies]
 tracing-subscriber = "0.3.18"

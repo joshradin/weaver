@@ -59,7 +59,7 @@ impl QueryPlanFactory {
         query: &Query,
         plan_context: impl Into<Option<&'a WeaverProcessInfo>>,
     ) -> Result<QueryPlan, WeaverError> {
-        error_span!("to_plan").in_scope(|| {
+        debug_span!("to_plan").in_scope(|| {
             let db = self.db.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
             debug!("upgraded weaver db from weak");
             let socket = db.connect();

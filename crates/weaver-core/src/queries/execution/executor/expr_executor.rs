@@ -66,7 +66,7 @@ fn runtime_eval<'a>(
 ) -> Result<Cow<'a, DbVal>, WeaverError> {
     let mut stack: Vec<Cow<'a, DbVal>> = vec![];
     let ops = expr.postfix();
-    debug!("evaluating using schema {schema:?}");
+    trace!("evaluating using schema {schema:?}");
     for op in ops {
         match op {
             Expr::Column { column } => {
@@ -82,7 +82,7 @@ fn runtime_eval<'a>(
                             format!("could not get index of column {column} in row"),
                         )
                     })?;
-                debug!("got index {idx} for column {column}");
+                trace!("got index {idx} for column {column}");
                 let val = row[idx].clone();
                 stack.push(val);
             }

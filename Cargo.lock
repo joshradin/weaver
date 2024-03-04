@@ -2108,6 +2108,7 @@ dependencies = [
  "once_cell",
  "openssl",
  "parking_lot",
+ "paste",
  "ptree",
  "rand",
  "rayon",

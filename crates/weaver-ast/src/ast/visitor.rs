@@ -26,8 +26,6 @@ macro_rules! visit_mut {
             )*
         }
     };
-
-
 }
 
 visit_mut! {

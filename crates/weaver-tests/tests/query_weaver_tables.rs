@@ -68,7 +68,10 @@ fn get_tables_with_schema() -> eyre::Result<()> {
         FROM
             weaver.tables as t
         JOIN
-            weaver.schemata as s ON t.schema_id = s.id",
+            weaver.schemata as s ON t.schema_id = s.id
+        WHERE
+            t.schema_id = 1
+            ",
         )?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
 
@@ -86,13 +89,13 @@ fn explain_get_tables_with_schema() -> eyre::Result<()> {
         info!("trying to get tables");
         let (rows, elapsed) = client.query(&Query::parse(
             r"
-        EXPLAIN SELECT s.name, t.name, t.table_ddl
+        EXPLAIN SELECT s.name as schema, t.name, t.table_ddl
         FROM
             weaver.tables as t
         JOIN
             weaver.schemata as s ON t.schema_id = s.id
         WHERE
-            s.name = 'weaver'
+            s.name = 'weaver' and t.name = 'tables'
             ",
         )?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
