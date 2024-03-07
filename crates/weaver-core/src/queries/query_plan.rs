@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use weaver_ast::ast::{Expr, JoinConstraint, JoinOperator, ReferencesCols};
+use weaver_ast::ast::{CreateTable, Expr, JoinConstraint, JoinOperator, ReferencesCols};
 
 use crate::data::row::Row;
 use crate::data::types::Type;
@@ -12,7 +12,7 @@ use crate::dynamic_table::HasSchema;
 use crate::error::WeaverError;
 use crate::queries::execution::strategies::join::JoinStrategy;
 use crate::queries::query_cost::Cost;
-use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, Rows};
+use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, RefRows, Rows};
 use crate::storage::tables::table_schema::TableSchema;
 
 #[derive(Debug)]
@@ -50,6 +50,35 @@ impl QueryPlan {
         .expect("infallible")
     }
 
+    pub fn ddl_result_schema() -> TableSchema {
+        (|| -> Result<TableSchema, WeaverError> {
+            TableSchema::builder("<query>", "<result>")
+                .column("ok", Type::String(255), false, None, None)?
+                .column("err", Type::String(255), false, None, None)?
+                .build()
+        })()
+        .expect("infallible")
+    }
+
+    pub fn ddl_result<T, E>(result: Result<T, E>) -> impl Rows<'static>
+    where
+        T: ToString,
+        E: ToString,
+    {
+        let row_values: [DbVal; 2] = match result {
+            Ok(ok) => {
+                [DbVal::string(ok.to_string(), None), DbVal::Null]
+            }
+            Err(err) => {
+                [DbVal::Null, DbVal::string(err.to_string(), None)]
+            }
+        };
+        let row = Row::from(row_values);
+        RefRows::new(
+            Self::ddl_result_schema(), [row]
+        )
+    }
+
     /// Converts this query plan into rows in postfix order
     pub fn as_rows(&self) -> OwnedRows {
         let mut rows = vec![];
@@ -83,7 +112,6 @@ impl QueryPlan {
         }
         None
     }
-
 }
 
 #[derive(Clone)]
@@ -232,7 +260,7 @@ impl QueryPlanNode {
                         .collect::<Vec<_>>()
                         .join(",")
                         .into(),
-                );  // columns
+                ); // columns
             }
             QueryPlanKind::Project { columns, .. } => {
                 values.push("".into()); // table
@@ -245,21 +273,35 @@ impl QueryPlanNode {
                         .map(|i| i.to_string())
                         .collect::<Vec<_>>()
                         .join(",")
-                        .into()
+                        .into(),
                 ); // columns
             }
-            QueryPlanKind::Join { strategies, on: JoinConstraint { on }, .. } => {
+            QueryPlanKind::Join {
+                strategies,
+                on: JoinConstraint { on },
+                ..
+            } => {
                 values.push("".into()); // table
                 values.push(strategies.first().unwrap().0.to_string().into());
                 values.push("".into()); // possible keys
-                values.push(on.columns()
-                              .into_iter()
-                              .map(|i| i.to_string())
-                              .collect::<Vec<_>>()
-                              .join(",")
-                              .into()); // columns
+                values.push(
+                    on.columns()
+                        .into_iter()
+                        .map(|i| i.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                        .into(),
+                ); // columns
             }
-            _ => {}
+            QueryPlanKind::CreateTable { table_def } => {
+                values.push(
+                    format!("{}.{}", table_def.schema.as_ref().unwrap(), table_def.name).into(),
+                ); // table
+                values.push("create".into());
+                values.push("".into()); // possible keys
+                values.push("".into()); // columns
+            }
+            QueryPlanKind::Explain { .. } => {}
         }
 
         values.push((self.rows as i64).into());
@@ -274,7 +316,6 @@ impl QueryPlanNode {
         let mut output = vec![];
         output.push(self);
         match &self.kind {
-            QueryPlanKind::TableScan { .. } => {}
             QueryPlanKind::Filter { filtered, .. } => output.extend(filtered.prefix_order()),
             QueryPlanKind::Project { node, .. } => output.extend(node.prefix_order()),
             QueryPlanKind::Join { left, right, .. } => {
@@ -282,6 +323,7 @@ impl QueryPlanNode {
                 output.extend(right.prefix_order())
             }
             QueryPlanKind::Explain { explained } => output.extend(explained.prefix_order()),
+            _ => {}
         }
 
         output
@@ -292,7 +334,6 @@ impl QueryPlanNode {
     pub fn postfix_order(&self) -> Vec<&QueryPlanNode> {
         let mut output = vec![];
         match &self.kind {
-            QueryPlanKind::TableScan { .. } => {}
             QueryPlanKind::Filter { filtered, .. } => output.extend(filtered.postfix_order()),
             QueryPlanKind::Project { node, .. } => output.extend(node.postfix_order()),
             QueryPlanKind::Join { left, right, .. } => {
@@ -300,6 +341,7 @@ impl QueryPlanNode {
                 output.extend(right.postfix_order())
             }
             QueryPlanKind::Explain { explained } => output.extend(explained.postfix_order()),
+            _ => {}
         }
         output.push(self);
 
@@ -308,32 +350,31 @@ impl QueryPlanNode {
     /// Gets references to the children of this query plan node
     pub fn children(&self) -> Vec<&QueryPlanNode> {
         match &self.kind {
-            QueryPlanKind::TableScan { .. } => {
-                vec![]
-            }
             QueryPlanKind::Filter { filtered, .. } => vec![&*filtered],
             QueryPlanKind::Project { node, .. } => vec![&*node],
             QueryPlanKind::Join { left, right, .. } => {
                 vec![&*left, &*right]
             }
             QueryPlanKind::Explain { explained } => vec![&*explained],
+            _ => {
+                vec![]
+            }
         }
     }
     /// Gets mutable reference to the children of this query plan node
     pub fn children_mut(&mut self) -> Vec<&mut QueryPlanNode> {
         match &mut self.kind {
-            QueryPlanKind::TableScan { .. } => {
-                vec![]
-            }
             QueryPlanKind::Filter { filtered, .. } => vec![&mut *filtered],
             QueryPlanKind::Project { node, .. } => vec![&mut *node],
             QueryPlanKind::Join { left, right, .. } => {
                 vec![&mut *left, &mut *right]
             }
             QueryPlanKind::Explain { explained } => vec![&mut *explained],
+            _ => {
+                vec![]
+            }
         }
     }
-
 }
 
 impl HasSchema for QueryPlanNode {
@@ -435,5 +476,9 @@ pub enum QueryPlanKind {
     },
     Explain {
         explained: Box<QueryPlanNode>,
+    },
+    /// Creates a table
+    CreateTable {
+        table_def: CreateTable,
     },
 }

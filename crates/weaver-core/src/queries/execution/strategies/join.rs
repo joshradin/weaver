@@ -154,7 +154,7 @@ impl JoinStrategy for HashJoinTableStrategy {
         };
 
         debug!("can run a hash-join on {left_column} and {right_column}");
-        Some(Cost::new(1.1, 1))
+        Some(Cost::new(1.1, 1, None))
     }
 
     fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r> + 'r>, WeaverError> {
@@ -184,14 +184,16 @@ impl JoinStrategy for HashJoinTableStrategy {
         let mut right_table = join_parameters.right;
 
         let mut hash_map = HashMap::<Cow<DbVal>, (bool, Vec<Row>)>::new();
+        let left_column = left_column.resolved().expect("must be resolved");
         let left_idx = left_table
             .schema()
-            .column_index(left_column.resolved().expect("must be resolved").column())
-            .expect("could not get index of column for left side");
+            .column_index_by_source(left_column)
+            .unwrap_or_else(|| panic!("could not get index of column {left_column} for left side {:?}", left_table.schema().columns()));
+        let right_column = right_column.resolved().expect("must be resolved");
         let right_idx = right_table
             .schema()
-            .column_index(right_column.resolved().expect("must be resolved").column())
-            .expect("could not get index of column for right side");
+            .column_index_by_source(right_column)
+            .unwrap_or_else(|| panic!("could not get index of column {right_column} for right side {:?}", right_table.schema().columns()));
 
         let mut i = 0;
 
@@ -204,7 +206,8 @@ impl JoinStrategy for HashJoinTableStrategy {
             i += 1;
         }
         while let Some(right_row) = right_table.next() {
-            let db_val = &right_row[right_idx];
+            let db_val = right_row.get(right_idx)
+                .unwrap_or_else(|| panic!("failed to get index {right_idx} of row {right_row:?}"));
             if let Some((used, rows)) = hash_map.get_mut(db_val) {
                 *used = true;
                 for left_row in rows {

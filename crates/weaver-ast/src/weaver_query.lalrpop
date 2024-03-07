@@ -6,12 +6,58 @@ use std::borrow::Cow;
 grammar<'input>(input: &'input str);
 
 pub Query: ast::Query = {
-    <mut queries: Query_+> => if queries.len() == 1 { queries.remove(0) } else { ast::Query::QueryList(<>) }
+    <mut queries: Query_+> ";"? => if queries.len() == 1 { queries.remove(0) } else { ast::Query::QueryList(<>) }
 }
 
 Query_: ast::Query = {
     "explain" <Query_> => ast::Query::Explain(Box::new(<>)),
-    <SelectStmt> ";" => ast::Query::Select(<>)
+    <SelectStmt> ";" => ast::Query::Select(<>),
+    <CreateStmt> ";" => ast::Query::Create(<>)
+}
+
+CreateStmt: ast::Create = {
+    "create" "table" <CreateTable> => ast::Create::Table(<>)
+}
+
+CreateTable: ast::CreateTable = {
+    <table: Table> "(" <defs: Comma1<CreateDefinition>> ")" => {
+        let (schema, table) = table;
+        ast::CreateTable {
+            schema,
+            name: table,
+            create_definitions: defs
+        }
+    }
+}
+
+CreateDefinition: ast::CreateDefinition = {
+    ColumnDefinition => ast::CreateDefinition::Column(<>),
+}
+
+ColumnDefinition: ast::ColumnDefinition = {
+    <col_name: Identifier>
+        <data_type: DataType>
+        <nullable: ("not"? "null")?>
+        <default: ("default" <Expr>)?>
+        <auto_increment: "auto_increment"?>
+        <key: (<"unique"?> <"primary"?> "key")?>
+        => ast::ColumnDefinition {
+                id: col_name,
+                data_type,
+                non_null: nullable.map(|(not, _)| { not.is_some() }).unwrap_or(false),
+                auto_increment: auto_increment.is_some(),
+                unique: key.as_ref().and_then(|(u, _)| u.as_ref()).is_some(),
+                primary: key.as_ref().and_then(|(_, p)| p.as_ref()).is_some(),
+                key: key.is_some()
+           ,}
+}
+
+DataType: ast::DataType = {
+    "int_t" => { ast::IntType(8).into() },
+    "varchar_t" "(" <width: "int"> ")" => { ast::VarCharType(width.try_into().unwrap_or_else(|e| panic!("must be at most 255: {e}"))).into()},
+    "varbinary_t" "(" <width: "int"> ")" => { ast::VarBinaryType(width.try_into().unwrap_or_else(|e| panic!("must be at most 255: {e}"))).into()},
+    "float_t" => { ast::FloatType(8).into() },
+    "boolean_t" => { ast::BooleanType.into() }
 }
 
 SelectStmt: ast::Select = {
@@ -198,10 +244,29 @@ extern {
         "binary" => Token::Binary(<Cow<'input, [u8]>>),
         "null" => Token::Null,
 
+        "int_t" => Token::IntType,
+        "varchar_t" => Token::VarCharType,
+        "varbinary_t" => Token::VarBinaryType,
+        "float_t" => Token::FloatType,
+        "boolean_t" => Token::BooleanType,
+
         "id" => Token::Ident(<Cow<'input, str>>),
 
         "select" => Token::Select,
         "explain" => Token::Explain,
+        "drop" => Token::Drop,
+        "create" => Token::Create,
+        "table" => Token::Table,
+        "delete" => Token::Delete,
+        "insert" => Token::Insert,
+
+        "default" => Token::Default,
+        "auto_increment" => Token::AutoIncrement,
+        "key" => Token::Key,
+        "primary" => Token::Primary,
+        "unique" => Token::Unique,
+        "foreign" => Token::Foreign,
+        "constraint" => Token::Constraint,
 
         "from" => Token::From,
         "on" => Token::On,

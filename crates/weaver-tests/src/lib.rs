@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::net::TcpStream;
 use std::path::Path;
 use std::thread;
@@ -6,6 +7,7 @@ use std::thread::JoinHandle;
 use crossbeam::channel::{bounded, Sender};
 use eyre::{eyre, Report};
 use tracing::{debug, error, error_span, warn};
+use tracing::level_filters::LevelFilter;
 
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::init::AuthConfig;
@@ -16,6 +18,13 @@ use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::WeaverDb;
 use weaver_core::error::WeaverError;
 use weaver_core::monitoring::{Monitor, Monitorable};
+pub fn init_tracing() -> Result<(), Box<dyn Error + Send + Sync>> {
+    tracing_subscriber::fmt()
+        .with_max_level(LevelFilter::DEBUG)
+        .with_thread_ids(true)
+        .event_format(tracing_subscriber::fmt::format())
+        .try_init()
+}
 
 pub fn start_server(
     port: u16,

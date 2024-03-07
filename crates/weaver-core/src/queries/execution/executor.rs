@@ -5,17 +5,22 @@ use parking_lot::RwLock;
 use tracing::log::trace;
 use tracing::{debug, debug_span, error, info};
 
+use weaver_ast::ast;
+use weaver_ast::ast::{CreateDefinition, CreateTable};
+
 use crate::data::row::{OwnedRow, Row};
 use crate::data::values::DbVal;
 use crate::db::core::WeaverDbCore;
-use crate::dynamic_table::{DynamicTable, HasSchema, Table};
+use crate::dynamic_table::{DynamicTable, EngineKey, HasSchema, Table};
 use crate::error::WeaverError;
 use crate::queries::execution::executor::expr_executor::ExpressionEvaluator;
 use crate::queries::execution::strategies::join::JoinParameters;
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{KeyIndex, OwnedRows};
 use crate::rows::{RefRows, Rows};
+use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
 use crate::storage::tables::in_memory_table::InMemoryTable;
+use crate::storage::tables::table_schema::TableSchemaBuilder;
 use crate::tx::Tx;
 
 mod expr_executor;
@@ -166,13 +171,72 @@ impl QueryExecutor {
                         Ok(())
                     })?;
                 }
+                QueryPlanKind::CreateTable { table_def } => {
+                    let CreateTable {
+                        schema,
+                        name,
+                        create_definitions,
+                    } = table_def;
+
+                    let mut schema_builder = TableSchemaBuilder::new(
+                        schema.as_ref().ok_or(WeaverError::NoDefaultSchema)?,
+                        name,
+                    );
+
+                    for create_def in create_definitions {
+                        match create_def {
+                            &CreateDefinition::Column(ast::ColumnDefinition {
+                                ref id,
+                                data_type,
+                                non_null,
+                                auto_increment,
+                                unique,
+                                key,
+                                primary,
+                            }) => {
+                                schema_builder = schema_builder.column(
+                                    id,
+                                    data_type.into(),
+                                    non_null,
+                                    None,
+                                    auto_increment.then_some(0),
+                                )?;
+                                if unique || key && !primary {
+                                    schema_builder = schema_builder.index(
+                                        &format!("SK_{}", id),
+                                        &[id.as_ref()],
+                                        unique,
+                                    )?
+                                } else if primary {
+                                    schema_builder = schema_builder.primary(&[id.as_ref()])?
+                                }
+                            }
+                        }
+                    }
+
+                    schema_builder = schema_builder.engine(
+                        core.read()
+                            .default_engine()
+                            .expect("no default engine")
+                            .clone(),
+                    );
+
+                    let schema = schema_builder.build()?;
+                    debug!("created schema {schema:#?} from ddl");
+
+                    let result = core.read().open_table(&schema);
+                    debug!("open table resulted in {:?}", result);
+                    let as_row = Box::new(QueryPlan::ddl_result(result.map(|()| "ok")));
+                    row_stack.push(as_row);
+                    debug!("core after open: {:#?}", core.read());
+                }
                 _kind => {
                     todo!("implement execution of {_kind:?}")
                 }
             }
         }
 
-        let result = row_stack.pop().expect("no row at top of stack");
+        let result = row_stack.pop().expect("no rows object at top of stack");
         Ok(OwnedRows::from(result))
     }
 }

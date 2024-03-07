@@ -1,6 +1,7 @@
 //! Visitors for queries
 
-use crate::ast::{ColumnRef, Expr, FromClause, Identifier, JoinClause, JoinConstraint, Literal, Query, ResolvedColumnRef, ResultColumn, Select, TableOrSubQuery, UnresolvedColumnRef};
+use crate::ast::select::Select;
+use crate::ast::{ColumnDefinition, ColumnRef, Create, CreateDefinition, CreateTable, DataType, Expr, FromClause, Identifier, JoinClause, JoinConstraint, Literal, Query, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
 
 /// Creates a mut visitor
 #[macro_export]
@@ -35,11 +36,58 @@ visit_mut! {
                     visitor.visit_query_mut(explain)
                 }
                 Query::Select(select) => visitor.visit_select_mut(select),
+                Query::Create(create) => visitor.visit_create_mut(create),
                 Query::QueryList(_) => {
                     todo!("visit query list")
                 }
+
             }
     }
+    pub visit (visitor, create: &mut Create) -> Result<()> {
+        match create {
+            Create::Table(create_table) => {
+                visitor.visit_create_table_mut(create_table)
+            }
+        }
+    }
+    pub visit (visitor, create_table: &mut CreateTable) -> Result<()> {
+        let CreateTable {
+            schema,
+            name,
+            create_definitions,
+            ..
+        } = create_table;
+
+        if let Some(schema) = schema {
+            visitor.visit_identifier_mut(schema)?;
+        }
+        visitor.visit_identifier_mut(name)?;
+        create_definitions.iter_mut()
+        .try_for_each(|create_def| {
+            visitor.visit_create_definition_mut(create_def)
+        })
+    }
+    pub visit (visitor, create_def: &mut CreateDefinition) -> Result<()> {
+        match create_def {
+            CreateDefinition::Column(column_def) => { visitor.visit_column_definition_mut(column_def) }
+        }
+    }
+    pub visit (visitor, column_def: &mut ColumnDefinition) -> Result<()> {
+        let ColumnDefinition {
+            id,
+            data_type,
+            ..
+        } = column_def;
+
+        visitor.visit_identifier_mut(id)?;
+        visitor.visit_data_type_mut(data_type)?;
+        Ok(())
+    }
+
+    pub visit (_visitor, _data_type: &mut DataType) -> Result<()> {
+        Ok(())
+    }
+
     pub visit (visitor, select: &mut Select) -> Result<()> {
         let Select {
             columns,

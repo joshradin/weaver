@@ -203,7 +203,10 @@ fn push_down_filter(parent: &mut QueryPlanNode, socket: &DbSocket) -> Result<(),
                 let mut child = *child.clone();
                 let grandchild = left.clone();
                 parent.rows = grandchild.rows;
+                parent.schema = grandchild.schema.clone();
                 *parent.children_mut()[0] = grandchild;
+
+
                 child.rows = parent.rows;
                 *child.children_mut()[0] = parent;
                 push_down_filter(&mut child.children_mut()[0], socket)?;
@@ -213,6 +216,7 @@ fn push_down_filter(parent: &mut QueryPlanNode, socket: &DbSocket) -> Result<(),
                 let mut child = *child.clone();
                 let grandchild = right.clone();
                 parent.rows = grandchild.rows;
+                parent.schema = grandchild.schema.clone();
                 *parent.children_mut()[0] = grandchild;
                 child.rows = parent.rows;
                 *child.children_mut()[1] = parent;

@@ -3,7 +3,8 @@ use std::fmt::Formatter;
 use derive_more::{AsRef, Deref, Display};
 use serde::{Deserialize, Serialize};
 
-use crate::ast::{Expr, Identifier, Select};
+use crate::ast::{Expr, Identifier};
+use crate::ast::select::Select;
 
 /// The from clause
 #[derive(Debug, Clone, Serialize, Deserialize, Deref, AsRef, Display)]

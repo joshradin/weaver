@@ -142,6 +142,8 @@ pub enum WeaverError {
     BuilderIncomplete(String, Vec<String>),
     #[error("Failed to evaluate {0}: {1}")]
     EvaluationFailed(Expr, String),
+    #[error("Query can not be executed without default schema. Try specifying tables by schema or `use schema`")]
+    NoDefaultSchema,
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {
@@ -151,6 +153,7 @@ pub enum WeaverError {
     },
     #[error("{0}")]
     Custom(String),
+
 }
 
 impl WeaverError {

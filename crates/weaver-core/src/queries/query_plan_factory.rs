@@ -12,11 +12,8 @@ use tracing::{debug, debug_span, error_span, trace};
 
 use weaver_ast::ast;
 use weaver_ast::ast::visitor::{visit_table_or_sub_query_mut, VisitorMut};
-use weaver_ast::ast::{
-    BinaryOp, ColumnRef, Expr, FromClause, Identifier, JoinClause, JoinConstraint, JoinOperator,
-    Query, ReferencesCols, ResolvedColumnRef, ResultColumn, Select, TableOrSubQuery,
-    UnresolvedColumnRef,
-};
+use weaver_ast::ast::{BinaryOp, ColumnRef, Create, Expr, FromClause, Identifier, JoinClause, JoinConstraint, JoinOperator, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
+use weaver_ast::ast::Select;
 
 use crate::data::types::Type;
 use crate::db::server::processes::WeaverProcessInfo;
@@ -193,13 +190,33 @@ impl QueryPlanFactory {
                 let query = self.to_plan_node(explained, db, plan_context)?;
                 QueryPlanNode::builder()
                     .rows(0)
-                    .cost(Cost::new(1.0, 0))
+                    .cost(Cost::new(1.0, 0, None))
                     .kind(QueryPlanKind::Explain { explained: Box::new(query) })
                     .schema(QueryPlan::explain_schema())
                     .build()
             }
             Query::QueryList(_) => {
                 todo!("query list")
+            }
+            Query::Create(Create::Table(create_table)) => {
+                let mut create_table = create_table.clone();
+                if create_table.schema.is_none() {
+                    if let Some(current) = plan_context.and_then(|ctx| ctx.using.as_ref()) {
+                        create_table.schema = Some(Identifier::new(current))
+                    } else {
+                        return Err(WeaverError::NoDefaultSchema)
+                    }
+                }
+
+                QueryPlanNode::builder()
+                    .rows(0)
+                    .cost(Cost::new(1.0, 0, None))
+                    .kind(QueryPlanKind::CreateTable { table_def: create_table })
+                    .schema(QueryPlan::ddl_result_schema())
+                    .build()
+            }
+            _other => {
+                unimplemented!("{_other:?}")
             }
         };
         node

@@ -2,13 +2,13 @@ use std::borrow::Cow;
 use std::str::FromStr;
 
 use nom::branch::alt;
-use nom::bytes::complete::tag;
+use nom::bytes::complete::{tag, take_until};
 use nom::character::complete::{alpha1, alphanumeric1, char, digit1, one_of};
 use nom::combinator::{all_consuming, consumed, eof, map, map_parser, recognize, rest, value};
 use nom::error::{Error, ErrorKind, FromExternalError, ParseError};
-use nom::multi::{many0_count, separated_list1};
+use nom::multi::many0_count;
 use nom::number::complete::recognize_float;
-use nom::sequence::{pair, preceded, tuple};
+use nom::sequence::{delimited, pair, preceded, tuple};
 use nom::{Compare, Finish, IResult, InputLength, InputTake, Parser};
 
 use utility::{ignore_case, ignore_whitespace};
@@ -40,9 +40,12 @@ pub fn token(source: &str, start: usize) -> nom::IResult<&str, (usize, Token, us
 
 fn ident(input: &str) -> IResult<&str, Token> {
     map(
-        recognize(pair(
-            alt((alpha1, tag("_"))),
-            many0_count(alt((alphanumeric1, tag("_")))),
+        alt((
+            delimited(tag("`"), take_until("`"), tag("`")),
+            recognize(pair(
+                alt((alpha1, tag("_"))),
+                many0_count(alt((alphanumeric1, tag("_")))),
+            )),
         )),
         |r| Token::Ident(Cow::Borrowed(r)),
     )(input)
@@ -50,24 +53,61 @@ fn ident(input: &str) -> IResult<&str, Token> {
 
 fn keyword(input: &str) -> IResult<&str, Token> {
     alt((
-        value(Token::Select, ignore_case("select")),
-        value(Token::Explain, ignore_case("explain")),
-        value(Token::From, ignore_case("from")),
-        value(Token::On, ignore_case("on")),
-        value(Token::Join, ignore_case("join")),
-        value(Token::Left, ignore_case("left")),
-        value(Token::Right, ignore_case("right")),
-        value(Token::Outer, ignore_case("outer")),
-        value(Token::Inner, ignore_case("inner")),
-        value(Token::Full, ignore_case("full")),
-        value(Token::Cross, ignore_case("cross")),
-        value(Token::Where, ignore_case("where")),
-        value(Token::As, ignore_case("as")),
-        value(Token::And, ignore_case("and")),
-        value(Token::Or, ignore_case("or")),
-        value(Token::Not, ignore_case("not")),
-        value(Token::Null, ignore_case("null")),
-        value(Token::Is, ignore_case("is")),
+        alt((
+            value(Token::Select, ignore_case("select")),
+            value(Token::Explain, ignore_case("explain")),
+            value(Token::Create, ignore_case("create")),
+            value(Token::Drop, ignore_case("drop")),
+            value(Token::Insert, ignore_case("insert")),
+            value(Token::Delete, ignore_case("delete")),
+            value(Token::Table, ignore_case("table")),
+            value(Token::Index, ignore_case("index")),
+            value(Token::From, ignore_case("from")),
+            value(Token::On, ignore_case("on")),
+            value(Token::Join, ignore_case("join")),
+            value(Token::Left, ignore_case("left")),
+            value(Token::Right, ignore_case("right")),
+        )),
+        alt((
+            value(Token::Values, ignore_case("values")),
+            value(Token::Infile, ignore_case("infile")),
+            value(Token::Primary, ignore_case("primary")),
+            value(Token::Key, ignore_case("key")),
+            value(Token::Unique, ignore_case("unique")),
+            value(Token::Foreign, ignore_case("foreign")),
+            value(Token::AutoIncrement, ignore_case("auto_increment")),
+            value(
+                Token::IntType,
+                alt((
+                    ignore_case("int"),
+                    ignore_case("integer"),
+                    ignore_case("bigint"),
+                )),
+            ),
+            value(
+                Token::FloatType,
+                alt((
+                    ignore_case("float"),
+                    ignore_case("real"),
+                    ignore_case("double"),
+                )),
+            ),
+            value(Token::VarCharType, ignore_case("varchar")),
+            value(Token::VarBinaryType, ignore_case("varbinary")),
+        )),
+        alt((
+            value(Token::Outer, ignore_case("outer")),
+            value(Token::Inner, ignore_case("inner")),
+            value(Token::Full, ignore_case("full")),
+            value(Token::Cross, ignore_case("cross")),
+            value(Token::Where, ignore_case("where")),
+            value(Token::As, ignore_case("as")),
+            value(Token::And, ignore_case("and")),
+            value(Token::Or, ignore_case("or")),
+            value(Token::Not, ignore_case("not")),
+            value(Token::Null, ignore_case("null")),
+            value(Token::Is, ignore_case("is")),
+        )),
     ))
     .parse(input)
 }
@@ -142,9 +182,10 @@ fn op(input: &str) -> IResult<&str, Token> {
 #[cfg(test)]
 mod tests {
     use nom::branch::alt;
+    use nom::bytes::complete::{tag, take_until};
     use nom::combinator::recognize;
     use nom::multi::many0_count;
-    use nom::sequence::pair;
+    use nom::sequence::{delimited, pair};
     use nom::{Finish, IResult};
 
     use crate::lexing::{Token, Tokenizer};
@@ -188,6 +229,7 @@ mod tests {
     fn tokenize_ident() {
         assert_token!("user", Token::Ident, "user");
         assert_token!("users.name", Token::Ident, "users");
+        assert_token!("`users`", Token::Ident, "users");
     }
 
     #[test]
@@ -234,5 +276,15 @@ mod tests {
         let (rest, parsed) = parser(query).finish().expect("could not parse");
         assert!(rest.is_empty());
         assert_eq!(parsed, query);
+    }
+
+    #[test]
+    fn recognize_special_ident() {
+        let query = "`user name`";
+        let parser =
+            |input| -> IResult<_, _> { delimited(tag("`"), take_until("`"), tag("`"))(input) };
+        let (rest, parsed) = parser(query).finish().expect("could not parse");
+        assert!(rest.is_empty());
+        assert_eq!(parsed, "user name");
     }
 }

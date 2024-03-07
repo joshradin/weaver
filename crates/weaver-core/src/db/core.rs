@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use tracing::{debug, info, trace};
+use tracing::{debug, debug_span, field, info, trace};
+use tracing::field::Field;
 
 use crate::db::start_db::start_db;
 use crate::dynamic_table::{DynamicTable, EngineKey, HasSchema, Table};
@@ -29,6 +30,7 @@ use crate::storage::tables::in_memory_table::InMemoryTableFactory;
 pub use bootstrap::bootstrap;
 
 /// A db core. Represents some part of a distributed db
+#[derive(Debug)]
 pub struct WeaverDbCore {
     path: PathBuf,
     lock_file: Option<File>,
@@ -90,9 +92,14 @@ impl WeaverDbCore {
             .insert(engine_key, StorageEngineDelegate::new(engine));
     }
 
-    /// Insert an engine
+    /// Sets the default engine to use
     pub fn set_default_engine(&mut self, engine_key: EngineKey) {
         self.default_engine = Some(engine_key);
+    }
+
+    /// Gets the default engine key
+    pub fn default_engine(&self) -> Option<&EngineKey> {
+        self.default_engine.as_ref()
     }
 
     pub fn start_transaction(&self) -> Tx {
@@ -140,17 +147,26 @@ impl WeaverDbCore {
         {
             return Ok(());
         }
+
+        let span = debug_span!("open-table", schema=schema.schema(), table=schema.name(), engine = field::Empty);
+        let enter = span.enter();
+
         debug!("opening table {}.{} ...", schema.schema(), schema.name());
         let mut open_tables = self.open_tables.write();
         let engine = self
             .engines
             .get(schema.engine())
             .ok_or_else(|| WeaverError::UnknownStorageEngine(schema.engine().clone()))?;
+
+        span.record("engine", engine.engine_key().to_string());
+
         let table = engine.factory().open(schema, self)?;
 
         if let Some(monitor) = self.monitor.get() {
             monitor.collector.clone().push_monitorable(&*table);
         }
+
+        drop(enter);
 
         open_tables.insert(
             (schema.schema().to_string(), schema.name().to_string()),

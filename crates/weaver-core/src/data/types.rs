@@ -1,8 +1,11 @@
-use crate::data::values::DbVal;
-use crate::error::WeaverError;
-use crate::storage::ReadDataError;
-use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+
+use serde::{Deserialize, Serialize};
+
+use weaver_ast::ast;
+use weaver_ast::ast::{DataType, VarBinaryType, VarCharType};
+
+use crate::data::values::DbVal;
 
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Copy, Clone)]
 pub enum Type {
@@ -37,6 +40,18 @@ impl Type {
             (Float, DbVal::Float(..)) => true,
             (_, DbVal::Null) => true,
             _ => false,
+        }
+    }
+}
+
+impl From<ast::DataType> for Type {
+    fn from(value: DataType) -> Self {
+        match value {
+            DataType::Int(_) => Type::Integer,
+            DataType::Float(_) => Type::Float,
+            DataType::VarCharType(VarCharType(len)) => Type::String(len as u16),
+            DataType::VarBinaryType(VarBinaryType(len)) => Type::Binary(len as u16),
+            DataType::BooleanType(_) => Type::Boolean,
         }
     }
 }

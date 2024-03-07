@@ -7,15 +7,8 @@ use tracing_subscriber::filter::LevelFilter;
 
 use weaver_client::write_rows::write_rows;
 use weaver_core::ast::Query;
-use weaver_tests::run_full_stack;
+use weaver_tests::{init_tracing, run_full_stack};
 
-fn init_tracing() -> Result<(), Box<dyn Error + Send + Sync>> {
-    tracing_subscriber::fmt()
-        .with_max_level(LevelFilter::DEBUG)
-        .with_thread_ids(true)
-        .event_format(tracing_subscriber::fmt::format())
-        .try_init()
-}
 
 #[test]
 fn can_connect() -> eyre::Result<()> {
@@ -70,7 +63,7 @@ fn get_tables_with_schema() -> eyre::Result<()> {
         JOIN
             weaver.schemata as s ON t.schema_id = s.id
         WHERE
-            t.schema_id = 1
+            s.name = 'weaver'
             ",
         )?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
@@ -95,7 +88,7 @@ fn explain_get_tables_with_schema() -> eyre::Result<()> {
         JOIN
             weaver.schemata as s ON t.schema_id = s.id
         WHERE
-            s.name = 'weaver' and t.name = 'tables'
+            s.name = 'weaver'
             ",
         )?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");

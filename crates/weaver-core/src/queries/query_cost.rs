@@ -7,9 +7,8 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use std::ops::Mul;
-use tracing::instrument;
 
 use crate::data::values::DbVal;
 use crate::dynamic_table::DynamicTable;
@@ -19,19 +18,33 @@ use crate::tx::Tx;
 /// Represents the cost of an operation over some unknown amount of rows
 #[derive(Copy, Clone, Debug)]
 pub struct Cost {
-    /// The base cost per `row^row_factor`
+    /// The base cost per `(log)row^row_factor`
     pub base: f64,
     /// The exponent the rows are raised to
     pub row_factor: u32,
+    /// if present, the number of rows are first ran through the log
+    pub row_log: Option<u32>,
 }
 
 impl Cost {
     /// Create a new cost struct
-    pub const fn new(base: f64, row_factor: u32) -> Self {
-        Self { base, row_factor }
+    pub const fn new(base: f64, row_factor: u32, row_log: Option<u32>) -> Self {
+        Self {
+            base,
+            row_factor,
+            row_log,
+        }
     }
     /// Gets the final cost. All values are saturated
     pub fn get_cost(&self, rows: usize) -> f64 {
+        let rows: usize = if let Some(log_base) = self.row_log {
+            rows.max(log_base as usize)
+                .checked_ilog(log_base as usize)
+                .unwrap_or(0) as usize
+        } else {
+            rows
+        };
+
         let row_cost = rows.saturating_pow(self.row_factor);
         self.base.mul(row_cost as f64)
     }
@@ -52,7 +65,7 @@ impl PartialOrd for Cost {
 
 impl Ord for Cost {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.row_factor.cmp(&other.row_factor) {
+        match (self.row_factor, self.row_log).cmp(&(other.row_factor, other.row_log)) {
             Ordering::Equal => self.base.total_cmp(&self.base),
             other => return other,
         }
@@ -66,10 +79,10 @@ pub struct CostTable {
 }
 
 static QUERY_COSTS: &[(&str, Cost)] = &[
-    ("LOAD_TABLE", Cost::new(1.4, 1)),
-    ("SELECT", Cost::new(1.0, 1)),
-    ("JOIN", Cost::new(1.0, 1)),
-    ("FILTER", Cost::new(1.0, 1)),
+    ("LOAD_TABLE", Cost::new(1.4, 1, Some(16))),
+    ("SELECT", Cost::new(1.0, 1, None)),
+    ("JOIN", Cost::new(1.0, 1, None)),
+    ("FILTER", Cost::new(1.0, 1, None)),
 ];
 
 impl Default for CostTable {
@@ -102,11 +115,17 @@ impl CostTable {
             let &DbVal::Integer(row_factor) = &*row[2] else {
                 panic!("third column is row factor")
             };
+            let row_log = match &*row[2] {
+                &DbVal::Integer(i) => Some(i as u32),
+                DbVal::Null => None,
+                _ => panic!("fourth column is optional log base"),
+            };
             output.set(
                 key,
                 Cost {
                     base,
                     row_factor: row_factor as u32,
+                    row_log,
                 },
             )
         }

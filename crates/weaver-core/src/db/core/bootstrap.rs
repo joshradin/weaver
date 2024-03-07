@@ -75,6 +75,7 @@ fn weaver_schemata_schema() -> Result<TableSchema, WeaverError> {
         .column("id", Type::Integer, true, None, 1)?
         .column("name", Type::String(256), true, None, None)?
         .primary(&["id"])?
+        .index("SK_name", &["name"], true)?
         .engine(EngineKey::basic())
         .build()
 }
