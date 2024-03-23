@@ -258,7 +258,7 @@ visit_mut! {
                     visitor.visit_expr_mut(i)
                 })
             }
-            FunctionArgs::Wildcard => { Ok(())}
+            FunctionArgs::Wildcard { .. } => { Ok(())}
         }
     }
 }

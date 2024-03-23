@@ -142,7 +142,7 @@ impl DbTypeOf for Expr {
                             .map(ArgType::One)
                             .collect()
                     }
-                    FunctionArgs::Wildcard => {
+                    FunctionArgs::Wildcard { ..}=> {
                         vec![ArgType::Rows]
                     }
                 };

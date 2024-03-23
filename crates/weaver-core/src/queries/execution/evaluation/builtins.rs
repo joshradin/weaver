@@ -11,6 +11,16 @@ use crate::queries::execution::evaluation::functions::{
 pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
     FunctionRegistry::from_iter([
         (
+            "count",
+            DbFunction::builtin(vec![ArgType::Rows], Type::Integer, |args| {
+                let ArgValue::Rows(rows) = &args[0] else {
+                    panic!()
+                };
+
+                Ok(DbVal::Integer(rows.len() as i64))
+            }),
+        ),
+        (
             "min",
             DbFunction::builtin(vec![ArgType::Many(Type::Integer)], Type::Integer, |args| {
                 let ArgValue::Many(vals) = &args[0] else {
@@ -21,7 +31,7 @@ pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
                     .iter()
                     .flat_map(|i| i.int_value())
                     .min()
-                    .map(|i| DbVal::Integer(i))
+                    .map(DbVal::Integer)
                     .unwrap_or(DbVal::Null))
             }),
         ),

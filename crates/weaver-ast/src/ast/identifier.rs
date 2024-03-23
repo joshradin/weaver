@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 /// An identifier
 #[derive(
-    Debug, Ord, PartialOrd, Hash, Eq, PartialEq, Clone, Serialize, Deserialize, From, Display,
+    Debug, Ord, PartialOrd, Hash, Eq, PartialEq, Clone, Serialize, Deserialize,Display,
 )]
 #[serde(transparent)]
 pub struct Identifier(pub String);
@@ -28,6 +28,18 @@ impl Deref for Identifier {
 
     fn deref(&self) -> &Self::Target {
         self.as_ref()
+    }
+}
+
+impl From<&str> for Identifier {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for Identifier {
+    fn from(value: String) -> Self {
+        Self(value)
     }
 }
 
@@ -92,11 +104,11 @@ pub struct ResolvedColumnRef {
 }
 
 impl ResolvedColumnRef {
-    pub fn new(schema: Identifier, table: Identifier, column: Identifier) -> Self {
+    pub fn new(schema: impl Into<Identifier>, table: impl Into<Identifier>, column: impl Into<Identifier>) -> Self {
         Self {
-            schema,
-            table,
-            column,
+            schema: schema.into(),
+            table: table.into(),
+            column: column.into(),
         }
     }
     pub fn schema(&self) -> &Identifier {

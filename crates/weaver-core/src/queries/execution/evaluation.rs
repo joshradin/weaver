@@ -4,12 +4,14 @@ use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::sync::OnceLock;
 
+use itertools::Itertools;
 use once_cell::sync::Lazy;
+use rayon::Scope;
 use tracing::trace;
 use uuid::Uuid;
 
 use builtins::BUILTIN_FUNCTIONS_REGISTRY;
-use weaver_ast::ast::{BinaryOp, Expr, FunctionArgs, Identifier, UnaryOp};
+use weaver_ast::ast::{BinaryOp, ColumnRef, Expr, FunctionArgs, Identifier, UnaryOp};
 
 use crate::data::row::Row;
 use crate::data::types::{DbTypeOf, Type};
@@ -31,7 +33,6 @@ pub struct ExpressionEvaluator {
 }
 
 impl ExpressionEvaluator {
-
     pub fn new<T: Into<Option<FunctionRegistry>>>(functions: T) -> Self {
         let registry = match functions.into() {
             None => BUILTIN_FUNCTIONS_REGISTRY.clone(),
@@ -83,12 +84,137 @@ impl ExpressionEvaluator {
             trace!("using compiled {compiled:?}");
         }
 
-        runtime_eval(expr, row, schema, &self.functions)
+        runtime_eval_single_row(expr, row, schema, &self.functions)
+    }
+
+    /// Evaluates an expression, with an optional id. Ids can be from any source, and is optional but
+    /// required for using compiled evaluators.
+    pub fn evaluate_many_rows<'a, I: IntoIterator<Item = &'a Row<'a>>>(
+        &self,
+        expr: &Expr,
+        rows: I,
+        schema: &TableSchema,
+        id: impl Into<Option<Uuid>>,
+    ) -> Result<Cow<'a, DbVal>, WeaverError> {
+        if let Some(compiled) = id
+            .into()
+            .and_then(|id| self.compiled_evaluators.get(&id))
+            .and_then(|compiled| {
+                compiled.iter().find_map(
+                    |(c_expr, compiled)| {
+                        if c_expr == expr {
+                            Some(compiled)
+                        } else {
+                            None
+                        }
+                    },
+                )
+            })
+        {
+            trace!("using compiled {compiled:?}");
+        }
+
+        let rows = rows.into_iter().collect::<Vec<_>>();
+
+        runtime_eval_many_rows(expr, &rows[..], schema, &self.functions)
+    }
+}
+
+fn runtime_eval_many_rows<'a>(
+    expr: &Expr,
+    rows: &[&Row<'a>],
+    scope: &TableSchema,
+    function_registry: &FunctionRegistry,
+) -> Result<Cow<'a, DbVal>, WeaverError> {
+    match expr {
+        Expr::Column { column } => {
+            panic!("single column in many context")
+        }
+        Expr::Literal { literal } => Ok(Cow::Owned(DbVal::from(literal.clone()))),
+        Expr::BindParameter { .. } => {
+            panic!("bind parameter at this point is probably bad")
+        }
+        Expr::Unary { op, expr } => {
+            let child = runtime_eval_many_rows(expr, rows, scope, function_registry)?;
+            Ok(Cow::Owned(evaluate_unary(op, child)))
+        }
+        Expr::Binary { left, op, right } => {
+            let left = runtime_eval_many_rows(left, rows, scope, function_registry)?;
+            let right = runtime_eval_many_rows(right, rows, scope, function_registry)?;
+            Ok(Cow::Owned(evaluate_binary(op, left, right)))
+        }
+        Expr::FunctionCall {
+            function: function_name,
+            args,
+        } => {
+            let arg_types = match args {
+                FunctionArgs::Params { exprs, .. } => exprs
+                    .iter()
+                    .map(|i| i.type_of(function_registry, Some(scope)))
+                    .flat_map(|i| i.ok())
+                    .map(|base_type| {
+                        if rows.len() == 1 {
+                            ArgType::One(base_type)
+                        } else {
+                            ArgType::Many(base_type)
+                        }
+                    })
+                    .collect(),
+                FunctionArgs::Wildcard { .. } => {
+                    vec![ArgType::Rows]
+                }
+            };
+
+            let function = function_registry
+                .get(function_name, &arg_types)
+                .ok_or_else(|| {
+                    WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types)
+                })?;
+
+            let args = match args {
+                FunctionArgs::Params {
+                    distinct,
+                    exprs,
+                    ordered_by,
+                } => {
+                    let mut args = exprs
+                        .iter()
+                        .map(|expr| -> Result<_, WeaverError> {
+                            let mut evals = vec![];
+                            for &row in rows {
+                                let evaluated =
+                                    runtime_eval_single_row(expr, row, scope, function_registry)?;
+                                evals.push(evaluated);
+                            }
+                            Ok(evals)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if *distinct {
+                        args = args.into_iter().unique().collect();
+                    }
+                    if let Some(ordered_by) = ordered_by {
+                        todo!("ordered by {:?}", ordered_by)
+                    }
+
+                    args.into_iter().map(|v| ArgValue::Many(v)).collect()
+                }
+                FunctionArgs::Wildcard { distinct } => {
+                    let mut rows = rows.to_vec();
+                    if *distinct {
+                        rows = rows.into_iter().unique().collect();
+                    }
+                    vec![ArgValue::Rows(rows.to_vec())]
+                }
+            };
+
+            let result = function.execute(args)?;
+            Ok(Cow::Owned(result))
+        }
     }
 }
 
 /// an evaluation that's always performed
-fn runtime_eval<'a>(
+fn runtime_eval_single_row<'a>(
     expr: &Expr,
     row: &'a Row,
     schema: &TableSchema,
@@ -100,20 +226,7 @@ fn runtime_eval<'a>(
     for op in ops {
         match op {
             Expr::Column { column } => {
-                let idx = schema
-                    .column_index_by_source(
-                        column
-                            .resolved()
-                            .expect("all columns should be resolved by now"),
-                    )
-                    .ok_or_else(|| {
-                        WeaverError::EvaluationFailed(
-                            op.clone(),
-                            format!("could not get index of column {column} in row"),
-                        )
-                    })?;
-                trace!("got index {idx} for column {column}");
-                let val = row[idx].clone();
+                let val = get_from_column(row, schema, op, column)?;
                 stack.push(val);
             }
             Expr::Literal { literal } => stack.push(Cow::Owned(DbVal::from(literal.clone()))),
@@ -127,20 +240,7 @@ fn runtime_eval<'a>(
                         "missing value on stack for uniop".to_string(),
                     )
                 })?;
-                let next = match unary {
-                    UnaryOp::Not => match expr.as_ref() {
-                        DbVal::Binary(binary, i) => {
-                            DbVal::Binary(binary.iter().map(|b| !*b).collect::<Vec<_>>(), *i)
-                        }
-                        DbVal::Integer(i) => DbVal::Integer(!i),
-                        _other => panic!("can not bitwise negate {_other}"),
-                    },
-                    UnaryOp::Negate => match expr.as_ref() {
-                        DbVal::Integer(i) => DbVal::Integer(-i),
-                        DbVal::Float(f) => DbVal::Float(-f),
-                        _other => panic!("can not negate {_other}"),
-                    },
-                };
+                let next = evaluate_unary(unary, expr);
                 stack.push(Cow::Owned(next));
             }
             Expr::Binary {
@@ -160,60 +260,13 @@ fn runtime_eval<'a>(
                         "missing right value on stack for binop".to_string(),
                     )
                 })?;
-                let evaluated: DbVal = match bin_op {
-                    BinaryOp::Eq => (l == r).into(),
-                    BinaryOp::Neq => (l != r).into(),
-                    BinaryOp::Greater => (l > r).into(),
-                    BinaryOp::Less => (l < r).into(),
-                    BinaryOp::GreaterEq => (l >= r).into(),
-                    BinaryOp::LessEq => (l <= r).into(),
-                    BinaryOp::Plus => match (l.as_ref(), r.as_ref()) {
-                        (DbVal::Integer(l), DbVal::Integer(r)) => (l + r).into(),
-                        (DbVal::Float(l), DbVal::Float(r)) => (l + r).into(),
-                        (DbVal::String(l, _), DbVal::String(r, _)) => format!("{l}{r}").into(),
-                        (DbVal::Binary(l, l_len), DbVal::Binary(r, r_len)) => DbVal::Binary(
-                            l.iter().chain(r.iter()).copied().collect::<Vec<u8>>(),
-                            l_len.saturating_add(*r_len),
-                        ),
-                        _ => panic!("can not apply `+` to {l} and {r}"),
-                    },
-                    BinaryOp::Minus => match (l.as_ref(), r.as_ref()) {
-                        (DbVal::Integer(l), DbVal::Integer(r)) => (l - r).into(),
-                        (DbVal::Float(l), DbVal::Float(r)) => (l - r).into(),
-                        _ => panic!("can not apply `-` to {l} and {r}"),
-                    },
-                    BinaryOp::Multiply => match (l.as_ref(), r.as_ref()) {
-                        (DbVal::Integer(l), DbVal::Integer(r)) => (l * r).into(),
-                        (DbVal::Float(l), DbVal::Float(r)) => (l + r).into(),
-                        _ => panic!("can not apply `*` to {l} and {r}"),
-                    },
-                    BinaryOp::Divide => match (l.as_ref(), r.as_ref()) {
-                        (DbVal::Integer(l), DbVal::Integer(r)) => (l / r).into(),
-                        (DbVal::Float(l), DbVal::Float(r)) => (l / r).into(),
-                        _ => panic!("can not apply `/` to {l} and {r}"),
-                    },
-                    BinaryOp::And => {
-                        if let (DbVal::Boolean(left), DbVal::Boolean(right)) =
-                            (l.as_ref(), r.as_ref())
-                        {
-                            (*left && *right).into()
-                        } else {
-                            panic!("can not apply `and` to {l} and {r}");
-                        }
-                    }
-                    BinaryOp::Or => {
-                        if let (DbVal::Boolean(left), DbVal::Boolean(right)) =
-                            (l.as_ref(), r.as_ref())
-                        {
-                            (*left || *right).into()
-                        } else {
-                            panic!("can not apply `or` to {l} and {r}");
-                        }
-                    }
-                };
+                let evaluated: DbVal = evaluate_binary(bin_op, l, r);
                 stack.push(Cow::Owned(evaluated));
             }
-            Expr::FunctionCall { function, args } => {
+            Expr::FunctionCall {
+                function: function_name,
+                args,
+            } => {
                 let arg_types = match args {
                     FunctionArgs::Params { exprs, .. } => exprs
                         .iter()
@@ -221,14 +274,14 @@ fn runtime_eval<'a>(
                         .flat_map(|i| i.ok())
                         .map(ArgType::One)
                         .collect(),
-                    FunctionArgs::Wildcard => {
+                    FunctionArgs::Wildcard { .. } => {
                         vec![ArgType::Rows]
                     }
                 };
 
-                let function = functions
-                    .get(function, &arg_types)
-                    .ok_or_else(|| WeaverError::UnknownFunction(function.as_ref().to_string(), arg_types))?;
+                let function = functions.get(function_name, &arg_types).ok_or_else(|| {
+                    WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types)
+                })?;
 
                 let args = match args {
                     FunctionArgs::Params { exprs, .. } => {
@@ -240,8 +293,10 @@ fn runtime_eval<'a>(
 
                         args
                     }
-                    FunctionArgs::Wildcard => {
-                        todo!("wildcard")
+                    FunctionArgs::Wildcard { .. } => {
+                        return Err(WeaverError::AggregateInSingleRowContext(
+                            function_name.to_string(),
+                        ))
                     }
                 };
 
@@ -259,95 +314,261 @@ fn runtime_eval<'a>(
     })
 }
 
+fn evaluate_binary(bin_op: &BinaryOp, l: Cow<DbVal>, r: Cow<DbVal>) -> DbVal {
+    match bin_op {
+        BinaryOp::Eq => (l == r).into(),
+        BinaryOp::Neq => (l != r).into(),
+        BinaryOp::Greater => (l > r).into(),
+        BinaryOp::Less => (l < r).into(),
+        BinaryOp::GreaterEq => (l >= r).into(),
+        BinaryOp::LessEq => (l <= r).into(),
+        BinaryOp::Plus => match (l.as_ref(), r.as_ref()) {
+            (DbVal::Integer(l), DbVal::Integer(r)) => (l + r).into(),
+            (DbVal::Float(l), DbVal::Float(r)) => (l + r).into(),
+            (DbVal::String(l, _), DbVal::String(r, _)) => format!("{l}{r}").into(),
+            (DbVal::Binary(l, l_len), DbVal::Binary(r, r_len)) => DbVal::Binary(
+                l.iter().chain(r.iter()).copied().collect::<Vec<u8>>(),
+                l_len.saturating_add(*r_len),
+            ),
+            _ => panic!("can not apply `+` to {l} and {r}"),
+        },
+        BinaryOp::Minus => match (l.as_ref(), r.as_ref()) {
+            (DbVal::Integer(l), DbVal::Integer(r)) => (l - r).into(),
+            (DbVal::Float(l), DbVal::Float(r)) => (l - r).into(),
+            _ => panic!("can not apply `-` to {l} and {r}"),
+        },
+        BinaryOp::Multiply => match (l.as_ref(), r.as_ref()) {
+            (DbVal::Integer(l), DbVal::Integer(r)) => (l * r).into(),
+            (DbVal::Float(l), DbVal::Float(r)) => (l + r).into(),
+            _ => panic!("can not apply `*` to {l} and {r}"),
+        },
+        BinaryOp::Divide => match (l.as_ref(), r.as_ref()) {
+            (DbVal::Integer(l), DbVal::Integer(r)) => (l / r).into(),
+            (DbVal::Float(l), DbVal::Float(r)) => (l / r).into(),
+            _ => panic!("can not apply `/` to {l} and {r}"),
+        },
+        BinaryOp::And => {
+            if let (DbVal::Boolean(left), DbVal::Boolean(right)) = (l.as_ref(), r.as_ref()) {
+                (*left && *right).into()
+            } else {
+                panic!("can not apply `and` to {l} and {r}");
+            }
+        }
+        BinaryOp::Or => {
+            if let (DbVal::Boolean(left), DbVal::Boolean(right)) = (l.as_ref(), r.as_ref()) {
+                (*left || *right).into()
+            } else {
+                panic!("can not apply `or` to {l} and {r}");
+            }
+        }
+    }
+}
+
+fn evaluate_unary(unary: &UnaryOp, expr: Cow<DbVal>) -> DbVal {
+    match unary {
+        UnaryOp::Not => match expr.as_ref() {
+            DbVal::Binary(binary, i) => {
+                DbVal::Binary(binary.iter().map(|b| !*b).collect::<Vec<_>>(), *i)
+            }
+            DbVal::Integer(i) => DbVal::Integer(!i),
+            _other => panic!("can not bitwise negate {_other}"),
+        },
+        UnaryOp::Negate => match expr.as_ref() {
+            DbVal::Integer(i) => DbVal::Integer(-i),
+            DbVal::Float(f) => DbVal::Float(-f),
+            _other => panic!("can not negate {_other}"),
+        },
+    }
+}
+
+fn get_from_column<'a>(
+    row: &Row<'a>,
+    schema: &TableSchema,
+    op: &Expr,
+    column: &ColumnRef,
+) -> Result<Cow<'a, DbVal>, WeaverError> {
+    let idx = schema
+        .column_index_by_source(
+            column
+                .resolved()
+                .expect("all columns should be resolved by now"),
+        )
+        .ok_or_else(|| {
+            WeaverError::EvaluationFailed(
+                op.clone(),
+                format!("could not get index of column {column} in row"),
+            )
+        })?;
+    trace!("got index {idx} for column {column}");
+    let val = row[idx].clone();
+    Ok(val)
+}
+
 #[cfg(test)]
 mod tests {
-    use weaver_ast::ast::{BinaryOp, Expr, FunctionArgs, Identifier, Literal};
+    use weaver_ast::ast::{BinaryOp, Expr, FunctionArgs, Identifier, Literal, ResolvedColumnRef};
 
     use crate::data::row::Row;
+    use crate::data::types::Type;
     use crate::error::WeaverError;
     use crate::queries::execution::evaluation::builtins::BUILTIN_FUNCTIONS_REGISTRY;
-    use crate::queries::execution::evaluation::runtime_eval;
-    use crate::storage::tables::table_schema::TableSchema;
+    use crate::queries::execution::evaluation::{runtime_eval_many_rows, runtime_eval_single_row};
+    use crate::storage::tables::table_schema::{TableSchema, TableSchemaBuilder};
 
     #[test]
     fn basic_evaluation() {
         let stored = &Row::new(0);
-        let result = runtime_eval(
+        let result = runtime_eval_single_row(
             &Expr::Binary {
-                left: Box::new(Expr::Literal { literal: Literal::from(21) }),
+                left: Box::new(Expr::Literal {
+                    literal: Literal::from(21),
+                }),
                 op: BinaryOp::Multiply,
-                right: Box::new(Expr::Literal { literal: Literal::from(3) }),
+                right: Box::new(Expr::Literal {
+                    literal: Literal::from(3),
+                }),
             },
             stored,
             &TableSchema::empty(),
             &BUILTIN_FUNCTIONS_REGISTRY,
-        ).expect("could not build");
+        )
+        .expect("could not build");
         assert_eq!(result.int_value(), Some(63));
     }
 
     #[test]
     fn single_arg_function() {
         let stored = &Row::new(0);
-        let result = runtime_eval(
+        let result = runtime_eval_single_row(
             &Expr::FunctionCall {
                 function: Identifier::new("pow"),
                 args: FunctionArgs::Params {
                     distinct: false,
-                    exprs: vec![
-                        Expr::from(2),
-                        Expr::from(8),
-                    ],
+                    exprs: vec![Expr::from(2), Expr::from(8)],
                     ordered_by: None,
                 },
             },
             stored,
             &TableSchema::empty(),
             &BUILTIN_FUNCTIONS_REGISTRY,
-        ).expect("could not build");
-        assert_eq!(result.int_value(), Some(1<<8));
+        )
+        .expect("could not build");
+        assert_eq!(result.int_value(), Some(1 << 8));
     }
 
     #[test]
     fn single_arg_function_overload() {
         let stored = &Row::new(0);
-        let result = runtime_eval(
+        let result = runtime_eval_single_row(
             &Expr::FunctionCall {
                 function: Identifier::new("pow"),
                 args: FunctionArgs::Params {
                     distinct: false,
-                    exprs: vec![
-                        Expr::from(2.),
-                        Expr::from(8.),
-                    ],
+                    exprs: vec![Expr::from(2.), Expr::from(8.)],
                     ordered_by: None,
                 },
             },
             stored,
             &TableSchema::empty(),
             &BUILTIN_FUNCTIONS_REGISTRY,
-        ).expect("could not build");
+        )
+        .expect("could not build");
         assert!((result.float_value().unwrap() - 256.).abs() < 0.0025);
     }
 
     #[test]
     fn single_arg_function_wrong_types() {
         let stored = &Row::new(0);
-        let result = runtime_eval(
+        let result = runtime_eval_single_row(
             &Expr::FunctionCall {
                 function: Identifier::new("pow"),
                 args: FunctionArgs::Params {
                     distinct: false,
-                    exprs: vec![
-                        Expr::from(2),
-                        Expr::from(8.),
-                    ],
+                    exprs: vec![Expr::from(2), Expr::from(8.)],
                     ordered_by: None,
                 },
             },
             stored,
             &TableSchema::empty(),
             &BUILTIN_FUNCTIONS_REGISTRY,
-        ).expect_err("no (int, float) power function");
+        )
+        .expect_err("no (int, float) power function");
         assert!(matches!(result, WeaverError::UnknownFunction(_, _)));
+    }
+
+    #[test]
+    fn many_rows_aggregate() {
+        let rows = &[
+            &Row::from([1_i64]),
+            &Row::from([2_i64]),
+            &Row::from([3_i64]),
+            &Row::from([4_i64]),
+            &Row::from([5_i64]),
+        ];
+        let result = runtime_eval_many_rows(
+            &Expr::FunctionCall {
+                function: Identifier::new("min"),
+                args: FunctionArgs::Params {
+                    distinct: false,
+                    exprs: vec![Expr::Column {
+                        column: ResolvedColumnRef::new("s", "t", "col").into(),
+                    }],
+                    ordered_by: None,
+                },
+            },
+            rows,
+            &TableSchemaBuilder::new("s", "t")
+                .column("col", Type::Integer, true, None, None)
+                .unwrap()
+                .build()
+                .unwrap(),
+            &BUILTIN_FUNCTIONS_REGISTRY,
+        )
+        .expect("couldn't get minimum value");
+        assert_eq!(result.int_value(), Some(1), "minimum value should be 1");
+    }
+
+    #[test]
+    fn count() {
+        let rows = &[
+            &Row::from([1_i64]),
+            &Row::from([2_i64]),
+            &Row::from([3_i64]),
+            &Row::from([4_i64]),
+            &Row::from([5_i64]),
+        ];
+        let result = runtime_eval_many_rows(
+            &Expr::FunctionCall {
+                function: Identifier::new("count"),
+                args: FunctionArgs::Wildcard { distinct: false }
+            },
+            rows,
+            &TableSchema::empty(),
+            &BUILTIN_FUNCTIONS_REGISTRY,
+        )
+        .expect("couldn't get minimum value");
+        assert_eq!(result.int_value(), Some(5), "count should be 5");
+    }
+
+    #[test]
+    fn distinct_count() {
+        let rows = &[
+            &Row::from([1_i64]),
+            &Row::from([2_i64]),
+            &Row::from([1_i64]),
+            &Row::from([2_i64]),
+            &Row::from([3_i64]),
+        ];
+        let result = runtime_eval_many_rows(
+            &Expr::FunctionCall {
+                function: Identifier::new("count"),
+                args: FunctionArgs::Wildcard { distinct: true }
+            },
+            rows,
+            &TableSchema::empty(),
+            &BUILTIN_FUNCTIONS_REGISTRY,
+        )
+            .expect("couldn't get minimum value");
+        assert_eq!(result.int_value(), Some(3), "distinct count should be 3");
     }
 }

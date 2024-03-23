@@ -163,6 +163,8 @@ pub enum WeaverError {
     UnboundParameter,
     #[error("Function named {0:?} with signature {1:?} already exists")]
     FunctionWithSignatureAlreadyExists(String, FunctionSignature),
+    #[error("Tried to call an aggregate function ({0}) in a single-row context")]
+    AggregateInSingleRowContext(String),
 
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]

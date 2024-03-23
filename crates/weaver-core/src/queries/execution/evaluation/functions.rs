@@ -137,8 +137,8 @@ impl ArgType {
 pub enum ArgValue<'a> {
     One(Cow<'a, DbVal>),
     Many(Vec<Cow<'a, DbVal>>),
-    Row(Row<'a>),
-    Rows(Vec<Row<'a>>),
+    Row(&'a Row<'a>),
+    Rows(Vec<&'a Row<'a>>),
 }
 
 impl<'a> ArgValue<'a> {

@@ -278,7 +278,9 @@ pub enum FunctionArgs {
         exprs: Vec<Expr>,
         ordered_by: Option<Vec<Expr>>,
     },
-    Wildcard,
+    Wildcard {
+        distinct: bool
+    }
 }
 
 impl Display for FunctionArgs {
@@ -312,8 +314,8 @@ impl Display for FunctionArgs {
                     }
                 )
             }
-            FunctionArgs::Wildcard => {
-                write!(f, "*")
+            FunctionArgs::Wildcard { distinct} => {
+                write!(f, "{}*", distinct.then_some("distinct ").unwrap_or(""))
             }
         }
     }
