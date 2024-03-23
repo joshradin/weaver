@@ -80,7 +80,8 @@ pub struct CostTable {
 
 static QUERY_COSTS: &[(&str, Cost)] = &[
     ("LOAD_TABLE", Cost::new(1.4, 1, Some(16))),
-    ("SELECT", Cost::new(1.0, 1, None)),
+    ("GROUP_BY", Cost::new(1.3, 1, None)),
+    ("PROJECT", Cost::new(1.0, 1, None)),
     ("JOIN", Cost::new(1.0, 1, None)),
     ("FILTER", Cost::new(1.0, 1, None)),
 ];

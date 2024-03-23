@@ -297,10 +297,10 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
         let mask = (1 << size) - 1;
 
         let (pml4_index, pmd_index, pdp_index, pd_index) = (
-            (page >> size * 3) & mask,
-            (page >> size * 2) & mask,
-            (page >> size * 1) & mask,
-            (page >> size * 0) & mask,
+            (page >> (size * 3)) & mask,
+            (page >> (size * 2)) & mask,
+            (page >> size) & mask,
+            (page) & mask,
         );
         let root = self.get_or_init_root_index_page_map_directory(root_key)?;
         trace!("root: {root}, pml4_index: {pml4_index}");

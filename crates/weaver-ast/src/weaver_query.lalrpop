@@ -1,6 +1,7 @@
 use crate::lexing::{Token, TokenError};
 use crate::ast;
 
+use std::path::Path;
 use std::borrow::Cow;
 
 grammar<'input>(input: &'input str);
@@ -12,7 +13,35 @@ pub Query: ast::Query = {
 Query_: ast::Query = {
     "explain" <Query_> => ast::Query::Explain(Box::new(<>)),
     <SelectStmt> ";" => ast::Query::Select(<>),
-    <CreateStmt> ";" => ast::Query::Create(<>)
+    <CreateStmt> ";" => ast::Query::Create(<>),
+    <LoadDataStmt> ";" => ast::Query::LoadData(<>)
+}
+
+LoadDataStmt: ast::LoadData = {
+    "load" "data" "infile" <path: "string">
+        "into" "table" <table: Table> <columns: ("(" <Comma1<Identifier>> ")")?>
+        <field_ops: LoadDataFieldOptions?>
+    => {
+        let (schema, table) = table;
+        let (terminated_by, _enclosed_by, _escaped_by) = field_ops.unwrap_or((None, None, None));
+        ast::LoadData {
+            infile: Path::new(path.as_ref()).to_path_buf(),
+            schema,
+            name: table,
+            terminated_by: terminated_by.map(|s| s.to_string()),
+            lines_start: None,
+            lines_terminated: None,
+            skip: None,
+            columns: columns.unwrap_or_default(),
+        }
+    }
+}
+
+LoadDataFieldOptions: (Option<Cow<'input, str>>, Option<Cow<'input,str>>, Option<Cow<'input,str>>) = {
+    "fields"
+    <terminated_by: ("terminated" "by" <"string">)?> => {
+        (terminated_by, None, None)
+    }
 }
 
 CreateStmt: ast::Create = {
@@ -34,6 +63,8 @@ CreateDefinition: ast::CreateDefinition = {
     ColumnDefinition => ast::CreateDefinition::Column(<>),
 }
 
+
+
 ColumnDefinition: ast::ColumnDefinition = {
     <col_name: Identifier>
         <data_type: DataType>
@@ -52,6 +83,10 @@ ColumnDefinition: ast::ColumnDefinition = {
            ,}
 }
 
+ConstraintDefintion: ast::ConstraintDefinition = {
+   "primary" "key" => { todo!() }
+}
+
 DataType: ast::DataType = {
     "int_t" => { ast::IntType(8).into() },
     "varchar_t" "(" <width: "int"> ")" => { ast::VarCharType(width.try_into().unwrap_or_else(|e| panic!("must be at most 255: {e}"))).into()},
@@ -60,17 +95,22 @@ DataType: ast::DataType = {
     "boolean_t" => { ast::BooleanType.into() }
 }
 
+
+
 SelectStmt: ast::Select = {
     "select" <cols: Comma<ResultColumn>>
         <from: ("from" <FromClause>)?>
         <condition: ("where" <Expr>)?>
+        <grouped_by: ("group" "by" <Comma1<Expr>>)?>
     => {
         ast::Select {
             columns: cols,
             from,
             condition,
+            group_by: grouped_by,
             limit: None,
             offset: None,
+
             }
     }
 }
@@ -162,6 +202,10 @@ Expr: ast::Expr = {
             column: column_ref
         }
     },
+    <function_name: Identifier> "(" <args: FunctionArgs> ")" => { ast::Expr::FunctionCall {
+        function: function_name,
+        args
+    }},
     #[precedence(level="1")]
     "not" <e: Expr> => ast::Expr::Unary { op: ast::UnaryOp::Not, expr: Box::new(e) },
     #[precedence(level="1")]
@@ -200,7 +244,17 @@ Expr: ast::Expr = {
     <l: Expr> "or" <r: Expr> => ast::Expr::Binary { left: Box::new(l), op: ast::BinaryOp::Or, right: Box::new(r) },
 }
 
-Literal: ast::Literal = {
+FunctionArgs: ast::FunctionArgs = {
+    <args: Comma1<Expr>> <ordered_by: ("order" "by" <Comma1<Expr>>)?> => {
+        ast::FunctionArgs::Params {
+            distinct: false,
+            exprs: args,
+            ordered_by
+        }
+    }
+}
+
+pub Literal: ast::Literal = {
     "int" => ast::Literal::Integer(<>),
     "float" => ast::Literal::Float(<>),
     "bool" => ast::Literal::Boolean(<>),
@@ -229,6 +283,7 @@ Comma1<T>: Vec<T> = {
         v
     }
 }
+
 
 
 // TOKENS
@@ -263,14 +318,24 @@ extern {
         "default" => Token::Default,
         "auto_increment" => Token::AutoIncrement,
         "key" => Token::Key,
+        "index" => Token::Index,
         "primary" => Token::Primary,
         "unique" => Token::Unique,
         "foreign" => Token::Foreign,
         "constraint" => Token::Constraint,
+        "load" => Token::Load,
+        "data" => Token::Data,
+        "infile" => Token::Infile,
+        "into" => Token::Into,
+        "fields" => Token::Fields,
+        "terminated" => Token::Terminated,
 
         "from" => Token::From,
         "on" => Token::On,
         "where" => Token::Where,
+        "order" => Token::Order,
+        "group" => Token::Group,
+        "by" => Token::By,
 
         "join" => Token::Join,
         "inner" => Token::Inner,

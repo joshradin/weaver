@@ -49,6 +49,7 @@ impl Display for CreateTable {
 #[derive(Debug, Clone, Serialize, Deserialize, From, DisplayCustom)]
 pub enum CreateDefinition {
     Column(ColumnDefinition),
+    Constraint(ConstraintDefinition)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,5 +84,17 @@ impl Display for ColumnDefinition {
                 ""
             }
         )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConstraintDefinition {
+    symbol: Option<Identifier>,
+
+}
+
+impl Display for ConstraintDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
     }
 }

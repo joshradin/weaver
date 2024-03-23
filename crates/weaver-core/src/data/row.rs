@@ -18,7 +18,7 @@ use crate::data::types::Type;
 use crate::data::values::DbVal;
 
 /// A row of data
-#[derive(PartialEq, Eq, PartialOrd, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Row<'a>(Box<[Cow<'a, DbVal>]>);
 
 impl<'a> Row<'a> {
@@ -319,7 +319,7 @@ impl<'a, 'b: 'a> IntoIterator for &'b Row<'a> {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Hash, Serialize)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct OwnedRow(Row<'static>);
 
 impl<'a> PartialEq<Row<'a>> for OwnedRow {

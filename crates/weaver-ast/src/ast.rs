@@ -7,28 +7,29 @@ use std::str::FromStr;
 use derive_more::{Display, From as FromDerive};
 use serde::{Deserialize, Serialize};
 
+pub use create::*;
+pub use data_type::*;
 pub use expr::*;
 pub use from::*;
 pub use identifier::{Identifier, ResolvedColumnRef, UnresolvedColumnRef};
-pub use literal::Literal;
 pub use insert::*;
+pub use literal::Literal;
 pub use select::*;
-pub use create::*;
-pub use data_type::*;
+pub use load::*;
 
 use crate::error::ParseQueryError;
 use crate::QueryParser;
 
-mod expr;
-mod identifier;
-mod literal;
-pub mod visitor;
-mod insert;
 mod create;
-mod select;
 mod data_type;
-
+mod expr;
 mod from;
+mod identifier;
+mod insert;
+mod literal;
+mod load;
+mod select;
+pub mod visitor;
 
 /// The query type
 #[derive(Debug, Clone, Serialize, Deserialize, FromDerive)]
@@ -37,6 +38,7 @@ pub enum Query {
     Explain(Box<Query>),
     Select(Select),
     Create(Create),
+    LoadData(LoadData),
     #[serde(untagged)]
     QueryList(Vec<Query>),
 }
@@ -70,6 +72,9 @@ impl Display for Query {
             }
             Query::Create(create) => {
                 write!(f, "{create}")
+            }
+            Query::LoadData(load) => {
+                write!(f, "{load}")
             }
         }
     }

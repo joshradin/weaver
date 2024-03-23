@@ -14,14 +14,15 @@ use weaver_ast::ast::{BinaryOp, Expr, JoinClause, JoinConstraint, JoinOperator};
 use crate::data::row::Row;
 use crate::data::values::DbVal;
 use crate::db::server::WeakWeaverDb;
-use crate::dynamic_table::Table;
+use crate::dynamic_table::{HasSchema, Table};
 use crate::error::WeaverError;
 use crate::key::KeyData;
 use crate::queries::execution::strategies::Strategy;
 use crate::queries::query_cost::Cost;
+use crate::queries::query_plan::{QueryPlanKind, QueryPlanNode};
 use crate::rows::{RefRows, Rows};
-use crate::storage::tables::InMemoryTable;
 use crate::storage::tables::table_schema::TableSchema;
+use crate::storage::tables::InMemoryTable;
 
 /// A join strategy
 pub trait JoinStrategy: Strategy {
@@ -31,8 +32,20 @@ pub trait JoinStrategy: Strategy {
     /// [`None`](None) is returned.
     fn join_cost(&self, join_parameters: &JoinClause) -> Option<Cost>;
 
+    /// Responsible for creating the join query node
+    fn join_node(
+        &self,
+        rows: u64,
+        left: QueryPlanNode,
+        right: QueryPlanNode,
+        join_clause: &JoinClause,
+    ) -> Result<QueryPlanNode, WeaverError>;
+
     /// Attempts to perform a join
-    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r> + 'r>, WeaverError>;
+    fn try_join<'r>(
+        &self,
+        join_parameters: JoinParameters<'r>,
+    ) -> Result<Box<dyn Rows<'r> + 'r>, WeaverError>;
 }
 
 impl Debug for dyn JoinStrategy {
@@ -55,7 +68,7 @@ pub struct JoinParameters<'a> {
     pub left: Box<dyn Rows<'a>>,
     pub right: Box<dyn Rows<'a>>,
     pub constraint: JoinConstraint,
-    pub schema: TableSchema
+    pub schema: TableSchema,
 }
 
 /// Responsible for selecting a join strategy
@@ -111,16 +124,19 @@ impl JoinStrategySelector {
             return Err(WeaverError::NoStrategyForJoin(join.clone()));
         }
         vec.sort_by_key(|c| c.1);
-        Ok(vec.into_iter().map(|(arc, cost)| (arc.clone(), cost)).collect())
+        Ok(vec
+            .into_iter()
+            .map(|(arc, cost)| (arc.clone(), cost))
+            .collect())
     }
 }
 
 #[derive(Debug)]
-struct HashJoinTableStrategy;
+pub struct HashJoinTableStrategy;
 
 impl Strategy for HashJoinTableStrategy {
     fn name(&self) -> &str {
-        "eq-ref-hash"
+        "hash-eq"
     }
 }
 
@@ -157,7 +173,36 @@ impl JoinStrategy for HashJoinTableStrategy {
         Some(Cost::new(1.1, 1, None))
     }
 
-    fn try_join<'r>(&self, join_parameters: JoinParameters<'r>) -> Result<Box<dyn Rows<'r> + 'r>, WeaverError> {
+    fn join_node(
+        &self,
+        rows: u64,
+        left: QueryPlanNode,
+        right: QueryPlanNode,
+        join_clause: &JoinClause,
+    ) -> Result<QueryPlanNode, WeaverError> {
+        let JoinClause {
+            op,
+            constraint,
+            ..
+        } = join_clause;
+        let target_schema = left.schema().join(right.schema());
+        Ok(QueryPlanNode::builder()
+            .cost(self.join_cost(join_clause).unwrap())
+            .rows(rows)
+            .kind(QueryPlanKind::HashJoin {
+                left: Box::new(left),
+                right: Box::new(right),
+                join_kind: op.clone(),
+                on: constraint.clone(),
+            })
+            .schema(target_schema)
+            .build()?)
+    }
+
+    fn try_join<'r>(
+        &self,
+        join_parameters: JoinParameters<'r>,
+    ) -> Result<Box<dyn Rows<'r> + 'r>, WeaverError> {
         let Expr::Binary {
             left,
             op: BinaryOp::Eq,
@@ -188,32 +233,42 @@ impl JoinStrategy for HashJoinTableStrategy {
         let left_idx = left_table
             .schema()
             .column_index_by_source(left_column)
-            .unwrap_or_else(|| panic!("could not get index of column {left_column} for left side {:?}", left_table.schema().columns()));
+            .unwrap_or_else(|| {
+                panic!(
+                    "could not get index of column {left_column} for left side {:?}",
+                    left_table.schema().columns()
+                )
+            });
         let right_column = right_column.resolved().expect("must be resolved");
         let right_idx = right_table
             .schema()
             .column_index_by_source(right_column)
-            .unwrap_or_else(|| panic!("could not get index of column {right_column} for right side {:?}", right_table.schema().columns()));
+            .unwrap_or_else(|| {
+                panic!(
+                    "could not get index of column {right_column} for right side {:?}",
+                    right_table.schema().columns()
+                )
+            });
 
         let mut i = 0;
 
         while let Some(row) = left_table.next() {
             let db_val = row[left_idx].clone();
-            hash_map.entry(db_val)
+            hash_map
+                .entry(db_val)
                 .or_insert_with(|| (false, vec![]))
                 .1
                 .push(row);
             i += 1;
         }
         while let Some(right_row) = right_table.next() {
-            let db_val = right_row.get(right_idx)
+            let db_val = right_row
+                .get(right_idx)
                 .unwrap_or_else(|| panic!("failed to get index {right_idx} of row {right_row:?}"));
             if let Some((used, rows)) = hash_map.get_mut(db_val) {
                 *used = true;
                 for left_row in rows {
-                    let joined = Row::from_iter(
-                        left_row.iter().chain(right_row.iter()).cloned()
-                    );
+                    let joined = Row::from_iter(left_row.iter().chain(right_row.iter()).cloned());
                     *left_row = joined;
                     i += 1;
                 }
@@ -225,13 +280,7 @@ impl JoinStrategy for HashJoinTableStrategy {
         let rows = hash_map
             .into_values()
             .into_iter()
-            .filter_map(|(used, rows)| {
-                if used {
-                    Some(rows)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(used, rows)| if used { Some(rows) } else { None })
             .flatten();
 
         Ok(Box::new(RefRows::new(join_parameters.schema, rows)))

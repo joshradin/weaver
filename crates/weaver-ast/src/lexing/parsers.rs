@@ -52,7 +52,7 @@ fn ident(input: &str) -> IResult<&str, Token> {
 }
 
 fn keyword(input: &str) -> IResult<&str, Token> {
-    alt((
+    let (rest, token) = alt((
         alt((
             value(Token::Select, ignore_case("select")),
             value(Token::Explain, ignore_case("explain")),
@@ -67,6 +67,17 @@ fn keyword(input: &str) -> IResult<&str, Token> {
             value(Token::Join, ignore_case("join")),
             value(Token::Left, ignore_case("left")),
             value(Token::Right, ignore_case("right")),
+        )),
+        alt((
+            value(Token::Load, ignore_case("load")),
+            value(Token::Data, ignore_case("data")),
+            value(Token::Into, ignore_case("into")),
+            value(Token::Fields, ignore_case("fields")),
+            value(Token::Group, ignore_case("group")),
+            value(Token::Collate, ignore_case("collate")),
+            value(Token::Partition, ignore_case("partition")),
+            value(Token::By, ignore_case("by")),
+            value(Token::Terminated, ignore_case("terminated")),
         )),
         alt((
             value(Token::Values, ignore_case("values")),
@@ -109,7 +120,12 @@ fn keyword(input: &str) -> IResult<&str, Token> {
             value(Token::Is, ignore_case("is")),
         )),
     ))
-    .parse(input)
+    .parse(input)?;
+    if let Some('a'..='z' | 'A'..='Z' | '0'..='9' | '_') = rest.chars().next(){
+        Err(nom::Err::Error(Error::new(input, ErrorKind::AlphaNumeric)))
+    } else {
+        Ok((rest, token))
+    }
 }
 
 fn literal<'a>(input: &'a str) -> IResult<&str, Token> {

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ast::identifier::{ResolvedColumnRef, UnresolvedColumnRef};
 use crate::ast::literal::Binary;
-use crate::ast::{Literal, ReferencesCols};
+use crate::ast::{Identifier, Literal, ReferencesCols};
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize, Display, From)]
 pub enum ColumnRef {
@@ -54,6 +54,10 @@ pub enum Expr {
         op: BinaryOp,
         right: Box<Expr>,
     },
+    FunctionCall {
+        function: Identifier,
+        args: FunctionArgs,
+    },
 }
 
 impl Display for Expr {
@@ -77,6 +81,9 @@ impl Display for Expr {
             }
             Expr::Binary { left, op, right } => {
                 write!(f, "{left} {op} {right}")
+            }
+            Expr::FunctionCall { function, args } => {
+                write!(f, "{}({})", function, args)
             }
         }
     }
@@ -220,7 +227,12 @@ impl Expr {
                 ret.extend(left.postfix());
                 ret.extend(right.postfix());
             }
-            _ => { }
+            Expr::FunctionCall { args: FunctionArgs::Params { exprs, ..}, .. } => {
+                for arg in exprs.iter().rev() {
+                    ret.extend(arg.postfix());
+                }
+            }
+            _ => {}
         }
         ret.push(self);
         ret
@@ -237,7 +249,72 @@ impl ReferencesCols for Expr {
                 op: _,
                 right: r,
             } => l.columns().into_iter().chain(r.columns()).collect(),
+            Expr::FunctionCall {
+                function: _, args: FunctionArgs::Params { distinct: _, exprs, ordered_by }
+            } => {
+                HashSet::from_iter(
+                    exprs.iter()
+                        .chain(ordered_by.iter().flatten())
+                        .map(|expr| expr.columns())
+                        .flatten()
+                )
+            }
             _ => HashSet::new(),
+        }
+    }
+}
+
+impl<I : Into<Literal>> From<I> for Expr {
+    fn from(value: I) -> Self {
+        let literal = value.into();
+        Expr::Literal { literal }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Hash)]
+pub enum FunctionArgs {
+    Params {
+        distinct: bool,
+        exprs: Vec<Expr>,
+        ordered_by: Option<Vec<Expr>>,
+    },
+    Wildcard,
+}
+
+impl Display for FunctionArgs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FunctionArgs::Params {
+                distinct,
+                exprs,
+                ordered_by,
+            } => {
+                write!(
+                    f,
+                    "{distinct}{exprs}{ordered_by}",
+                    distinct = if *distinct { "distinct " } else { "" },
+                    exprs = exprs
+                        .iter()
+                        .map(|i| i.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    ordered_by = if let Some(ordered_by) = ordered_by {
+                        format!(
+                            " ordered by {}",
+                            ordered_by
+                                .iter()
+                                .map(|i| i.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    } else {
+                        "".to_string()
+                    }
+                )
+            }
+            FunctionArgs::Wildcard => {
+                write!(f, "*")
+            }
         }
     }
 }

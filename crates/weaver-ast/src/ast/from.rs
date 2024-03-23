@@ -8,6 +8,7 @@ use crate::ast::select::Select;
 
 /// The from clause
 #[derive(Debug, Clone, Serialize, Deserialize, Deref, AsRef, Display)]
+#[display("from {_0}")]
 pub struct FromClause(pub TableOrSubQuery);
 
 /// A table or a subquery

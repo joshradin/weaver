@@ -1,35 +1,64 @@
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
+use std::hash::Hash;
+use std::sync::OnceLock;
 
-use tracing::{debug, instrument, trace};
+use once_cell::sync::Lazy;
+use tracing::trace;
 use uuid::Uuid;
 
-use weaver_ast::ast::{BinaryOp, Expr, Literal, UnaryOp};
+use builtins::BUILTIN_FUNCTIONS_REGISTRY;
+use weaver_ast::ast::{BinaryOp, Expr, FunctionArgs, Identifier, UnaryOp};
 
 use crate::data::row::Row;
+use crate::data::types::{DbTypeOf, Type};
 use crate::data::values::DbVal;
 use crate::error::WeaverError;
+use crate::queries::execution::evaluation::functions::{
+    ArgType, ArgValue, DbFunction, FunctionRegistry,
+};
 use crate::queries::query_plan::QueryPlan;
 use crate::storage::tables::table_schema::TableSchema;
+
+pub mod builtins;
+pub mod functions;
 
 #[derive(Debug)]
 pub struct ExpressionEvaluator {
     compiled_evaluators: BTreeMap<Uuid, Vec<(Expr, ())>>,
+    functions: FunctionRegistry,
 }
 
 impl ExpressionEvaluator {
-    /// Compiles an expression evaluator from a query plan
-    pub fn compile(plan: &QueryPlan) -> Result<Self, WeaverError> {
-        let mut evaluator = Self {
-            compiled_evaluators: Default::default(),
+
+    pub fn new<T: Into<Option<FunctionRegistry>>>(functions: T) -> Self {
+        let registry = match functions.into() {
+            None => BUILTIN_FUNCTIONS_REGISTRY.clone(),
+            Some(mut registry) => {
+                registry.extend(BUILTIN_FUNCTIONS_REGISTRY.clone());
+                registry
+            }
         };
+        let evaluator = Self {
+            compiled_evaluators: Default::default(),
+            functions: registry,
+        };
+        evaluator
+    }
+
+    /// Compiles an expression evaluator from a query plan
+    pub fn compile<T: Into<Option<FunctionRegistry>>>(
+        plan: &QueryPlan,
+        functions: T,
+    ) -> Result<Self, WeaverError> {
+        let mut evaluator = Self::new(functions);
         Ok(evaluator)
     }
 
     /// Evaluates an expression, with an optional id. Ids can be from any source, and is optional but
     /// required for using compiled evaluators.
-    ///
-    pub fn evaluate<'a>(
+    pub fn evaluate_one_row<'a>(
         &self,
         expr: &Expr,
         row: &'a Row,
@@ -54,7 +83,7 @@ impl ExpressionEvaluator {
             trace!("using compiled {compiled:?}");
         }
 
-        runtime_eval(expr, row, schema)
+        runtime_eval(expr, row, schema, &self.functions)
     }
 }
 
@@ -63,6 +92,7 @@ fn runtime_eval<'a>(
     expr: &Expr,
     row: &'a Row,
     schema: &TableSchema,
+    functions: &FunctionRegistry,
 ) -> Result<Cow<'a, DbVal>, WeaverError> {
     let mut stack: Vec<Cow<'a, DbVal>> = vec![];
     let ops = expr.postfix();
@@ -183,10 +213,141 @@ fn runtime_eval<'a>(
                 };
                 stack.push(Cow::Owned(evaluated));
             }
+            Expr::FunctionCall { function, args } => {
+                let arg_types = match args {
+                    FunctionArgs::Params { exprs, .. } => exprs
+                        .iter()
+                        .map(|i| i.type_of(functions, Some(schema)))
+                        .flat_map(|i| i.ok())
+                        .map(ArgType::One)
+                        .collect(),
+                    FunctionArgs::Wildcard => {
+                        vec![ArgType::Rows]
+                    }
+                };
+
+                let function = functions
+                    .get(function, &arg_types)
+                    .ok_or_else(|| WeaverError::UnknownFunction(function.as_ref().to_string(), arg_types))?;
+
+                let args = match args {
+                    FunctionArgs::Params { exprs, .. } => {
+                        let mut args = vec![];
+                        for _ in exprs {
+                            let cow = stack.pop().expect("arg not on stack");
+                            args.push(ArgValue::One(cow));
+                        }
+
+                        args
+                    }
+                    FunctionArgs::Wildcard => {
+                        todo!("wildcard")
+                    }
+                };
+
+                let result = function.execute(args)?;
+                stack.push(Cow::Owned(result));
+            }
+            _expr => {
+                todo!("evaluate {_expr}")
+            }
         }
     }
 
-    return stack.pop().ok_or_else(|| {
+    stack.pop().ok_or_else(|| {
         WeaverError::EvaluationFailed(expr.clone(), "missing value on stack".to_string())
-    });
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use weaver_ast::ast::{BinaryOp, Expr, FunctionArgs, Identifier, Literal};
+
+    use crate::data::row::Row;
+    use crate::error::WeaverError;
+    use crate::queries::execution::evaluation::builtins::BUILTIN_FUNCTIONS_REGISTRY;
+    use crate::queries::execution::evaluation::runtime_eval;
+    use crate::storage::tables::table_schema::TableSchema;
+
+    #[test]
+    fn basic_evaluation() {
+        let stored = &Row::new(0);
+        let result = runtime_eval(
+            &Expr::Binary {
+                left: Box::new(Expr::Literal { literal: Literal::from(21) }),
+                op: BinaryOp::Multiply,
+                right: Box::new(Expr::Literal { literal: Literal::from(3) }),
+            },
+            stored,
+            &TableSchema::empty(),
+            &BUILTIN_FUNCTIONS_REGISTRY,
+        ).expect("could not build");
+        assert_eq!(result.int_value(), Some(63));
+    }
+
+    #[test]
+    fn single_arg_function() {
+        let stored = &Row::new(0);
+        let result = runtime_eval(
+            &Expr::FunctionCall {
+                function: Identifier::new("pow"),
+                args: FunctionArgs::Params {
+                    distinct: false,
+                    exprs: vec![
+                        Expr::from(2),
+                        Expr::from(8),
+                    ],
+                    ordered_by: None,
+                },
+            },
+            stored,
+            &TableSchema::empty(),
+            &BUILTIN_FUNCTIONS_REGISTRY,
+        ).expect("could not build");
+        assert_eq!(result.int_value(), Some(1<<8));
+    }
+
+    #[test]
+    fn single_arg_function_overload() {
+        let stored = &Row::new(0);
+        let result = runtime_eval(
+            &Expr::FunctionCall {
+                function: Identifier::new("pow"),
+                args: FunctionArgs::Params {
+                    distinct: false,
+                    exprs: vec![
+                        Expr::from(2.),
+                        Expr::from(8.),
+                    ],
+                    ordered_by: None,
+                },
+            },
+            stored,
+            &TableSchema::empty(),
+            &BUILTIN_FUNCTIONS_REGISTRY,
+        ).expect("could not build");
+        assert!((result.float_value().unwrap() - 256.).abs() < 0.0025);
+    }
+
+    #[test]
+    fn single_arg_function_wrong_types() {
+        let stored = &Row::new(0);
+        let result = runtime_eval(
+            &Expr::FunctionCall {
+                function: Identifier::new("pow"),
+                args: FunctionArgs::Params {
+                    distinct: false,
+                    exprs: vec![
+                        Expr::from(2),
+                        Expr::from(8.),
+                    ],
+                    ordered_by: None,
+                },
+            },
+            stored,
+            &TableSchema::empty(),
+            &BUILTIN_FUNCTIONS_REGISTRY,
+        ).expect_err("no (int, float) power function");
+        assert!(matches!(result, WeaverError::UnknownFunction(_, _)));
+    }
 }

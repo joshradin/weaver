@@ -1,7 +1,11 @@
 //! Visitors for queries
 
 use crate::ast::select::Select;
-use crate::ast::{ColumnDefinition, ColumnRef, Create, CreateDefinition, CreateTable, DataType, Expr, FromClause, Identifier, JoinClause, JoinConstraint, Literal, Query, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
+use crate::ast::{
+    ColumnDefinition, ColumnRef, Create, CreateDefinition, CreateTable, DataType, Expr, FromClause,
+    FunctionArgs, Identifier, JoinClause, JoinConstraint, Literal, LoadData, Query,
+    ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef,
+};
 
 /// Creates a mut visitor
 #[macro_export]
@@ -40,8 +44,28 @@ visit_mut! {
                 Query::QueryList(_) => {
                     todo!("visit query list")
                 }
+                Query::LoadData(load) => {
+                    visitor.visit_load_data_mut(load)
+                }
+        }
 
-            }
+    }
+    pub visit (visitor, load_data: &mut LoadData) -> Result<()> {
+        let LoadData {
+            schema,
+            name,
+            columns,
+            ..
+        } = load_data;
+
+        if let Some(schema) = schema {
+            visitor.visit_identifier_mut(schema)?;
+        }
+        visitor.visit_identifier_mut(name)?;
+        columns.iter_mut()
+            .try_for_each(|column| {
+            visitor.visit_identifier_mut(column)
+        })
     }
     pub visit (visitor, create: &mut Create) -> Result<()> {
         match create {
@@ -70,7 +94,9 @@ visit_mut! {
     pub visit (visitor, create_def: &mut CreateDefinition) -> Result<()> {
         match create_def {
             CreateDefinition::Column(column_def) => { visitor.visit_column_definition_mut(column_def) }
-        }
+            CreateDefinition::Constraint(_) => {
+                todo!()
+            }}
     }
     pub visit (visitor, column_def: &mut ColumnDefinition) -> Result<()> {
         let ColumnDefinition {
@@ -95,6 +121,7 @@ visit_mut! {
             condition,
             limit,
             offset,
+            ..
         } = select;
 
         if let Some(from) = from {
@@ -197,6 +224,10 @@ visit_mut! {
                 visitor.visit_expr_mut(left)?;
                 visitor.visit_expr_mut(right)
             }
+            Expr::FunctionCall{ function, args } => {
+                visitor.visit_identifier_mut(function)?;
+                visitor.visit_function_args_mut(args)
+            }
         }
     }
     pub visit (visitor, column: &mut ColumnRef) -> Result<()> {
@@ -213,5 +244,21 @@ visit_mut! {
     }
     pub visit (_visitor, _literal: &mut Literal) -> Result<()> {
         Ok(())
+    }
+    pub visit (visitor, function_args: &mut FunctionArgs) -> Result<()> {
+        match function_args {
+            FunctionArgs::Params{ exprs,ordered_by, .. } => {
+                exprs.iter_mut().try_for_each(|i| {
+                    visitor.visit_expr_mut(i)
+                })?;
+                ordered_by
+                .iter_mut()
+                .flatten()
+                .try_for_each(|i| {
+                    visitor.visit_expr_mut(i)
+                })
+            }
+            FunctionArgs::Wildcard => { Ok(())}
+        }
     }
 }

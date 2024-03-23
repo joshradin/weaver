@@ -3,7 +3,7 @@ use std::{fmt, io};
 
 use lexing::Tokenizer;
 
-use crate::ast::Query;
+use crate::ast::{Literal, Query};
 use crate::error::ParseQueryError;
 use crate::lexing::Token;
 use crate::parsing::parse_query;
@@ -13,6 +13,8 @@ pub mod error;
 pub mod lexing;
 
 mod parsing;
+
+pub use parsing::parse_literal;
 
 #[derive(Debug)]
 pub struct QueryParser();
@@ -56,6 +58,7 @@ pub trait ToSql {
         String::from_utf8_lossy(&buffer).to_string()
     }
 }
+
 
 #[cfg(test)]
 mod tests {

@@ -1,16 +1,15 @@
 use std::fmt::{Debug, Formatter, Pointer};
-use std::sync::Arc;
 
+use itertools::Itertools;
 use uuid::Uuid;
 
-use weaver_ast::ast::{CreateTable, Expr, JoinConstraint, JoinOperator, ReferencesCols};
+use weaver_ast::ast::{CreateTable, Expr, JoinConstraint, JoinOperator, LoadData, ReferencesCols};
 
 use crate::data::row::Row;
 use crate::data::types::Type;
 use crate::data::values::DbVal;
 use crate::dynamic_table::HasSchema;
 use crate::error::WeaverError;
-use crate::queries::execution::strategies::join::JoinStrategy;
 use crate::queries::query_cost::Cost;
 use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, RefRows, Rows};
 use crate::storage::tables::table_schema::TableSchema;
@@ -66,17 +65,11 @@ impl QueryPlan {
         E: ToString,
     {
         let row_values: [DbVal; 2] = match result {
-            Ok(ok) => {
-                [DbVal::string(ok.to_string(), None), DbVal::Null]
-            }
-            Err(err) => {
-                [DbVal::Null, DbVal::string(err.to_string(), None)]
-            }
+            Ok(ok) => [DbVal::string(ok.to_string(), None), DbVal::Null],
+            Err(err) => [DbVal::Null, DbVal::string(err.to_string(), None)],
         };
         let row = Row::from(row_values);
-        RefRows::new(
-            Self::ddl_result_schema(), [row]
-        )
+        RefRows::new(Self::ddl_result_schema(), [row])
     }
 
     /// Converts this query plan into rows in postfix order
@@ -177,22 +170,15 @@ impl QueryPlanNode {
     /// Gets the actual cost of the query plan node
     pub fn cost(&self) -> f64 {
         match &self.kind {
-            QueryPlanKind::Join {
-                strategies,
-                left,
-                right,
-                ..
-            } => {
-                strategies.first().unwrap().1.get_cost(self.rows as usize)
-                    + left.cost()
-                    + right.cost()
+            QueryPlanKind::HashJoin { left, right, .. } => {
+                self.cost.get_cost(self.rows as usize) + left.cost() + right.cost()
             }
             QueryPlanKind::Filter { filtered, .. } => {
                 self.cost.get_cost(self.rows as usize) + filtered.cost()
             }
-            QueryPlanKind::Project { node, .. } => {
-                self.cost.get_cost(self.rows as usize) + node.cost()
-            }
+            QueryPlanKind::Project {
+                projected: node, ..
+            } => self.cost.get_cost(self.rows as usize) + node.cost(),
             _ => self.cost.get_cost(self.rows as usize),
         }
     }
@@ -271,23 +257,24 @@ impl QueryPlanNode {
                         .into_iter()
                         .flat_map(|i| i.columns())
                         .map(|i| i.to_string())
+                        .unique()
                         .collect::<Vec<_>>()
                         .join(",")
                         .into(),
                 ); // columns
             }
-            QueryPlanKind::Join {
-                strategies,
+            QueryPlanKind::HashJoin {
                 on: JoinConstraint { on },
                 ..
             } => {
                 values.push("".into()); // table
-                values.push(strategies.first().unwrap().0.to_string().into());
+                values.push("hash-join".into());
                 values.push("".into()); // possible keys
                 values.push(
                     on.columns()
                         .into_iter()
                         .map(|i| i.to_string())
+                        .unique()
                         .collect::<Vec<_>>()
                         .join(",")
                         .into(),
@@ -302,6 +289,37 @@ impl QueryPlanNode {
                 values.push("".into()); // columns
             }
             QueryPlanKind::Explain { .. } => {}
+            QueryPlanKind::LoadData {
+                load_data:
+                    LoadData {
+                        schema,
+                        name,
+                        ..
+                    },
+            } => {
+                values.push(
+                    format!("{}.{}", schema.as_ref().unwrap(), name).into(),
+                ); // table
+                values.push("load".into());
+                values.push("".into()); // possible keys
+                values.push("".into()); // columns
+            }
+            QueryPlanKind::GroupBy { result_columns, grouped_by, ..} => {
+                values.push("".into()); // table
+                values.push("group-by".into()); // join kind
+                values.push("".into()); // possible keys
+                values.push(
+                    result_columns
+                        .iter()
+                        .chain(grouped_by.iter())
+                        .flat_map(|i| i.columns())
+                        .map(|i| i.to_string())
+                        .unique()
+                        .collect::<Vec<_>>()
+                        .join(",")
+                        .into(),
+                ); // columns
+            }
         }
 
         values.push((self.rows as i64).into());
@@ -317,8 +335,10 @@ impl QueryPlanNode {
         output.push(self);
         match &self.kind {
             QueryPlanKind::Filter { filtered, .. } => output.extend(filtered.prefix_order()),
-            QueryPlanKind::Project { node, .. } => output.extend(node.prefix_order()),
-            QueryPlanKind::Join { left, right, .. } => {
+            QueryPlanKind::Project {
+                projected: node, ..
+            } => output.extend(node.prefix_order()),
+            QueryPlanKind::HashJoin { left, right, .. } => {
                 output.extend(left.prefix_order());
                 output.extend(right.prefix_order())
             }
@@ -335,8 +355,10 @@ impl QueryPlanNode {
         let mut output = vec![];
         match &self.kind {
             QueryPlanKind::Filter { filtered, .. } => output.extend(filtered.postfix_order()),
-            QueryPlanKind::Project { node, .. } => output.extend(node.postfix_order()),
-            QueryPlanKind::Join { left, right, .. } => {
+            QueryPlanKind::Project {
+                projected: node, ..
+            } => output.extend(node.postfix_order()),
+            QueryPlanKind::HashJoin { left, right, .. } => {
                 output.extend(left.postfix_order());
                 output.extend(right.postfix_order())
             }
@@ -351,8 +373,10 @@ impl QueryPlanNode {
     pub fn children(&self) -> Vec<&QueryPlanNode> {
         match &self.kind {
             QueryPlanKind::Filter { filtered, .. } => vec![&*filtered],
-            QueryPlanKind::Project { node, .. } => vec![&*node],
-            QueryPlanKind::Join { left, right, .. } => {
+            QueryPlanKind::Project {
+                projected: node, ..
+            } => vec![&*node],
+            QueryPlanKind::HashJoin { left, right, .. } => {
                 vec![&*left, &*right]
             }
             QueryPlanKind::Explain { explained } => vec![&*explained],
@@ -365,8 +389,10 @@ impl QueryPlanNode {
     pub fn children_mut(&mut self) -> Vec<&mut QueryPlanNode> {
         match &mut self.kind {
             QueryPlanKind::Filter { filtered, .. } => vec![&mut *filtered],
-            QueryPlanKind::Project { node, .. } => vec![&mut *node],
-            QueryPlanKind::Join { left, right, .. } => {
+            QueryPlanKind::Project {
+                projected: node, ..
+            } => vec![&mut *node],
+            QueryPlanKind::HashJoin { left, right, .. } => {
                 vec![&mut *left, &mut *right]
             }
             QueryPlanKind::Explain { explained } => vec![&mut *explained],
@@ -452,6 +478,8 @@ impl QueryPlanNodeBuilder {
 
 #[derive(Debug, Clone)]
 pub enum QueryPlanKind {
+    /// Explain a query plan node
+    Explain { explained: Box<QueryPlanNode> },
     /// Gets rows from a given table, this is usually used as a leaf node
     TableScan {
         schema: String,
@@ -459,26 +487,33 @@ pub enum QueryPlanKind {
         /// The keys that can be used
         keys: Option<Vec<KeyIndex>>,
     },
+
     Filter {
         filtered: Box<QueryPlanNode>,
         condition: Expr,
     },
     Project {
         columns: Vec<Expr>,
-        node: Box<QueryPlanNode>,
+        projected: Box<QueryPlanNode>,
     },
-    Join {
+    GroupBy {
+        /// The node to group by
+        grouped: Box<QueryPlanNode>,
+        /// the expressions to group by
+        grouped_by: Vec<Expr>,
+        /// Remaining columns
+        result_columns: Vec<Expr>,
+    },
+
+    HashJoin {
         left: Box<QueryPlanNode>,
         right: Box<QueryPlanNode>,
         join_kind: JoinOperator,
         on: JoinConstraint,
-        strategies: Vec<(Arc<dyn JoinStrategy>, Cost)>,
     },
-    Explain {
-        explained: Box<QueryPlanNode>,
-    },
+
     /// Creates a table
-    CreateTable {
-        table_def: CreateTable,
-    },
+    CreateTable { table_def: CreateTable },
+    /// Load data
+    LoadData { load_data: LoadData },
 }

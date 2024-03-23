@@ -12,16 +12,21 @@ use tracing::{debug, debug_span, error_span, trace};
 
 use weaver_ast::ast;
 use weaver_ast::ast::visitor::{visit_table_or_sub_query_mut, VisitorMut};
-use weaver_ast::ast::{BinaryOp, ColumnRef, Create, Expr, FromClause, Identifier, JoinClause, JoinConstraint, JoinOperator, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
 use weaver_ast::ast::Select;
+use weaver_ast::ast::{
+    BinaryOp, ColumnRef, Create, Expr, FromClause, Identifier, JoinClause, JoinConstraint,
+    JoinOperator, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery,
+    UnresolvedColumnRef,
+};
 
-use crate::data::types::Type;
+use crate::data::types::{DbTypeOf, Type};
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::socket::DbSocket;
 use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::{DynamicTable, HasSchema, Table};
 use crate::error::WeaverError;
 use crate::key::KeyData;
+use crate::queries::execution::evaluation::functions::FunctionRegistry;
 use crate::queries::execution::strategies::join::JoinStrategySelector;
 use crate::queries::query_cost::{Cost, CostTable};
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode, QueryPlanNodeBuilder};
@@ -114,6 +119,9 @@ impl QueryPlanFactory {
                     &mut stack,
                     plan_context,
                 )?,
+                Query::Explain(e) => {
+                    stack.push(*e);
+                }
                 _ => {}
             }
         }
@@ -191,7 +199,9 @@ impl QueryPlanFactory {
                 QueryPlanNode::builder()
                     .rows(0)
                     .cost(Cost::new(1.0, 0, None))
-                    .kind(QueryPlanKind::Explain { explained: Box::new(query) })
+                    .kind(QueryPlanKind::Explain {
+                        explained: Box::new(query),
+                    })
                     .schema(QueryPlan::explain_schema())
                     .build()
             }
@@ -204,14 +214,32 @@ impl QueryPlanFactory {
                     if let Some(current) = plan_context.and_then(|ctx| ctx.using.as_ref()) {
                         create_table.schema = Some(Identifier::new(current))
                     } else {
-                        return Err(WeaverError::NoDefaultSchema)
+                        return Err(WeaverError::NoDefaultSchema);
                     }
                 }
 
                 QueryPlanNode::builder()
                     .rows(0)
                     .cost(Cost::new(1.0, 0, None))
-                    .kind(QueryPlanKind::CreateTable { table_def: create_table })
+                    .kind(QueryPlanKind::CreateTable {
+                        table_def: create_table,
+                    })
+                    .schema(QueryPlan::ddl_result_schema())
+                    .build()
+            }
+            Query::LoadData(load_data) => {
+                let mut load_data = load_data.clone();
+                if load_data.schema.is_none() {
+                    if let Some(current) = plan_context.and_then(|ctx| ctx.using.as_ref()) {
+                        load_data.schema = Some(Identifier::new(current))
+                    } else {
+                        return Err(WeaverError::NoDefaultSchema);
+                    }
+                }
+                QueryPlanNode::builder()
+                    .rows(0)
+                    .cost(Cost::new(2.0, 1, None))
+                    .kind(QueryPlanKind::LoadData { load_data })
                     .schema(QueryPlan::ddl_result_schema())
                     .build()
             }
@@ -303,9 +331,12 @@ impl QueryPlanFactory {
                 columns,
                 from,
                 condition,
+                group_by,
                 limit,
                 offset,
             } = select;
+
+
 
             match from {
                 None => {
@@ -337,23 +368,37 @@ impl QueryPlanFactory {
                         }
                     };
 
-                    // if columns.len() == 1 && matches!(columns[0], ResultColumn::Wildcard) {
-                    //     // if just * wildcard then no projection is needed
-                    //     return Ok(filtered);
-                    // }
 
-                    let (projected_schema, columns) =
-                        self.table_schema_for_projection(columns, &filtered)?;
+                    match group_by {
+                        None => {
+                            // no grouping allows for normal projection
+                            let (projected_schema, columns) =
+                                self.table_schema_for_projection(columns, &filtered)?;
 
-                    Ok(QueryPlanNode::builder()
-                        .cost(self.get_cost("SELECT")?)
-                        .rows(filtered.rows)
-                        .kind(QueryPlanKind::Project {
-                            columns: columns,
-                            node: Box::new(filtered),
-                        })
-                        .schema(projected_schema)
-                        .build()?)
+                            Ok(QueryPlanNode::builder()
+                                .cost(self.get_cost("PROJECT")?)
+                                .rows(filtered.rows)
+                                .kind(QueryPlanKind::Project {
+                                    columns: columns,
+                                    projected: Box::new(filtered),
+                                })
+                                .schema(projected_schema)
+                                .build()?)
+                        }
+                        Some(grouped) => {
+                            // grouping has slightly different semantics. We must require that all
+                            // values in non-grouped columns are functionally dependent on the grouped columns
+
+
+                            // no grouping allows for normal projection
+                            let (projected_schema, columns) =
+                                self.table_schema_for_projection(columns, &filtered)?;
+
+                            todo!()
+                        }
+                    }
+
+
                 }
             }
         })
@@ -443,7 +488,7 @@ impl QueryPlanFactory {
     ) -> Result<(TableSchema, Vec<Expr>), WeaverError> {
         let source_schema = &from_node.schema;
         let mut schema_builder =
-            TableSchemaBuilder::new("*", format!("table_{}", rand::random::<u64>()));
+            TableSchemaBuilder::new("<query>", "<projection>");
         let mut cols = vec![];
 
         for result_column in columns {
@@ -484,7 +529,9 @@ impl QueryPlanFactory {
 
                     cols.push(expr.clone());
 
-                    let mut cd = ColumnDefinition::new(name, Type::Boolean, non_null, None, None)?;
+                    let db_type = expr.type_of(&FunctionRegistry::empty(), Some(from_node.schema()))?;
+
+                    let mut cd = ColumnDefinition::new(name, db_type, non_null, None, None)?;
                     if let Expr::Column { column } = expr {
                         if let Some(resolved) = column.resolved() {
                             cd.set_source_column(resolved.clone());
@@ -496,6 +543,20 @@ impl QueryPlanFactory {
             }
         }
         Ok((schema_builder.build()?, cols))
+    }
+
+    fn table_schema_for_grouped(
+        &self,
+        columns: &Vec<ResultColumn>,
+        groups: &Vec<Expr>,
+        grouped: &QueryPlanNode,
+    ) -> Result<(TableSchema, Vec<Expr>), WeaverError> {
+        let (schema, columns) = self.table_schema_for_projection(columns, grouped)?;
+
+
+
+
+        Ok((schema, columns))
     }
 
     fn join_to_plan_node(
@@ -522,7 +583,7 @@ impl QueryPlanFactory {
                 .get_strategies_for_join(join_clause)?;
             debug!("join strategies for {join_clause}: {strategies:#?}");
 
-            let built_schema = left.schema().join(right.schema());
+            let (strategy, _) = strategies.first().expect("no applicable strategies");
 
             let rows = match join_clause.op {
                 JoinOperator::Left => left.rows,
@@ -532,19 +593,7 @@ impl QueryPlanFactory {
                 JoinOperator::Cross => left.rows * right.rows,
                 JoinOperator::Outer => left.rows + right.rows,
             };
-
-            Ok(QueryPlanNode::builder()
-                .cost(self.get_cost("JOIN")?)
-                .rows(rows)
-                .kind(QueryPlanKind::Join {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    join_kind: op.clone(),
-                    on: constraint.clone(),
-                    strategies,
-                })
-                .schema(built_schema)
-                .build()?)
+            strategy.join_node(rows, left, right, join_clause)
         })
     }
 

@@ -37,6 +37,17 @@ pub struct TableSchema {
 }
 
 impl TableSchema {
+    pub fn empty() -> Self {
+        Self {
+            schema: "".to_string(),
+            name: "".to_string(),
+            columns: vec![],
+            sys_columns: vec![],
+            keys: vec![],
+            engine: EngineKey::new(IN_MEMORY_KEY),
+        }
+    }
+    
     pub fn get_key(&self, key_name: &str) -> Result<&Key, WeaverError> {
         self.keys
             .iter()
@@ -134,6 +145,25 @@ impl TableSchema {
             return None;
         }
         self.column_index(source.column().as_ref())
+    }
+
+    /// Gets the index of a column by source, if present. If not present, matches by name if table
+    /// and schema match up.
+    ///
+    /// Returns `None` if not present
+    pub fn column_by_source(&self, source: &ResolvedColumnRef) -> Option<&ColumnDefinition> {
+        if let Some(ret) = self
+            .all_columns()
+            .iter()
+            .find(|col| col.source_column.as_ref() == Some(source))
+        {
+            return Some(ret);
+        }
+
+        if source.schema().as_ref() != self.schema || source.table().as_ref() != self.name {
+            return None;
+        }
+        self.get_column(source.column().as_ref())
     }
 
     /// Gets a column definition by name

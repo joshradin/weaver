@@ -1,20 +1,22 @@
 use std::borrow::Cow;
+use std::str::FromStr;
 use std::sync::{Arc, Weak};
 
 use parking_lot::RwLock;
-use tracing::log::trace;
+use rayon::prelude::*;
+use tracing::trace;
 use tracing::{debug, debug_span, error, info};
 
-use weaver_ast::ast;
-use weaver_ast::ast::{CreateDefinition, CreateTable};
+use weaver_ast::ast::{CreateDefinition, CreateTable, Literal, LoadData};
+use weaver_ast::{ast, parse_literal};
 
 use crate::data::row::{OwnedRow, Row};
 use crate::data::values::DbVal;
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{DynamicTable, EngineKey, HasSchema, Table};
 use crate::error::WeaverError;
-use crate::queries::execution::executor::expr_executor::ExpressionEvaluator;
-use crate::queries::execution::strategies::join::JoinParameters;
+use crate::queries::execution::evaluation::ExpressionEvaluator;
+use crate::queries::execution::strategies::join::{HashJoinTableStrategy, JoinParameters, JoinStrategy};
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{KeyIndex, OwnedRows};
 use crate::rows::{RefRows, Rows};
@@ -22,8 +24,6 @@ use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
 use crate::storage::tables::in_memory_table::InMemoryTable;
 use crate::storage::tables::table_schema::TableSchemaBuilder;
 use crate::tx::Tx;
-
-mod expr_executor;
 
 /// The query executor is responsible for executing queries against the database
 /// in performant ways.
@@ -53,7 +53,7 @@ impl QueryExecutor {
 
         let core = self.core.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
         trace!("executing query plan {plan:#?}");
-        let ref expression_evaluator = ExpressionEvaluator::compile(plan)?;
+        let ref expression_evaluator = ExpressionEvaluator::compile(plan, None)?;
         self.execute_node_non_recursive(tx, plan.root(), expression_evaluator, &core)
     }
 
@@ -109,7 +109,7 @@ impl QueryExecutor {
                         let mut owned = vec![];
                         while let Some(row) = to_filter.next() {
                             if expression_evaluator
-                                .evaluate(condition, &row, to_filter.schema(), filtered.id())?
+                                .evaluate_one_row(condition, &row, to_filter.schema(), filtered.id())?
                                 .bool_value()
                                 == Some(true)
                             {
@@ -121,7 +121,7 @@ impl QueryExecutor {
                         Ok(())
                     })?;
                 }
-                QueryPlanKind::Project { columns, node: _ } => {
+                QueryPlanKind::Project { columns, projected: _ } => {
                     debug_span!("project").in_scope(|| -> Result<(), WeaverError> {
                         let mut to_project = row_stack.pop().expect("nothing to project");
                         let mut owned = vec![];
@@ -130,7 +130,7 @@ impl QueryExecutor {
                             debug!("projecting row {row:?}");
                             for (idx, column_expr) in columns.iter().enumerate() {
                                 debug!("evaluating {column_expr}");
-                                let eval = expression_evaluator.evaluate(
+                                let eval = expression_evaluator.evaluate_one_row(
                                     column_expr,
                                     &row,
                                     to_project.schema(),
@@ -147,20 +147,17 @@ impl QueryExecutor {
                         Ok(())
                     })?;
                 }
-                QueryPlanKind::Join {
+                QueryPlanKind::HashJoin {
                     left: _,
                     right: _,
                     join_kind,
                     on,
-                    strategies,
                 } => {
                     debug_span!("join").in_scope(|| -> Result<(), WeaverError> {
                         let left = row_stack.pop().expect("no left side of join");
                         let right = row_stack.pop().expect("no right side of join");
 
-                        let (strategy, _) = strategies.first().unwrap();
-
-                        let joined = strategy.try_join(JoinParameters {
+                        let joined = HashJoinTableStrategy.try_join(JoinParameters {
                             op: join_kind.clone(),
                             left,
                             right,
@@ -211,6 +208,9 @@ impl QueryExecutor {
                                     schema_builder = schema_builder.primary(&[id.as_ref()])?
                                 }
                             }
+                            &CreateDefinition::Constraint(_) => {
+                                todo!()
+                            }
                         }
                     }
 
@@ -229,6 +229,77 @@ impl QueryExecutor {
                     let as_row = Box::new(QueryPlan::ddl_result(result.map(|()| "ok")));
                     row_stack.push(as_row);
                     debug!("core after open: {:#?}", core.read());
+                }
+                QueryPlanKind::LoadData { load_data } => {
+                    let LoadData {
+                        infile,
+                        schema,
+                        name,
+                        terminated_by,
+                        lines_start,
+                        lines_terminated,
+                        skip,
+                        columns,
+                    } = load_data;
+                    debug!("reading from csv: {infile:?}");
+                    let mut csv_builder_reader = csv::ReaderBuilder::new();
+                    csv_builder_reader.comment(Some(b'#'));
+
+                    if let Some(terminated_by) = terminated_by {
+                        csv_builder_reader.delimiter(terminated_by.as_bytes()[0]);
+                    }
+
+                    let mut csv_reader = csv_builder_reader
+                        .from_path(infile)
+                        .map_err(|e| WeaverError::custom(e))?;
+
+                    let table = core
+                        .read()
+                        .get_open_table(schema.as_ref().expect("no schema"), name)?;
+
+                    let column_indexes_and_types = columns.iter().try_fold(
+                        Vec::with_capacity(columns.len()),
+                        |mut vec, next| -> Result<_, WeaverError> {
+                            let column_idx = table
+                                .schema()
+                                .column_index(next.as_ref())
+                                .ok_or_else(|| WeaverError::ColumnNotFound(next.to_string()))?;
+                            let column_type = table.schema().columns()[column_idx].data_type();
+                            vec.push((column_idx, column_type));
+                            Ok(vec)
+                        },
+                    )?;
+
+                    let mut iter = csv_reader.records();
+                    let mut rows = iter
+                        .into_iter()
+                        .par_bridge()
+                        .map(|line| {
+                            let Ok(line) = line else {
+                                return Err(WeaverError::custom(line.unwrap_err()));
+                            };
+
+                            let mut row = vec![DbVal::Null; table.schema().columns().len()];
+                            column_indexes_and_types.iter().zip(line.iter()).try_for_each(
+                                |(&(col_idx, db_type), string)| -> Result<_, WeaverError> {
+                                    let db_val = db_type.parse_value(string)?;
+
+                                    row[col_idx] = db_val;
+                                    Ok(())
+                                },
+                            )?;
+                            Ok(Row::from(row))
+                        })
+                        .collect::<Result<Vec<_>, WeaverError>>()?;
+                    debug!("rows created: {}", rows.len());
+
+                    let result = rows
+                        .into_iter()
+                        .map(|row| table.insert(tx, row))
+                        .collect::<Result<Vec<_>, _>>();
+
+                    let as_row = Box::new(QueryPlan::ddl_result(result.map(|vec| vec.len())));
+                    row_stack.push(as_row);
                 }
                 _kind => {
                     todo!("implement execution of {_kind:?}")

@@ -177,7 +177,7 @@ fn push_down_filter(parent: &mut QueryPlanNode, socket: &DbSocket) -> Result<(),
         }
         QueryPlanKind::Project {
             columns,
-            node: grandchild,
+            projected: grandchild,
         } => {
             if columns
                 .iter()
@@ -194,7 +194,7 @@ fn push_down_filter(parent: &mut QueryPlanNode, socket: &DbSocket) -> Result<(),
                 None
             }
         }
-        QueryPlanKind::Join { left, right, .. } => {
+        QueryPlanKind::HashJoin { left, right, .. } => {
             let left = *left.clone();
             let right = *right.clone();
 

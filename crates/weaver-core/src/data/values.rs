@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::str::FromStr;
 use uuid::Uuid;
 use weaver_ast::ast;
+use crate::error::WeaverError;
 
 /// A single value within a row
 #[derive(Clone, Deserialize, Serialize, From)]
@@ -23,6 +25,14 @@ impl DbVal {
     /// If this is an int value, returns as an int
     pub fn int_value(&self) -> Option<i64> {
         if let Self::Integer(i) = self {
+            Some(*i)
+        } else {
+            None
+        }
+    }
+
+    pub fn float_value(&self) -> Option<f64> {
+        if let Self::Float(i) = self {
             Some(*i)
         } else {
             None
@@ -54,8 +64,24 @@ impl DbVal {
         Self::String(s.as_ref().to_string(), max_len.into().unwrap_or(u16::MAX))
     }
 
-    pub fn binary<S: for<'a> AsRef<&'a [u8]>>(bytes: S, max_len: impl Into<Option<u16>>) -> Self {
+    pub fn binary<S: AsRef<[u8]>>(bytes: S, max_len: impl Into<Option<u16>>) -> Self {
         Self::Binary(bytes.as_ref().to_vec(), max_len.into().unwrap_or(u16::MAX))
+    }
+}
+
+impl FromStr for DbVal {
+    type Err = WeaverError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(i) = i64::from_str(s) {
+            Ok(Self::from(i))
+        } else if let Ok(f) = f64::from_str(s) {
+            Ok(Self::from(f))
+        } else if let Ok(f) = bool::from_str(s) {
+            Ok(Self::from(f))
+        } else {
+            Ok(Self::from(s.to_string()))
+        }
     }
 }
 
@@ -76,6 +102,19 @@ impl From<ast::Literal> for DbVal {
         }
     }
 }
+
+impl From<&[u8]> for DbVal {
+    fn from(value: &[u8]) -> Self {
+        DbVal::binary(value, None)
+    }
+}
+
+impl From<Vec<u8>> for DbVal {
+    fn from(value: Vec<u8>) -> Self {
+        DbVal::binary(&value, None)
+    }
+}
+
 impl From<&str> for DbVal {
     fn from(value: &str) -> Self {
         Self::string(value, None)
@@ -197,6 +236,12 @@ impl PartialOrd for DbVal {
     }
 }
 
+impl Ord for DbVal {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).expect("could not compare")
+    }
+}
+
 impl Hash for DbVal {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
@@ -205,7 +250,7 @@ impl Hash for DbVal {
             DbVal::Integer(s) => s.hash(state),
             DbVal::Boolean(s) => s.hash(state),
             DbVal::Float(f) => u64::from_be_bytes(f.to_be_bytes()).hash(state),
-            DbVal::Null => ().hash(state),
+            DbVal::Null => { },
         }
     }
 }

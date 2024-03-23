@@ -7,6 +7,7 @@ pub struct Select {
     pub columns: Vec<ResultColumn>,
     pub from: Option<FromClause>,
     pub condition: Option<Expr>,
+    pub group_by: Option<Vec<Expr>>,
     pub limit: Option<u64>,
     pub offset: Option<u64>,
 }

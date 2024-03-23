@@ -1,6 +1,8 @@
 use std::backtrace::Backtrace as Bt; // using alias to prevent obnoxious `Backtrace` auto-detection
 use std::convert::Infallible;
 use std::io;
+use std::num::{ParseFloatError, ParseIntError};
+use std::str::ParseBoolError;
 
 use crossbeam::channel::{RecvError, SendError};
 use openssl::error::ErrorStack;
@@ -19,6 +21,7 @@ use crate::db::server::processes::WeaverPid;
 use crate::db::server::socket::MainQueueItem;
 use crate::dynamic_table::{EngineKey, OpenTableError, OwnedCol, StorageError};
 use crate::key::KeyData;
+use crate::queries::execution::evaluation::functions::{ArgType, FunctionSignature};
 use crate::storage::cells::PageId;
 use crate::storage::paging::slotted_pager::PageType;
 use crate::storage::paging::virtual_pager::VirtualPagerError;
@@ -90,6 +93,12 @@ pub enum WeaverError {
     SslHandshakeFailure(openssl::ssl::Error),
     #[error("Ssl handshake would block: ({0})")]
     SslHandshakeWouldBlock(openssl::ssl::Error),
+    #[error(transparent)]
+    ParseIntError(#[from] ParseIntError),
+    #[error(transparent)]
+    ParseBoolError(#[from] ParseBoolError),
+    #[error(transparent)]
+    ParseFloatError(#[from] ParseFloatError),
     #[error("Could not parse {0:?}")]
     ParseError(String),
     #[error("Could not use unqualified table reference without in-use schema")]
@@ -137,6 +146,10 @@ pub enum WeaverError {
     VirtualPagerError(#[from] VirtualPagerError),
     #[error("No strategy for {0}")]
     NoStrategyForJoin(JoinClause),
+    #[error("Unknown function: {0}({})", _1.iter().map(ToString::to_string).collect::<Vec<_>>().join(","))]
+    UnknownFunction(String, Vec<ArgType>),
+    #[error("Column not resolved")]
+    ColumnNotResolved(UnresolvedColumnRef),
 
     #[error("{0} builder incomplete, need {1:?}")]
     BuilderIncomplete(String, Vec<String>),
@@ -144,6 +157,13 @@ pub enum WeaverError {
     EvaluationFailed(Expr, String),
     #[error("Query can not be executed without default schema. Try specifying tables by schema or `use schema`")]
     NoDefaultSchema,
+    #[error("No available schema")]
+    NoTableSchema,
+    #[error("parameter is unbound")]
+    UnboundParameter,
+    #[error("Function named {0:?} with signature {1:?} already exists")]
+    FunctionWithSignatureAlreadyExists(String, FunctionSignature),
+
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {
@@ -153,6 +173,7 @@ pub enum WeaverError {
     },
     #[error("{0}")]
     Custom(String),
+
 
 }
 

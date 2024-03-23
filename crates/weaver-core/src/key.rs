@@ -8,7 +8,7 @@ use std::ops::{Bound, Deref, RangeBounds};
 use tracing::trace;
 
 /// Keys are always order-able
-#[derive(Clone, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct KeyData(OwnedRow);
 
 impl KeyData {}
@@ -21,12 +21,6 @@ impl Debug for KeyData {
             2..=3 => self.0.fmt(f),
             _ => write!(f, "{:?}", self.0),
         }
-    }
-}
-
-impl Ord for KeyData {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).expect("could not compare keys")
     }
 }
 

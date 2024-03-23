@@ -6,7 +6,7 @@ use log::{error, info, LevelFilter};
 use simplelog::{ColorChoice, CombinedLogger, Config, TerminalMode, TermLogger, WriteLogger};
 
 use weaver_ast::ast::Query;
-use weaver_ast::ast::select::Select;
+use weaver_ast::ast::Select;
 use weaver_client::write_rows::write_rows;
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::LoginContext;

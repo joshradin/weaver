@@ -1,10 +1,11 @@
 //! actual parsing implementation
 
-use crate::ast::Query;
+use crate::ast::{Literal, Query};
 use crate::error::ParseQueryError;
-use crate::lexing::{Spanned, Token, TokenError};
+use crate::lexing::{Spanned, Token, TokenError, Tokenizer};
 
 use lalrpop_util::{lalrpop_mod, ParseError};
+use nom::combinator::all_consuming;
 
 lalrpop_mod!(weaver_query);
 
@@ -71,4 +72,29 @@ where
     let mut parser = LR1Parser::new(src, tokens.into_iter());
     let s = parser.parse();
     s
+}
+
+pub fn parse_literal(string: &str) -> Result<Literal, ParseQueryError> {
+    let tokenizer = Tokenizer::new(string);
+    let result = weaver_query::LiteralParser::new().parse(
+        string,
+        tokenizer.into_iter(),
+    );
+    result.map_err(|e| match e {
+        ParseError::InvalidToken { .. } => {
+            todo!()
+        }
+        ParseError::UnrecognizedEof {
+            location: _,
+            expected,
+        } => ParseQueryError::Incomplete(vec![], expected),
+        ParseError::UnrecognizedToken {
+            token: (_, token, _),
+            expected,
+        } => ParseQueryError::UnexpectedToken(token.to_string(), expected, vec![]),
+        ParseError::ExtraToken { .. } => {
+            todo!()
+        }
+        ParseError::User { error } => error.into(),
+    })
 }
