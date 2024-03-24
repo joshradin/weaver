@@ -16,6 +16,14 @@ const DDL: &str = r#"
     );
     "#;
 
+const MAIN_QUERY: &'static str = r#"
+        SELECT name, count(temperature) as count, min(temperature), max(temperature), avg(temperature)
+        FROM `default`.`1brc`
+        GROUP BY name
+        ORDER by count DESC
+        LIMIT 100
+        "#;
+
 fn main() -> eyre::Result<()> {
     let _ = init_tracing();
     let data_dir = tempdir()?;
@@ -26,6 +34,15 @@ fn main() -> eyre::Result<()> {
     run_full_stack(&data_dir.path(), |server, client| {
         info!("trying to get tables");
         client.query(&Query::parse(DDL)?)?;
+
+        client.query(&Query::parse(&*format!("EXPLAIN {MAIN_QUERY}"))?)?;
+
+        client.query(&Query::parse(&*format!(
+            r#"
+                LOAD DATA INFILE {data_file:?} INTO TABLE `default`.`1brc` (name, temperature)
+                FIELDS TERMINATED BY ';'
+                "#,
+        ))?)?;
         client.query(&Query::parse(&*format!(
             r#"
                 LOAD DATA INFILE {data_file:?} INTO TABLE `default`.`1brc` (name, temperature)
@@ -33,12 +50,8 @@ fn main() -> eyre::Result<()> {
                 "#,
         ))?)?;
 
-        let (rows, elapsed) = client.query(&Query::parse(r#"
-        EXPLAIN
-        SELECT name, min(temperature), max(temperature), avg(temperature)
-        FROM `default`.`1brc`
-        GROUP BY name
-        "#)?)?;
+
+        let (rows, elapsed) = client.query(&Query::parse(MAIN_QUERY)?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
         Ok(())
     })?;

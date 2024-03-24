@@ -1,38 +1,38 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use crossbeam::channel::{unbounded, Sender};
+use crossbeam::channel::{Sender, unbounded};
 use parking_lot::{Mutex, RwLock};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use tempfile::TempDir;
 use tracing::{
-    debug, error, error_span, info, info_span, span_enabled, trace, trace_span, warn, Level, Span,
+    debug, error, error_span, info, info_span, Level, Span, span_enabled, trace, trace_span, warn,
 };
 use tracing::field::debug;
 
 use weaver_ast::ast::Query;
 
 use crate::access_control::auth::context::AuthContext;
-use crate::access_control::auth::init::{init_auth_context, AuthConfig};
-use crate::cancellable_task::{CancelRecv, CancellableTask, Cancelled};
+use crate::access_control::auth::init::{AuthConfig, init_auth_context};
+use crate::cancellable_task::{CancellableTask, Cancelled, CancelRecv};
+use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::cnxn::cnxn_loop::remote_stream_loop;
 use crate::cnxn::interprocess::WeaverLocalSocketListener;
 use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::tcp::WeaverTcpListener;
-use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::common::stream_support::Stream;
 use crate::db::core::{bootstrap, WeaverDbCore};
 use crate::db::server::init::engines::init_engines;
 use crate::db::server::init::system::init_system_tables;
 use crate::db::server::init::weaver::init_weaver_schema;
+use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
-use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::lifecycle::{LifecyclePhase, WeaverDbLifecycleService};
 use crate::db::server::processes::{
     ProcessManager, WeaverPid, WeaverProcessChild, WeaverProcessInfo,
@@ -41,6 +41,8 @@ use crate::db::server::socket::{DbSocket, MainQueueItem};
 use crate::error::WeaverError;
 use crate::modules::{Module, ModuleError};
 use crate::monitoring::{Monitor, Monitorable, Stats};
+use crate::queries::execution::evaluation::builtins::BUILTIN_FUNCTIONS_REGISTRY;
+use crate::queries::execution::evaluation::functions::FunctionRegistry;
 use crate::queries::execution::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
@@ -71,6 +73,8 @@ pub(super) struct WeaverDbShared {
     socket_file: OnceLock<PathBuf>,
     auth_context: AuthContext,
 
+    function_registry: FunctionRegistry,
+
     /// Responsible for managing processes.
     process_manager: RwLock<ProcessManager>,
 
@@ -83,17 +87,13 @@ pub(super) struct WeaverDbShared {
 }
 
 impl WeaverDb {
-
     #[cfg(test)]
     pub fn in_temp_dir() -> Result<(TempDir, Self), WeaverError> {
         let (dir, core) = WeaverDbCore::in_temp_dir()?;
         let auth_config = AuthConfig::in_path(dir.path());
         Self::new(core, auth_config).map(|this| (dir, this))
     }
-    pub fn new(
-        shard: WeaverDbCore,
-        auth_config: AuthConfig,
-    ) -> Result<Self, WeaverError> {
+    pub fn new(shard: WeaverDbCore, auth_config: AuthConfig) -> Result<Self, WeaverError> {
         let path = shard.path().to_path_buf();
         let auth_context = init_auth_context(&auth_config)?;
         let inner = Arc::new_cyclic(move |weak| {
@@ -200,6 +200,7 @@ impl WeaverDb {
                 socket_file_bound: AtomicBool::new(false),
                 socket_file: Default::default(),
                 auth_context,
+                function_registry: BUILTIN_FUNCTIONS_REGISTRY.clone(),
                 process_manager: RwLock::new(ProcessManager::new(WeakWeaverDb(weak.clone()))),
                 layers: RwLock::new(layers),
                 lifecycle_service: WeaverDbLifecycleService::new(WeakWeaverDb(weak.clone())),
@@ -271,7 +272,7 @@ impl WeaverDb {
         info!("query to plan");
         let factory = QueryPlanFactory::new(self.weak());
         debug!("created query factory: {:?}", factory);
-        let mut plan = factory.to_plan(tx, query, plan_context)?;
+        let mut plan = factory.to_plan(tx, query, &self.shared.function_registry, plan_context)?;
         debug!("created initial plan {plan:#?}");
         let optimizer = QueryPlanOptimizer::new(self.weak());
         debug!("created query optimizer: {optimizer:?}");
@@ -300,7 +301,9 @@ impl WeaverDb {
             let self_clone = self.weak();
             let worker = thread::Builder::new()
                 .name("distro-db-tcp".to_string())
-                .spawn(move || -> Result<(), WeaverError> { Self::tcp_handler(listener, self_clone) })?;
+                .spawn(move || -> Result<(), WeaverError> {
+                    Self::tcp_handler(listener, self_clone)
+                })?;
             self.shared.worker_handles.lock().push(worker);
             Ok(())
         } else {
@@ -502,11 +505,7 @@ impl WeaverDb {
 
 impl Default for WeaverDb {
     fn default() -> Self {
-        Self::new(
-            WeaverDbCore::default(),
-            AuthConfig::default(),
-        )
-        .unwrap()
+        Self::new(WeaverDbCore::default(), AuthConfig::default()).unwrap()
     }
 }
 

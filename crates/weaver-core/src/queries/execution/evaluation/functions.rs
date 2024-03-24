@@ -286,6 +286,12 @@ impl FunctionSignature {
                         return false;
                     }
                 }
+                (ArgType::One(_), ArgType::Row) => {
+                    // also good
+                }
+                (ArgType::Many(_), ArgType::Rows) => {
+                    // also good
+                }
                 (ArgType::Rows, ArgType::Rows) | (ArgType::Row, ArgType::Row) => {
                     // good
                 }

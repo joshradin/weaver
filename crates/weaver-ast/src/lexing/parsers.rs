@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::str::FromStr;
 
+use nom::{Compare, Finish, InputLength, InputTake, IResult, Parser};
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_until};
 use nom::character::complete::{alpha1, alphanumeric1, char, digit1, one_of};
@@ -9,7 +10,6 @@ use nom::error::{Error, ErrorKind, FromExternalError, ParseError};
 use nom::multi::many0_count;
 use nom::number::complete::recognize_float;
 use nom::sequence::{delimited, pair, preceded, tuple};
-use nom::{Compare, Finish, IResult, InputLength, InputTake, Parser};
 
 use utility::{ignore_case, ignore_whitespace};
 
@@ -74,10 +74,17 @@ fn keyword(input: &str) -> IResult<&str, Token> {
             value(Token::Into, ignore_case("into")),
             value(Token::Fields, ignore_case("fields")),
             value(Token::Group, ignore_case("group")),
+            value(Token::Order, ignore_case("order")),
+            value(Token::Asc, ignore_case("asc")),
+            value(Token::Desc, ignore_case("desc")),
             value(Token::Collate, ignore_case("collate")),
             value(Token::Partition, ignore_case("partition")),
             value(Token::By, ignore_case("by")),
             value(Token::Terminated, ignore_case("terminated")),
+        )),
+        alt((
+            value(Token::Limit, ignore_case("limit")),
+            value(Token::Offset, ignore_case("offset")),
         )),
         alt((
             value(Token::Values, ignore_case("values")),
@@ -121,7 +128,7 @@ fn keyword(input: &str) -> IResult<&str, Token> {
         )),
     ))
     .parse(input)?;
-    if let Some('a'..='z' | 'A'..='Z' | '0'..='9' | '_') = rest.chars().next(){
+    if let Some('a'..='z' | 'A'..='Z' | '0'..='9' | '_') = rest.chars().next() {
         Err(nom::Err::Error(Error::new(input, ErrorKind::AlphaNumeric)))
     } else {
         Ok((rest, token))
@@ -197,12 +204,12 @@ fn op(input: &str) -> IResult<&str, Token> {
 
 #[cfg(test)]
 mod tests {
+    use nom::{Finish, IResult};
     use nom::branch::alt;
     use nom::bytes::complete::{tag, take_until};
     use nom::combinator::recognize;
     use nom::multi::many0_count;
     use nom::sequence::{delimited, pair};
-    use nom::{Finish, IResult};
 
     use crate::lexing::{Token, Tokenizer};
 

@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 use rayon::Scope;
-use tracing::trace;
+use tracing::{debug, trace};
 use uuid::Uuid;
 
 use builtins::BUILTIN_FUNCTIONS_REGISTRY;
@@ -128,7 +128,7 @@ fn runtime_eval_many_rows<'a>(
 ) -> Result<Cow<'a, DbVal>, WeaverError> {
     match expr {
         Expr::Column { column } => {
-            panic!("single column in many context")
+            get_from_column(rows[0], scope, expr, column)
         }
         Expr::Literal { literal } => Ok(Cow::Owned(DbVal::from(literal.clone()))),
         Expr::BindParameter { .. } => {
@@ -147,29 +147,9 @@ fn runtime_eval_many_rows<'a>(
             function: function_name,
             args,
         } => {
-            let arg_types = match args {
-                FunctionArgs::Params { exprs, .. } => exprs
-                    .iter()
-                    .map(|i| i.type_of(function_registry, Some(scope)))
-                    .flat_map(|i| i.ok())
-                    .map(|base_type| {
-                        if rows.len() == 1 {
-                            ArgType::One(base_type)
-                        } else {
-                            ArgType::Many(base_type)
-                        }
-                    })
-                    .collect(),
-                FunctionArgs::Wildcard { .. } => {
-                    vec![ArgType::Rows]
-                }
+            let FunctionKind { aggregate: Some(function), .. } = find_function(function_registry, function_name, args, scope)? else {
+                return Err(WeaverError::UnknownFunction(function_name.to_string(), arg_types(function_registry, args, true, scope)))
             };
-
-            let function = function_registry
-                .get(function_name, &arg_types)
-                .ok_or_else(|| {
-                    WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types)
-                })?;
 
             let args = match args {
                 FunctionArgs::Params {
@@ -267,21 +247,9 @@ fn runtime_eval_single_row<'a>(
                 function: function_name,
                 args,
             } => {
-                let arg_types = match args {
-                    FunctionArgs::Params { exprs, .. } => exprs
-                        .iter()
-                        .map(|i| i.type_of(functions, Some(schema)))
-                        .flat_map(|i| i.ok())
-                        .map(ArgType::One)
-                        .collect(),
-                    FunctionArgs::Wildcard { .. } => {
-                        vec![ArgType::Rows]
-                    }
+                let FunctionKind { normal: Some(function), .. } = find_function(functions, function_name, args, schema)? else {
+                    return Err(WeaverError::UnknownFunction(function_name.to_string(), arg_types(functions, args, false, schema)))
                 };
-
-                let function = functions.get(function_name, &arg_types).ok_or_else(|| {
-                    WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types)
-                })?;
 
                 let args = match args {
                     FunctionArgs::Params { exprs, .. } => {
@@ -312,6 +280,63 @@ fn runtime_eval_single_row<'a>(
     stack.pop().ok_or_else(|| {
         WeaverError::EvaluationFailed(expr.clone(), "missing value on stack".to_string())
     })
+}
+
+#[derive(Debug)]
+pub struct FunctionKind<'a> {
+    pub normal: Option<&'a DbFunction>,
+    pub aggregate: Option<&'a DbFunction>
+}
+
+pub fn find_function<'a, 't>(
+    functions: &'a FunctionRegistry,
+    function_name: &Identifier,
+    args: &FunctionArgs,
+    schema: impl Into<Option<&'t TableSchema>>,
+) -> Result<FunctionKind<'a>, WeaverError> {
+    let schema= schema.into();
+    let normal = {
+        let arg_types = arg_types(functions, args, false, schema);
+
+        functions.get(function_name, &arg_types).ok_or_else(|| {
+            WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types)
+        }).ok()
+    };
+
+    let aggregate = {
+        let arg_types = arg_types(functions, args, true, schema);
+        functions.get(function_name, &arg_types).ok_or_else(|| {
+            WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types)
+        }).ok()
+    };
+
+    if aggregate.as_ref().or(normal.as_ref()).is_none() {
+        let arg_types = arg_types(functions, args, false, schema);
+        return Err(WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types))
+    }
+
+    trace!("normal: {normal:?}, aggregate: {aggregate:?}");
+
+    Ok(FunctionKind {
+        normal,
+        aggregate,
+    })
+}
+
+fn arg_types<'t>(functions: &FunctionRegistry, args: &FunctionArgs, is_agg: bool, schema: impl Into<Option<&'t TableSchema>>) -> Vec<ArgType> {
+    let schema = schema.into();
+    let arg_types = match args {
+        FunctionArgs::Params { exprs, .. } => exprs
+            .iter()
+            .map(|i| i.type_of(functions, schema))
+            .flat_map(|i| i.ok())
+            .map(if is_agg { ArgType::Many } else { ArgType::One })
+            .collect(),
+        FunctionArgs::Wildcard { .. } => {
+            vec![ArgType::Rows]
+        }
+    };
+    arg_types
 }
 
 fn evaluate_binary(bin_op: &BinaryOp, l: Cow<DbVal>, r: Cow<DbVal>) -> DbVal {
@@ -411,8 +436,8 @@ mod tests {
     use crate::data::row::Row;
     use crate::data::types::Type;
     use crate::error::WeaverError;
-    use crate::queries::execution::evaluation::builtins::BUILTIN_FUNCTIONS_REGISTRY;
     use crate::queries::execution::evaluation::{runtime_eval_many_rows, runtime_eval_single_row};
+    use crate::queries::execution::evaluation::builtins::BUILTIN_FUNCTIONS_REGISTRY;
     use crate::storage::tables::table_schema::{TableSchema, TableSchemaBuilder};
 
     #[test]
@@ -540,7 +565,7 @@ mod tests {
         let result = runtime_eval_many_rows(
             &Expr::FunctionCall {
                 function: Identifier::new("count"),
-                args: FunctionArgs::Wildcard { distinct: false }
+                args: FunctionArgs::Wildcard { distinct: false },
             },
             rows,
             &TableSchema::empty(),
@@ -562,13 +587,13 @@ mod tests {
         let result = runtime_eval_many_rows(
             &Expr::FunctionCall {
                 function: Identifier::new("count"),
-                args: FunctionArgs::Wildcard { distinct: true }
+                args: FunctionArgs::Wildcard { distinct: true },
             },
             rows,
             &TableSchema::empty(),
             &BUILTIN_FUNCTIONS_REGISTRY,
         )
-            .expect("couldn't get minimum value");
+        .expect("couldn't get minimum value");
         assert_eq!(result.int_value(), Some(3), "distinct count should be 3");
     }
 }

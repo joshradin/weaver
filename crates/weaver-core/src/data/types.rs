@@ -8,6 +8,7 @@ use weaver_ast::ast::{BinaryOp, ColumnRef, DataType, Expr, FunctionArgs, VarBina
 
 use crate::data::values::DbVal;
 use crate::error::WeaverError;
+use crate::queries::execution::evaluation::{find_function, FunctionKind};
 use crate::queries::execution::evaluation::functions::{ArgType, FunctionRegistry};
 use crate::storage::tables::table_schema::TableSchema;
 
@@ -135,20 +136,28 @@ impl DbTypeOf for Expr {
                     .or(right.type_of(functions, context_schema)),
             },
             Expr::FunctionCall { function, args } => {
-                let arg_types = match args {
-                    FunctionArgs::Params { exprs, .. } => {
-                        exprs.iter().map(|i| i.type_of(functions, context_schema))
-                            .flat_map(|i| i.ok())
-                            .map(ArgType::One)
-                            .collect()
-                    }
-                    FunctionArgs::Wildcard { ..}=> {
-                        vec![ArgType::Rows]
-                    }
-                };
+                let FunctionKind {
+                    normal, aggregate
+                } = find_function(functions, function, args, context_schema)?;
 
-                functions.get(function, &arg_types).map(|i| *i.return_type())
-                    .ok_or_else(|| WeaverError::UnknownFunction(function.as_ref().to_string(), arg_types))
+                normal.or(aggregate)
+                    .map(|func| {
+                        func.return_type().clone()
+                    })
+                    .ok_or_else(|| {
+                        let arg_types = match args {
+                            FunctionArgs::Params { exprs, .. } => {
+                                exprs.iter().map(|i| i.type_of(functions, context_schema))
+                                     .flat_map(|i| i.ok())
+                                     .map(ArgType::One)
+                                     .collect()
+                            }
+                            FunctionArgs::Wildcard { ..}=> {
+                                vec![ArgType::Rows]
+                            }
+                        };
+                        WeaverError::UnknownFunction(function.to_string(), arg_types)
+                    })
             }
         }
     }

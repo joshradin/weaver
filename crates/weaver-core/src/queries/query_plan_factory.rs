@@ -11,13 +11,9 @@ use rand::Rng;
 use tracing::{debug, debug_span, error_span, trace};
 
 use weaver_ast::ast;
-use weaver_ast::ast::visitor::{visit_table_or_sub_query_mut, VisitorMut};
+use weaver_ast::ast::{BinaryOp, ColumnRef, Create, Expr, FromClause, FunctionArgs, Identifier, JoinClause, JoinConstraint, JoinOperator, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
 use weaver_ast::ast::Select;
-use weaver_ast::ast::{
-    BinaryOp, ColumnRef, Create, Expr, FromClause, Identifier, JoinClause, JoinConstraint,
-    JoinOperator, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery,
-    UnresolvedColumnRef,
-};
+use weaver_ast::ast::visitor::{visit_table_or_sub_query_mut, VisitorMut};
 
 use crate::data::types::{DbTypeOf, Type};
 use crate::db::server::processes::WeaverProcessInfo;
@@ -26,16 +22,18 @@ use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::{DynamicTable, HasSchema, Table};
 use crate::error::WeaverError;
 use crate::key::KeyData;
+use crate::queries::execution::evaluation::{find_function, FunctionKind};
 use crate::queries::execution::evaluation::functions::FunctionRegistry;
 use crate::queries::execution::strategies::join::JoinStrategySelector;
 use crate::queries::query_cost::{Cost, CostTable};
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode, QueryPlanNodeBuilder};
 use crate::rows::{KeyIndex, KeyIndexKind};
+use crate::storage::tables::{table_schema, TableRef};
 use crate::storage::tables::table_schema::{
     ColumnDefinition, Key, TableSchema, TableSchemaBuilder,
 };
-use crate::storage::tables::{table_schema, TableRef};
 use crate::tx::Tx;
+
 
 #[derive(Debug)]
 pub struct QueryPlanFactory {
@@ -59,6 +57,7 @@ impl QueryPlanFactory {
         &self,
         tx: &Tx,
         query: &Query,
+        function_registry: &FunctionRegistry,
         plan_context: impl Into<Option<&'a WeaverProcessInfo>>,
     ) -> Result<QueryPlan, WeaverError> {
         debug_span!("to_plan").in_scope(|| {
@@ -76,7 +75,7 @@ impl QueryPlanFactory {
                 *self.cost_table.borrow_mut() = cost_table;
             }
 
-            self.to_plan_node(query, &socket, plan_context.into())
+            self.to_plan_node(query, &socket, function_registry, plan_context.into())
                 .map(QueryPlan::new)
         })
     }
@@ -170,6 +169,7 @@ impl QueryPlanFactory {
         &self,
         query: &Query,
         db: &DbSocket,
+        function_registry: &FunctionRegistry,
         plan_context: Option<&WeaverProcessInfo>,
     ) -> Result<QueryPlanNode, WeaverError> {
         debug!("creating query plan from {}", query);
@@ -193,9 +193,11 @@ impl QueryPlanFactory {
         };
 
         let node = match query {
-            Query::Select(select) => self.select_to_plan_node(db, plan_context, &tables, select),
+            Query::Select(select) => {
+                self.select_to_plan_node(db, plan_context, &tables, select, function_registry)
+            }
             Query::Explain(explained) => {
-                let query = self.to_plan_node(explained, db, plan_context)?;
+                let query = self.to_plan_node(explained, db, function_registry, plan_context)?;
                 QueryPlanNode::builder()
                     .rows(0)
                     .cost(Cost::new(1.0, 0, None))
@@ -256,9 +258,10 @@ impl QueryPlanFactory {
         plan_context: Option<&WeaverProcessInfo>,
         real_tables: &HashMap<TableRef, TableSchema>,
         from: &FromClause,
+        function_registry: &FunctionRegistry,
     ) -> Result<QueryPlanNode, WeaverError> {
         let from = &from.0;
-        self.table_or_sub_query_to_plan_node(db, plan_context, real_tables, from)
+        self.table_or_sub_query_to_plan_node(db, plan_context, real_tables, from, function_registry)
     }
 
     fn table_or_sub_query_to_plan_node(
@@ -267,6 +270,7 @@ impl QueryPlanFactory {
         plan_context: Option<&WeaverProcessInfo>,
         real_tables: &HashMap<TableRef, TableSchema>,
         from: &TableOrSubQuery,
+        function_registry: &FunctionRegistry,
     ) -> Result<QueryPlanNode, WeaverError> {
         match from {
             TableOrSubQuery::Table {
@@ -302,7 +306,13 @@ impl QueryPlanFactory {
                     .build()?)
             }
             TableOrSubQuery::Select { select, alias } => {
-                let node = self.select_to_plan_node(db, plan_context, real_tables, select)?;
+                let node = self.select_to_plan_node(
+                    db,
+                    plan_context,
+                    real_tables,
+                    select,
+                    function_registry,
+                )?;
                 match alias {
                     None => Ok(node),
                     Some(alias) => {
@@ -313,9 +323,13 @@ impl QueryPlanFactory {
             TableOrSubQuery::Multiple(_) => {
                 unimplemented!("FULL OUTER JOIN");
             }
-            TableOrSubQuery::JoinClause(join_clause) => {
-                self.join_to_plan_node(db, plan_context, real_tables, join_clause)
-            }
+            TableOrSubQuery::JoinClause(join_clause) => self.join_to_plan_node(
+                db,
+                plan_context,
+                real_tables,
+                join_clause,
+                function_registry,
+            ),
         }
     }
 
@@ -325,6 +339,7 @@ impl QueryPlanFactory {
         plan_context: Option<&WeaverProcessInfo>,
         real_tables: &HashMap<TableRef, TableSchema>,
         select: &Select,
+        function_registry: &FunctionRegistry,
     ) -> Result<QueryPlanNode, WeaverError> {
         error_span!("SELECT").in_scope(|| -> Result<QueryPlanNode, WeaverError> {
             let Select {
@@ -332,18 +347,23 @@ impl QueryPlanFactory {
                 from,
                 condition,
                 group_by,
+                order_by,
                 limit,
                 offset,
             } = select;
-
-
 
             match from {
                 None => {
                     todo!("no from")
                 }
                 Some(from) => {
-                    let from_node = self.from_to_plan_node(db, plan_context, real_tables, from)?;
+                    let from_node = self.from_to_plan_node(
+                        db,
+                        plan_context,
+                        real_tables,
+                        from,
+                        function_registry,
+                    )?;
                     // let keys = self.get_keys_from_condition(plan_context, &real_tables, condition, &from_node)?;
 
                     let from_node_rows = from_node.rows;
@@ -368,12 +388,14 @@ impl QueryPlanFactory {
                         }
                     };
 
-
                     match group_by {
                         None => {
                             // no grouping allows for normal projection
-                            let (projected_schema, columns) =
-                                self.table_schema_for_projection(columns, &filtered)?;
+                            let (projected_schema, columns) = self.table_schema_for_projection(
+                                columns,
+                                &filtered,
+                                function_registry,
+                            )?;
 
                             Ok(QueryPlanNode::builder()
                                 .cost(self.get_cost("PROJECT")?)
@@ -385,20 +407,13 @@ impl QueryPlanFactory {
                                 .schema(projected_schema)
                                 .build()?)
                         }
-                        Some(grouped) => {
-                            // grouping has slightly different semantics. We must require that all
-                            // values in non-grouped columns are functionally dependent on the grouped columns
-
-
-                            // no grouping allows for normal projection
-                            let (projected_schema, columns) =
-                                self.table_schema_for_projection(columns, &filtered)?;
-
-                            todo!()
-                        }
+                        Some(grouped) => self.group_by_to_plan_node(
+                            columns,
+                            grouped,
+                            filtered,
+                            function_registry,
+                        ),
                     }
-
-
                 }
             }
         })
@@ -485,10 +500,10 @@ impl QueryPlanFactory {
         &self,
         columns: &Vec<ResultColumn>,
         from_node: &QueryPlanNode,
+        function_registry: &FunctionRegistry,
     ) -> Result<(TableSchema, Vec<Expr>), WeaverError> {
         let source_schema = &from_node.schema;
-        let mut schema_builder =
-            TableSchemaBuilder::new("<query>", "<projection>");
+        let mut schema_builder = TableSchemaBuilder::new("<query>", "<projection>");
         let mut cols = vec![];
 
         for result_column in columns {
@@ -527,9 +542,7 @@ impl QueryPlanFactory {
                         _ => false,
                     };
 
-                    cols.push(expr.clone());
-
-                    let db_type = expr.type_of(&FunctionRegistry::empty(), Some(from_node.schema()))?;
+                    let db_type = expr.type_of(function_registry, Some(from_node.schema()))?;
 
                     let mut cd = ColumnDefinition::new(name, db_type, non_null, None, None)?;
                     if let Expr::Column { column } = expr {
@@ -538,6 +551,7 @@ impl QueryPlanFactory {
                         }
                     }
 
+                    cols.push(expr.clone());
                     schema_builder = schema_builder.column_definition(cd);
                 }
             }
@@ -545,18 +559,180 @@ impl QueryPlanFactory {
         Ok((schema_builder.build()?, cols))
     }
 
-    fn table_schema_for_grouped(
+    fn group_by_to_plan_node(
         &self,
         columns: &Vec<ResultColumn>,
         groups: &Vec<Expr>,
-        grouped: &QueryPlanNode,
-    ) -> Result<(TableSchema, Vec<Expr>), WeaverError> {
-        let (schema, columns) = self.table_schema_for_projection(columns, grouped)?;
+        grouped: QueryPlanNode,
+        function_registry: &FunctionRegistry,
+    ) -> Result<QueryPlanNode, WeaverError> {
+        for column in columns {
+            match column {
+                ResultColumn::Wildcard => {
+                    return Err(WeaverError::WildcardIsNeverFunctionallyDependent)
+                }
+                ResultColumn::TableWildcard(_) => {
+                    return Err(WeaverError::WildcardIsNeverFunctionallyDependent)
+                }
+                ResultColumn::Expr { expr, .. } => {
+                    if !self.is_functionally_dependent(
+                        grouped.schema(),
+                        groups,
+                        expr,
+                        function_registry,
+                    )? {
+                        return Err(WeaverError::ExpressionNotFunctionallyDependentOnGroupBy(
+                            expr.clone(),
+                            groups.clone(),
+                        ));
+                    }
+                }
+            }
+        }
 
+        let source_schema = &grouped.schema;
+        let mut schema_builder = TableSchemaBuilder::new("<query>", "<grouped_by>");
+        let mut cols = vec![];
+        for result_column in columns {
+            match result_column {
+                ResultColumn::Expr { expr, alias } => {
+                    let name = match alias {
+                        None => expr.to_string(),
+                        Some(alias) => alias.to_string(),
+                    };
+                    let non_null = match expr {
+                        Expr::Column { column } => true,
+                        _ => false,
+                    };
 
+                    let db_type = expr.type_of(function_registry, Some(grouped.schema()))?;
 
+                    let mut cd = ColumnDefinition::new(name, db_type, non_null, None, None)?;
+                    if let Expr::Column { column } = expr {
+                        if let Some(resolved) = column.resolved() {
+                            cd.set_source_column(resolved.clone());
+                        }
+                    }
 
-        Ok((schema, columns))
+                    cols.push(expr.clone());
+                    schema_builder = schema_builder.column_definition(cd);
+                }
+                _ => return Err(WeaverError::WildcardIsNeverFunctionallyDependent),
+            }
+        }
+
+        let schema = schema_builder.build()?;
+
+        Ok(QueryPlanNode::builder()
+            .cost(self.get_cost("GROUP_BY")?)
+            .rows(grouped.rows)
+            .kind(QueryPlanKind::GroupBy {
+                grouped: Box::new(grouped),
+                grouped_by: groups.clone(),
+                result_columns: cols,
+            })
+            .schema(schema)
+            .build()?)
+    }
+
+    /// checks if a given expressions is functionally dependent on another.
+    /// This should mean that all references to columns not part of the `sources` parameter
+    /// are within an aggregating function.
+    ///
+    /// # Example
+    /// ```sql
+    /// // ok because level is functionally dependent on level and avg is within an aggregating function
+    /// SELECT level, AVG(age) + level ... GROUP BY level
+    /// // not ok because age is not functionally dependent on level
+    /// SELECT level, level + age ... GROUP BY level
+    /// ```
+    fn is_functionally_dependent(
+        &self,
+        schema: &TableSchema,
+        sources: &[Expr],
+        dependent: &Expr,
+        function_registry: &FunctionRegistry,
+    ) -> Result<bool, WeaverError> {
+        fn is_functionally_dependent_helper(
+            schema: &TableSchema,
+            source_columns: &[ResolvedColumnRef],
+            dependent: &Expr,
+            function_registry: &FunctionRegistry,
+        ) -> Result<bool, WeaverError> {
+            Ok(match dependent {
+                Expr::Column { column } => {
+                    if !source_columns
+                        .contains(column.resolved().expect("all columns must be resolved"))
+                    {
+                        false
+                    } else {
+                        true
+                    }
+                }
+                Expr::Literal { .. } => true,
+                Expr::BindParameter { .. } => {
+                    panic!("bind parameter in invalid locaction")
+                }
+                Expr::Unary { expr, .. } => is_functionally_dependent_helper(
+                    schema,
+                    source_columns,
+                    expr,
+                    function_registry,
+                )?,
+                Expr::Binary { left, right, .. } => {
+                    is_functionally_dependent_helper(
+                        schema,
+                        source_columns,
+                        left,
+                        function_registry,
+                    )? && is_functionally_dependent_helper(
+                        schema,
+                        source_columns,
+                        right,
+                        function_registry,
+                    )?
+                }
+                Expr::FunctionCall { function, args } => {
+                    let FunctionKind { normal, aggregate } =
+                        find_function(function_registry, function, args, schema)?;
+
+                    debug!("normal: {normal:?}, aggregate: {aggregate:?}");
+                    match (normal, aggregate) {
+                        (_, Some(_)) => true,
+                        (Some(_), None) => match args {
+                            FunctionArgs::Params { exprs, .. } => {
+                                exprs.iter().try_fold(true, |state, expr| {
+                                    is_functionally_dependent_helper(
+                                        schema,
+                                        source_columns,
+                                        expr,
+                                        function_registry,
+                                    )
+                                    .map(|output| output && state)
+                                })?
+                            }
+                            FunctionArgs::Wildcard { .. } => false,
+                        },
+                        (None, None) => false,
+                    }
+                }
+            })
+        }
+
+        let source_columns = sources
+            .iter()
+            .flat_map(|e| e.columns().into_iter().flat_map(|i| i.resolved().cloned()))
+            .collect::<Vec<_>>();
+        debug!(
+            "seeing if {:?} is functionally dependent on {:?}",
+            dependent, source_columns
+        );
+        is_functionally_dependent_helper(
+            schema,
+            source_columns.as_slice(),
+            dependent,
+            function_registry,
+        )
     }
 
     fn join_to_plan_node(
@@ -565,6 +741,7 @@ impl QueryPlanFactory {
         plan_context: Option<&WeaverProcessInfo>,
         real_tables: &HashMap<TableRef, TableSchema>,
         join_clause: &JoinClause,
+        function_registry: &FunctionRegistry,
     ) -> Result<QueryPlanNode, WeaverError> {
         error_span!("JOIN").in_scope(|| -> Result<QueryPlanNode, WeaverError> {
             let JoinClause {
@@ -574,9 +751,20 @@ impl QueryPlanFactory {
                 constraint,
             } = join_clause;
 
-            let left = self.table_or_sub_query_to_plan_node(db, plan_context, real_tables, left)?;
-            let right =
-                self.table_or_sub_query_to_plan_node(db, plan_context, real_tables, right)?;
+            let left = self.table_or_sub_query_to_plan_node(
+                db,
+                plan_context,
+                real_tables,
+                left,
+                function_registry,
+            )?;
+            let right = self.table_or_sub_query_to_plan_node(
+                db,
+                plan_context,
+                real_tables,
+                right,
+                function_registry,
+            )?;
 
             let strategies = self
                 .join_strategy_selector

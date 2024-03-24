@@ -165,6 +165,10 @@ pub enum WeaverError {
     FunctionWithSignatureAlreadyExists(String, FunctionSignature),
     #[error("Tried to call an aggregate function ({0}) in a single-row context")]
     AggregateInSingleRowContext(String),
+    #[error("wildcard can't be used in a functionally dependent scope")]
+    WildcardIsNeverFunctionallyDependent,
+    #[error("{0} is not functionally dependent on {}", _1.iter().map(ToString::to_string).collect::<Vec<_>>().join(","))]
+    ExpressionNotFunctionallyDependentOnGroupBy(Expr, Vec<Expr>),
 
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]

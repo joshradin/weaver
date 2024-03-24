@@ -3,7 +3,7 @@ use std::fmt::{Debug, Formatter, Pointer};
 use itertools::Itertools;
 use uuid::Uuid;
 
-use weaver_ast::ast::{CreateTable, Expr, JoinConstraint, JoinOperator, LoadData, ReferencesCols};
+use weaver_ast::ast::{CreateTable, Expr, JoinConstraint, JoinOperator, LoadData, OrderDirection, ReferencesCols};
 
 use crate::data::row::Row;
 use crate::data::types::Type;
@@ -320,6 +320,26 @@ impl QueryPlanNode {
                         .into(),
                 ); // columns
             }
+            QueryPlanKind::OrderedBy { order, .. } => {
+                values.push("".into()); // table
+                values.push("order-by".into()); // join kind
+                values.push("".into()); // possible keys
+                values.push(
+                    order.iter()
+                        .flat_map(|(expr, _)| expr.columns())
+                        .unique()
+                        .map(|c| c.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                        .into(),
+                ); // columns
+            }
+            QueryPlanKind::GetPage { .. } => {
+                values.push("".into()); // table
+                values.push("limit-offset".into()); // join kind
+                values.push("".into()); // possible keys
+                values.push("".into()); // columns
+            }
         }
 
         values.push((self.rows as i64).into());
@@ -333,17 +353,8 @@ impl QueryPlanNode {
     pub fn prefix_order(&self) -> Vec<&QueryPlanNode> {
         let mut output = vec![];
         output.push(self);
-        match &self.kind {
-            QueryPlanKind::Filter { filtered, .. } => output.extend(filtered.prefix_order()),
-            QueryPlanKind::Project {
-                projected: node, ..
-            } => output.extend(node.prefix_order()),
-            QueryPlanKind::HashJoin { left, right, .. } => {
-                output.extend(left.prefix_order());
-                output.extend(right.prefix_order())
-            }
-            QueryPlanKind::Explain { explained } => output.extend(explained.prefix_order()),
-            _ => {}
+        for node in self.children() {
+            output.extend(node.prefix_order());
         }
 
         output
@@ -353,17 +364,9 @@ impl QueryPlanNode {
     /// recursively.
     pub fn postfix_order(&self) -> Vec<&QueryPlanNode> {
         let mut output = vec![];
-        match &self.kind {
-            QueryPlanKind::Filter { filtered, .. } => output.extend(filtered.postfix_order()),
-            QueryPlanKind::Project {
-                projected: node, ..
-            } => output.extend(node.postfix_order()),
-            QueryPlanKind::HashJoin { left, right, .. } => {
-                output.extend(left.postfix_order());
-                output.extend(right.postfix_order())
-            }
-            QueryPlanKind::Explain { explained } => output.extend(explained.postfix_order()),
-            _ => {}
+
+        for node in self.children() {
+            output.extend(node.postfix_order());
         }
         output.push(self);
 
@@ -376,10 +379,15 @@ impl QueryPlanNode {
             QueryPlanKind::Project {
                 projected: node, ..
             } => vec![&*node],
+            QueryPlanKind::Filter {filtered, ..} => {
+                vec![&*filtered]
+            }
             QueryPlanKind::HashJoin { left, right, .. } => {
                 vec![&*left, &*right]
             }
             QueryPlanKind::Explain { explained } => vec![&*explained],
+            QueryPlanKind::GetPage { base, .. } => vec![&*base],
+            QueryPlanKind::OrderedBy { ordered, .. } => vec![&*ordered],
             _ => {
                 vec![]
             }
@@ -392,10 +400,15 @@ impl QueryPlanNode {
             QueryPlanKind::Project {
                 projected: node, ..
             } => vec![&mut *node],
+            QueryPlanKind::Filter {filtered, ..} => {
+                vec![&mut *filtered]
+            }
             QueryPlanKind::HashJoin { left, right, .. } => {
                 vec![&mut *left, &mut *right]
             }
             QueryPlanKind::Explain { explained } => vec![&mut *explained],
+            QueryPlanKind::GetPage { base, .. } => vec![&mut *base],
+            QueryPlanKind::OrderedBy { ordered, .. } => vec![&mut *ordered],
             _ => {
                 vec![]
             }
@@ -487,7 +500,6 @@ pub enum QueryPlanKind {
         /// The keys that can be used
         keys: Option<Vec<KeyIndex>>,
     },
-
     Filter {
         filtered: Box<QueryPlanNode>,
         condition: Expr,
@@ -503,6 +515,18 @@ pub enum QueryPlanKind {
         grouped_by: Vec<Expr>,
         /// Remaining columns
         result_columns: Vec<Expr>,
+    },
+    OrderedBy {
+        ordered: Box<QueryPlanNode>,
+        /// order by operations
+        order: Vec<(Expr, OrderDirection)>
+    },
+    GetPage {
+        base: Box<QueryPlanNode>,
+        /// the offset. throws out the first `offset` rows
+        offset: usize,
+        /// an optional limit
+        limit: Option<usize>
     },
 
     HashJoin {

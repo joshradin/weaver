@@ -13,7 +13,23 @@ pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
         (
             "count",
             DbFunction::builtin(vec![ArgType::Rows], Type::Integer, |args| {
-                let ArgValue::Rows(rows) = &args[0] else {
+                match &args[0] {
+                    ArgValue::Many(many) => {
+                        Ok(DbVal::Integer(many.len() as i64))
+                    }
+                    ArgValue::Rows(rows) => {
+                        Ok(DbVal::Integer(rows.len() as i64))
+                    }
+                    _ => panic!()
+                }
+
+
+            }),
+        ),
+        (
+            "count",
+            DbFunction::builtin(vec![ArgType::Many(Type::Integer)], Type::Integer, |args| {
+                let ArgValue::Many(rows) = &args[0] else {
                     panic!()
                 };
 
@@ -52,6 +68,80 @@ pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
                     })
                     .map(|i| DbVal::Float(i))
                     .unwrap_or(DbVal::Null))
+            }),
+        ),
+        (
+            "max",
+            DbFunction::builtin(vec![ArgType::Many(Type::Integer)], Type::Integer, |args| {
+                let ArgValue::Many(vals) = &args[0] else {
+                    panic!()
+                };
+
+                Ok(vals
+                    .iter()
+                    .flat_map(|i| i.int_value())
+                    .max()
+                    .map(DbVal::Integer)
+                    .unwrap_or(DbVal::Null))
+            }),
+        ),
+        (
+            "max",
+            DbFunction::builtin(vec![ArgType::Many(Type::Float)], Type::Float, |args| {
+                let ArgValue::Many(vals) = &args[0] else {
+                    panic!()
+                };
+
+                Ok(vals
+                    .iter()
+                    .flat_map(|i| i.float_value())
+                    .reduce(|a, b| match a.total_cmp(&b) {
+                        Ordering::Less => b,
+                        Ordering::Equal => a,
+                        Ordering::Greater => a,
+                    })
+                    .map(|i| DbVal::Float(i))
+                    .unwrap_or(DbVal::Null))
+            }),
+        ),
+        (
+            "avg",
+            DbFunction::builtin(vec![ArgType::Many(Type::Integer)], Type::Float, |args| {
+                let ArgValue::Many(vals) = &args[0] else {
+                    panic!()
+                };
+
+                let (sum, count) = vals
+                    .iter()
+                    .flat_map(|i| i.int_value())
+                    .fold((0, 0), |(sum, count), next| {
+                        (sum + next, count + 1)
+                    });
+                if count == 0 {
+                    return Ok(DbVal::Float(f64::NAN))
+                }
+
+                Ok(DbVal::Float(sum as f64 / count as f64))
+            }),
+        ),
+        (
+            "avg",
+            DbFunction::builtin(vec![ArgType::Many(Type::Float)], Type::Float, |args| {
+                let ArgValue::Many(vals) = &args[0] else {
+                    panic!()
+                };
+
+                let (sum, count) = vals
+                    .iter()
+                    .flat_map(|i| i.float_value())
+                    .fold((0.0, 0), |(sum, count), next| {
+                        (sum + next, count + 1)
+                    });
+                if count == 0 {
+                    return Ok(DbVal::Float(f64::NAN))
+                }
+
+                Ok(DbVal::Float(sum / count as f64))
             }),
         ),
         (
@@ -94,5 +184,6 @@ pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
                 },
             ),
         ),
+
     ])
 });

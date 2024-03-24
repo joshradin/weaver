@@ -35,6 +35,8 @@ pub enum Token<'a> {
     Partition,
     By,
     Terminated,
+    Limit,
+    Offset,
 
     From,
     As,
@@ -89,6 +91,8 @@ pub enum Token<'a> {
     Null,
 
     Eof,
+    Asc,
+    Desc,
 }
 
 impl Display for Token<'_> {

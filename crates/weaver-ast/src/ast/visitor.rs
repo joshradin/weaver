@@ -1,11 +1,7 @@
 //! Visitors for queries
 
+use crate::ast::{ColumnDefinition, ColumnRef, Create, CreateDefinition, CreateTable, DataType, Expr, FromClause, FunctionArgs, Identifier, JoinClause, JoinConstraint, Literal, LoadData, OrderBy, Query, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
 use crate::ast::select::Select;
-use crate::ast::{
-    ColumnDefinition, ColumnRef, Create, CreateDefinition, CreateTable, DataType, Expr, FromClause,
-    FunctionArgs, Identifier, JoinClause, JoinConstraint, Literal, LoadData, Query,
-    ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef,
-};
 
 /// Creates a mut visitor
 #[macro_export]
@@ -119,6 +115,8 @@ visit_mut! {
             columns,
             from,
             condition,
+            group_by,
+            order_by,
             limit,
             offset,
             ..
@@ -136,7 +134,22 @@ visit_mut! {
             visitor.visit_result_column_mut(col)
         })?;
 
+        if let Some(group_by) = group_by {
+            group_by.iter_mut()
+            .try_for_each(|expr| visitor.visit_expr_mut(expr))?;
+        }
+
+        if let Some(order_by) = order_by {
+            order_by.iter_mut()
+            .try_for_each(|expr| visitor.visit_order_by_mut(expr))?;
+        }
+
         Ok(())
+    }
+
+    pub visit (visitor, order_by: &mut OrderBy) -> Result<()> {
+        let OrderBy(expr, _) = order_by;
+        visitor.visit_expr_mut(expr)
     }
 
     pub visit (visitor, from: &mut FromClause) -> Result<()> {

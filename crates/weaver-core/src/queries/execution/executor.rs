@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::str::FromStr;
 use std::sync::{Arc, Weak};
 
+use indexmap::IndexMap;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use tracing::trace;
@@ -16,7 +17,9 @@ use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{DynamicTable, EngineKey, HasSchema, Table};
 use crate::error::WeaverError;
 use crate::queries::execution::evaluation::ExpressionEvaluator;
-use crate::queries::execution::strategies::join::{HashJoinTableStrategy, JoinParameters, JoinStrategy};
+use crate::queries::execution::strategies::join::{
+    HashJoinTableStrategy, JoinParameters, JoinStrategy,
+};
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{KeyIndex, OwnedRows};
 use crate::rows::{RefRows, Rows};
@@ -109,7 +112,12 @@ impl QueryExecutor {
                         let mut owned = vec![];
                         while let Some(row) = to_filter.next() {
                             if expression_evaluator
-                                .evaluate_one_row(condition, &row, to_filter.schema(), filtered.id())?
+                                .evaluate_one_row(
+                                    condition,
+                                    &row,
+                                    to_filter.schema(),
+                                    filtered.id(),
+                                )?
                                 .bool_value()
                                 == Some(true)
                             {
@@ -121,7 +129,10 @@ impl QueryExecutor {
                         Ok(())
                     })?;
                 }
-                QueryPlanKind::Project { columns, projected: _ } => {
+                QueryPlanKind::Project {
+                    columns,
+                    projected: _,
+                } => {
                     debug_span!("project").in_scope(|| -> Result<(), WeaverError> {
                         let mut to_project = row_stack.pop().expect("nothing to project");
                         let mut owned = vec![];
@@ -222,13 +233,13 @@ impl QueryExecutor {
                     );
 
                     let schema = schema_builder.build()?;
-                    debug!("created schema {schema:#?} from ddl");
+                    trace!("created schema {schema:#?} from ddl");
 
                     let result = core.read().open_table(&schema);
-                    debug!("open table resulted in {:?}", result);
+                    trace!("open table resulted in {:?}", result);
                     let as_row = Box::new(QueryPlan::ddl_result(result.map(|()| "ok")));
                     row_stack.push(as_row);
-                    debug!("core after open: {:#?}", core.read());
+                    trace!("core after open: {:#?}", core.read());
                 }
                 QueryPlanKind::LoadData { load_data } => {
                     let LoadData {
@@ -280,18 +291,21 @@ impl QueryExecutor {
                             };
 
                             let mut row = vec![DbVal::Null; table.schema().columns().len()];
-                            column_indexes_and_types.iter().zip(line.iter()).try_for_each(
-                                |(&(col_idx, db_type), string)| -> Result<_, WeaverError> {
-                                    let db_val = db_type.parse_value(string)?;
+                            column_indexes_and_types
+                                .iter()
+                                .zip(line.iter())
+                                .try_for_each(
+                                    |(&(col_idx, db_type), string)| -> Result<_, WeaverError> {
+                                        let db_val = db_type.parse_value(string)?;
 
-                                    row[col_idx] = db_val;
-                                    Ok(())
-                                },
-                            )?;
+                                        row[col_idx] = db_val;
+                                        Ok(())
+                                    },
+                                )?;
                             Ok(Row::from(row))
                         })
                         .collect::<Result<Vec<_>, WeaverError>>()?;
-                    debug!("rows created: {}", rows.len());
+                    trace!("rows created: {}", rows.len());
 
                     let result = rows
                         .into_iter()
@@ -300,6 +314,48 @@ impl QueryExecutor {
 
                     let as_row = Box::new(QueryPlan::ddl_result(result.map(|vec| vec.len())));
                     row_stack.push(as_row);
+                }
+                QueryPlanKind::GroupBy {
+                    grouped: _,
+                    grouped_by,
+                    result_columns,
+                } => {
+                    let mut grouped = row_stack.pop().expect("no rows to group");
+                    let mut grouped_rows = IndexMap::<Vec<DbVal>, Vec<Row>>::new();
+
+                    while let Some(row) = grouped.next() {
+                        let grouping = grouped_by
+                            .iter()
+                            .map(|expr| {
+                                expression_evaluator
+                                    .evaluate_one_row(expr, &row, grouped.schema(), node.id())
+                                    .map(|val| val.as_ref().to_owned())
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+
+                        grouped_rows.entry(grouping).or_default().push(row);
+                    }
+
+                    trace!("grouped rows: {:#?}", grouped_rows);
+                    let mut owned = vec![];
+                    for (grouping, rows) in grouped_rows {
+                        let mut new_row = Row::new(result_columns.len());
+                        for (idx, column_expr) in result_columns.iter().enumerate() {
+                            trace!("evaluating {column_expr}");
+                            let eval = expression_evaluator.evaluate_many_rows(
+                                column_expr,
+                                &rows,
+                                grouped.schema(),
+                                node.id(),
+                            )?;
+                            trace!("got {eval}");
+                            new_row[idx] = Cow::Owned(eval.as_ref().clone());
+                        }
+
+                        owned.push(new_row);
+                    }
+
+                    row_stack.push(Box::new(RefRows::new(node.schema.clone(), owned)));
                 }
                 _kind => {
                     todo!("implement execution of {_kind:?}")
