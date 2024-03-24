@@ -290,21 +290,18 @@ impl QueryPlanNode {
             }
             QueryPlanKind::Explain { .. } => {}
             QueryPlanKind::LoadData {
-                load_data:
-                    LoadData {
-                        schema,
-                        name,
-                        ..
-                    },
+                load_data: LoadData { schema, name, .. },
             } => {
-                values.push(
-                    format!("{}.{}", schema.as_ref().unwrap(), name).into(),
-                ); // table
+                values.push(format!("{}.{}", schema.as_ref().unwrap(), name).into()); // table
                 values.push("load".into());
                 values.push("".into()); // possible keys
                 values.push("".into()); // columns
             }
-            QueryPlanKind::GroupBy { result_columns, grouped_by, ..} => {
+            QueryPlanKind::GroupBy {
+                result_columns,
+                grouped_by,
+                ..
+            } => {
                 values.push("".into()); // table
                 values.push("group-by".into()); // join kind
                 values.push("".into()); // possible keys
@@ -325,7 +322,8 @@ impl QueryPlanNode {
                 values.push("order-by".into()); // join kind
                 values.push("".into()); // possible keys
                 values.push(
-                    order.iter()
+                    order
+                        .iter()
                         .flat_map(|(expr, _)| expr.columns())
                         .unique()
                         .map(|c| c.to_string())
@@ -379,13 +377,14 @@ impl QueryPlanNode {
             QueryPlanKind::Project {
                 projected: node, ..
             } => vec![&*node],
-            QueryPlanKind::Filter {filtered, ..} => {
+            QueryPlanKind::Filter { filtered, .. } => {
                 vec![&*filtered]
             }
             QueryPlanKind::HashJoin { left, right, .. } => {
                 vec![&*left, &*right]
             }
             QueryPlanKind::Explain { explained } => vec![&*explained],
+            QueryPlanKind::GroupBy { grouped, .. } => vec![&*grouped],
             QueryPlanKind::GetPage { base, .. } => vec![&*base],
             QueryPlanKind::OrderedBy { ordered, .. } => vec![&*ordered],
             _ => {
@@ -400,7 +399,7 @@ impl QueryPlanNode {
             QueryPlanKind::Project {
                 projected: node, ..
             } => vec![&mut *node],
-            QueryPlanKind::Filter {filtered, ..} => {
+            QueryPlanKind::Filter { filtered, .. } => {
                 vec![&mut *filtered]
             }
             QueryPlanKind::HashJoin { left, right, .. } => {
@@ -409,6 +408,7 @@ impl QueryPlanNode {
             QueryPlanKind::Explain { explained } => vec![&mut *explained],
             QueryPlanKind::GetPage { base, .. } => vec![&mut *base],
             QueryPlanKind::OrderedBy { ordered, .. } => vec![&mut *ordered],
+            QueryPlanKind::GroupBy { grouped, .. } => vec![&mut *grouped],
             _ => {
                 vec![]
             }
@@ -489,7 +489,7 @@ impl QueryPlanNodeBuilder {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, strum::IntoStaticStr)]
 pub enum QueryPlanKind {
     /// Explain a query plan node
     Explain { explained: Box<QueryPlanNode> },
@@ -519,14 +519,14 @@ pub enum QueryPlanKind {
     OrderedBy {
         ordered: Box<QueryPlanNode>,
         /// order by operations
-        order: Vec<(Expr, OrderDirection)>
+        order: Vec<(Expr, OrderDirection)>,
     },
     GetPage {
         base: Box<QueryPlanNode>,
         /// the offset. throws out the first `offset` rows
         offset: usize,
         /// an optional limit
-        limit: Option<usize>
+        limit: Option<usize>,
     },
 
     HashJoin {

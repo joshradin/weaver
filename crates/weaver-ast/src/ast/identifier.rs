@@ -43,6 +43,12 @@ impl From<String> for Identifier {
     }
 }
 
+impl PartialEq<str> for Identifier {
+    fn eq(&self, other: &str) -> bool {
+        self.as_ref() == other
+    }
+}
+
 /// Should be used to refer to
 #[derive(Debug, Ord, PartialOrd, Hash, Eq, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::{OnceCell, RefCell};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::convert::From;
 use std::marker::PhantomData;
 
@@ -11,9 +11,9 @@ use rand::Rng;
 use tracing::{debug, debug_span, error_span, trace};
 
 use weaver_ast::ast;
-use weaver_ast::ast::{BinaryOp, ColumnRef, Create, Expr, FromClause, FunctionArgs, Identifier, JoinClause, JoinConstraint, JoinOperator, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
+use weaver_ast::ast::{BinaryOp, ColumnRef, Create, Expr, FromClause, FunctionArgs, Identifier, JoinClause, JoinConstraint, JoinOperator, OrderBy, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
 use weaver_ast::ast::Select;
-use weaver_ast::ast::visitor::{visit_table_or_sub_query_mut, VisitorMut};
+use weaver_ast::ast::visitor::{visit_result_column_mut, visit_select_mut, visit_table_or_sub_query_mut, VisitorMut};
 
 use crate::data::types::{DbTypeOf, Type};
 use crate::db::server::processes::WeaverProcessInfo;
@@ -33,7 +33,6 @@ use crate::storage::tables::table_schema::{
     ColumnDefinition, Key, TableSchema, TableSchemaBuilder,
 };
 use crate::tx::Tx;
-
 
 #[derive(Debug)]
 pub struct QueryPlanFactory {
@@ -388,7 +387,7 @@ impl QueryPlanFactory {
                         }
                     };
 
-                    match group_by {
+                    let mut outer = match group_by {
                         None => {
                             // no grouping allows for normal projection
                             let (projected_schema, columns) = self.table_schema_for_projection(
@@ -397,7 +396,7 @@ impl QueryPlanFactory {
                                 function_registry,
                             )?;
 
-                            Ok(QueryPlanNode::builder()
+                            QueryPlanNode::builder()
                                 .cost(self.get_cost("PROJECT")?)
                                 .rows(filtered.rows)
                                 .kind(QueryPlanKind::Project {
@@ -405,15 +404,48 @@ impl QueryPlanFactory {
                                     projected: Box::new(filtered),
                                 })
                                 .schema(projected_schema)
-                                .build()?)
+                                .build()?
                         }
                         Some(grouped) => self.group_by_to_plan_node(
                             columns,
                             grouped,
                             filtered,
                             function_registry,
-                        ),
+                        )?,
+                    };
+
+                    if let Some(order) = order_by {
+                        let outer_schema = outer.schema().clone();
+                        outer = QueryPlanNode::builder()
+                            .cost(self.get_cost("ORDER")?)
+                            .rows(outer.rows)
+                            .kind(QueryPlanKind::OrderedBy {
+                                ordered: Box::new(outer),
+                                order: order.iter()
+                                    .map(|OrderBy(expr, dir)| {
+                                        (expr.clone(), dir.unwrap_or_default())
+                                    })
+                                    .collect(),
+                            })
+                            .schema(outer_schema)
+                            .build()?;
                     }
+
+                    if let (&Some(limit), &offset) = (limit, offset) {
+                        let outer_schema = outer.schema().clone();
+                        outer = QueryPlanNode::builder()
+                            .cost(self.get_cost("LIMIT-OFFSET")?)
+                            .rows(limit)
+                            .kind(QueryPlanKind::GetPage {
+                                base: Box::new(outer),
+                                offset: offset.unwrap_or(0) as usize,
+                                limit: Some(limit as usize),
+                            })
+                            .schema(outer_schema)
+                            .build()?;
+                    }
+
+                    Ok(outer)
                 }
             }
         })
@@ -999,6 +1031,8 @@ where
     F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, WeaverError> + 'a,
 {
     in_use_schema: Option<Identifier>,
+    select_level: usize,
+    column_aliases: BTreeMap<usize, Vec<Identifier>>,
     aliases: HashMap<Identifier, (Identifier, Identifier)>,
     resolver: F,
     _lf: PhantomData<&'a ()>,
@@ -1011,6 +1045,8 @@ where
     fn new(in_use_schema: Option<Identifier>, resolver: F) -> Self {
         Self {
             in_use_schema,
+            select_level: 0,
+            column_aliases: Default::default(),
             aliases: Default::default(),
             resolver,
             _lf: PhantomData,
@@ -1023,6 +1059,7 @@ where
     F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, WeaverError> + 'a,
 {
     type Err = WeaverError;
+
 
     fn visit_column_ref_mut(&mut self, column: &mut ColumnRef) -> Result<(), Self::Err> {
         if let ColumnRef::Unresolved(ref unresolved) = column {
@@ -1040,7 +1077,25 @@ where
                 );
                 *column = ColumnRef::Resolved(resolved);
             } else {
+
+
+
+
                 debug!("resolving column {unresolved:?}...");
+                let column_id = unresolved.column();
+                if let Some(level_aliases) = self.column_aliases.get(&self.select_level) {
+                    if level_aliases.contains(column_id) {
+                        let resolved = ResolvedColumnRef::new(
+                            "<select>",
+                            format!("{}", self.select_level),
+                            column_id.clone()
+                        );
+                        debug!("resolved = {resolved}");
+                        *column = ColumnRef::Resolved(resolved);
+                        return Ok(());
+                    }
+                }
+
                 let resolved = (self.resolver)(unresolved)?;
                 debug!("resolved = {resolved}");
                 *column = ColumnRef::Resolved(resolved);
@@ -1074,5 +1129,27 @@ where
         }
 
         visit_table_or_sub_query_mut(self, table_or_sub_query)
+    }
+
+    fn visit_result_column_mut(
+        &mut self,
+        result_column: &mut ResultColumn,
+    ) -> Result<(), Self::Err> {
+        if let ResultColumn::Expr { expr, alias: Some(alias) } = result_column {
+            // debug!("dealing with result column {expr} alias {alias}")
+            self.column_aliases
+                .entry(self.select_level)
+                .or_default()
+                .push(alias.clone());
+        }
+
+        visit_result_column_mut(self, result_column)
+    }
+
+    fn visit_select_mut(&mut self, select: &mut Select) -> Result<(), Self::Err> {
+        self.select_level += 1;
+        let ret = visit_select_mut(self, select);
+        self.select_level -= 1;
+        ret
     }
 }

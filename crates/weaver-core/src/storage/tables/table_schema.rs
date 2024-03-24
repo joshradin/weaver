@@ -9,7 +9,7 @@ use std::ops::{Deref, Index};
 use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
-use tracing::{info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 use weaver_ast::ast::{Identifier, ResolvedColumnRef};
 use weaver_ast::ToSql;
@@ -141,9 +141,16 @@ impl TableSchema {
             return Some(ret);
         }
 
+
+        if source.schema() == "<select>" {
+            return self.column_index(source.column().as_ref())
+        }
+
         if source.schema().as_ref() != self.schema || source.table().as_ref() != self.name {
+            warn!("schema doesn't contain {source}");
             return None;
         }
+        trace!("resorting to column index for {source}");
         self.column_index(source.column().as_ref())
     }
 

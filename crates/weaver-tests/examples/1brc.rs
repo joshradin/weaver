@@ -17,11 +17,11 @@ const DDL: &str = r#"
     "#;
 
 const MAIN_QUERY: &'static str = r#"
-        SELECT name, count(temperature) as count, min(temperature), max(temperature), avg(temperature)
+        SELECT name, count(temperature) as count, min(temperature), max(temperature), avg(temperature) as avg_temperature
         FROM `default`.`1brc`
         GROUP BY name
-        ORDER by count DESC
-        LIMIT 100
+        ORDER by count DESC, avg_temperature DESC
+        LIMIT 25
         "#;
 
 fn main() -> eyre::Result<()> {
@@ -29,27 +29,20 @@ fn main() -> eyre::Result<()> {
     let data_dir = tempdir()?;
     let data_file = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("data")
-        .join("1krc.csv");
+        .join("48krc.csv");
 
     run_full_stack(&data_dir.path(), |server, client| {
         info!("trying to get tables");
         client.query(&Query::parse(DDL)?)?;
 
-        client.query(&Query::parse(&*format!("EXPLAIN {MAIN_QUERY}"))?)?;
-
+        let (rows, elapsed) = client.query(&Query::parse(&*format!("EXPLAIN {MAIN_QUERY}"))?)?;
+        write_rows(stdout(), rows, elapsed).expect("could not write rows");
         client.query(&Query::parse(&*format!(
             r#"
                 LOAD DATA INFILE {data_file:?} INTO TABLE `default`.`1brc` (name, temperature)
                 FIELDS TERMINATED BY ';'
                 "#,
         ))?)?;
-        client.query(&Query::parse(&*format!(
-            r#"
-                LOAD DATA INFILE {data_file:?} INTO TABLE `default`.`1brc` (name, temperature)
-                FIELDS TERMINATED BY ';'
-                "#,
-        ))?)?;
-
 
         let (rows, elapsed) = client.query(&Query::parse(MAIN_QUERY)?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");

@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cmp::Reverse;
 use std::str::FromStr;
 use std::sync::{Arc, Weak};
 
@@ -8,7 +9,7 @@ use rayon::prelude::*;
 use tracing::trace;
 use tracing::{debug, debug_span, error, info};
 
-use weaver_ast::ast::{CreateDefinition, CreateTable, Literal, LoadData};
+use weaver_ast::ast::{CreateDefinition, CreateTable, Literal, LoadData, OrderDirection};
 use weaver_ast::{ast, parse_literal};
 
 use crate::data::row::{OwnedRow, Row};
@@ -74,6 +75,7 @@ impl QueryExecutor {
         let mut row_stack: Vec<Box<dyn Rows>> = vec![];
 
         while let Some(node) = stack.pop() {
+            debug!("executing {}", <&'static str>::from(&node.kind));
             match &node.kind {
                 QueryPlanKind::TableScan {
                     schema,
@@ -357,8 +359,71 @@ impl QueryExecutor {
 
                     row_stack.push(Box::new(RefRows::new(node.schema.clone(), owned)));
                 }
+                QueryPlanKind::OrderedBy { order, .. } => {
+                    let mut ordered = row_stack.pop().expect("nothing to order");
+                    let mut order_vec = vec![];
+
+                    while let Some(row) = ordered.next() {
+                        order_vec.push(row);
+                    }
+
+                    for (expr, order) in order.iter().rev() {
+                        match order {
+                            OrderDirection::Asc => order_vec.sort_by_cached_key(|row| {
+                                expression_evaluator
+                                    .evaluate_one_row(expr, row, ordered.schema(), node.id())
+                                    .expect("couldn't evaluate")
+                                    .as_ref()
+                                    .clone()
+                            }),
+                            OrderDirection::Desc => order_vec.sort_by_cached_key(|row| {
+                                Reverse(
+                                    expression_evaluator
+                                        .evaluate_one_row(expr, row, ordered.schema(), node.id())
+                                        .expect("couldn't evaluate")
+                                        .as_ref()
+                                        .clone()
+                                )
+                            }),
+                        }
+                    }
+
+                    row_stack.push(Box::new(RefRows::new(node.schema.clone(), order_vec)));
+                }
+                &QueryPlanKind::GetPage {
+                    offset, limit, ..
+                } => {
+                    let mut base = row_stack.pop().expect("no rows to offset");
+                    let mut done = false;
+
+                    for _ in 0..offset {
+                        if let Some(_) = base.next() {
+                        } else {
+                            done = true;
+                            break;
+                        }
+                    }
+
+                    if !done {
+                        if let Some(limit) = limit {
+                            let mut limited = vec![];
+                            for _ in 0..limit {
+                                if let Some(row) = base.next() {
+                                    limited.push(row);
+                                } else {
+                                    break;
+                                }
+                            }
+                            row_stack.push(Box::new(RefRows::new(node.schema.clone(), limited)));
+                        } else {
+                            row_stack.push(base);
+                        }
+                    } else {
+                        row_stack.push(Box::new(RefRows::new(node.schema.clone(), vec![])));
+                    }
+                }
                 _kind => {
-                    todo!("implement execution of {_kind:?}")
+                    todo!("implement execution of {_kind:#?}");
                 }
             }
         }

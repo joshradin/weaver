@@ -84,6 +84,8 @@ static QUERY_COSTS: &[(&str, Cost)] = &[
     ("PROJECT", Cost::new(1.0, 1, None)),
     ("JOIN", Cost::new(1.0, 1, None)),
     ("FILTER", Cost::new(1.0, 1, None)),
+    ("ORDER", Cost::new(1.0, 2, None)),
+    ("LIMIT-OFFSET", Cost::new(1.0, 1, None)),
 ];
 
 impl Default for CostTable {
