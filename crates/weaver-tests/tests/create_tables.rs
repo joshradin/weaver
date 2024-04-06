@@ -9,7 +9,7 @@ use weaver_tests::{init_tracing, run_full_stack};
 
 #[test]
 fn explain_create_table() -> eyre::Result<()> {
-    let _ = init_tracing();
+    let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
     run_full_stack(temp_dir.path(), |server, client| {
         info!("explain create table");
@@ -26,7 +26,7 @@ fn explain_create_table() -> eyre::Result<()> {
 
 #[test]
 fn create_simple_table() -> eyre::Result<()> {
-    let _ = init_tracing();
+    let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
     run_full_stack(temp_dir.path(), |server, client| {
         info!("explain create table");

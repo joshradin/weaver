@@ -14,8 +14,10 @@ use crate::db::server::layers::packets::DbReq;
 use crate::db::server::WeaverDb;
 use crate::dynamic_table::EngineKey;
 use crate::error::WeaverError;
+use crate::queries::query_cost::CostTable;
 use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
 use crate::storage::tables::table_schema::TableSchema;
+use crate::tx::Tx;
 
 pub fn init_weaver_schema(core: &mut WeaverDbCore) -> Result<(), WeaverError> {
     let start = Instant::now();
@@ -39,8 +41,17 @@ fn cost_table(db: &mut WeaverDbCore) -> Result<(), WeaverError> {
             .column("key", Type::String(32), true, None, None)?
             .column("cost", Type::Float, true, None, None)?
             .column("row_factor", Type::Integer, true, None, None)?
+            .column("row_log", Type::Integer, false, None, None)?
             .engine(EngineKey::new(B_PLUS_TREE_FILE_KEY))
             .build()?,
     )?;
+
+    // gets the default cost table
+    let cost_table = CostTable::default();
+    let table = db.get_open_table("weaver", "cost")?;
+    let mut tx = Tx::default();
+    cost_table.flush_to_table(&table, &tx)?;
+    tx.commit();
+
     Ok(())
 }

@@ -12,18 +12,10 @@ pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
     FunctionRegistry::from_iter([
         (
             "count",
-            DbFunction::builtin(vec![ArgType::Rows], Type::Integer, |args| {
-                match &args[0] {
-                    ArgValue::Many(many) => {
-                        Ok(DbVal::Integer(many.len() as i64))
-                    }
-                    ArgValue::Rows(rows) => {
-                        Ok(DbVal::Integer(rows.len() as i64))
-                    }
-                    _ => panic!()
-                }
-
-
+            DbFunction::builtin(vec![ArgType::Rows], Type::Integer, |args| match &args[0] {
+                ArgValue::Many(many) => Ok(DbVal::Integer(many.len() as i64)),
+                ArgValue::Rows(rows) => Ok(DbVal::Integer(rows.len() as i64)),
+                _ => panic!(),
             }),
         ),
         (
@@ -114,11 +106,9 @@ pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
                 let (sum, count) = vals
                     .iter()
                     .flat_map(|i| i.int_value())
-                    .fold((0, 0), |(sum, count), next| {
-                        (sum + next, count + 1)
-                    });
+                    .fold((0, 0), |(sum, count), next| (sum + next, count + 1));
                 if count == 0 {
-                    return Ok(DbVal::Float(f64::NAN))
+                    return Ok(DbVal::Float(f64::NAN));
                 }
 
                 Ok(DbVal::Float(sum as f64 / count as f64))
@@ -134,11 +124,9 @@ pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
                 let (sum, count) = vals
                     .iter()
                     .flat_map(|i| i.float_value())
-                    .fold((0.0, 0), |(sum, count), next| {
-                        (sum + next, count + 1)
-                    });
+                    .fold((0.0, 0), |(sum, count), next| (sum + next, count + 1));
                 if count == 0 {
-                    return Ok(DbVal::Float(f64::NAN))
+                    return Ok(DbVal::Float(f64::NAN));
                 }
 
                 Ok(DbVal::Float(sum / count as f64))
@@ -184,6 +172,27 @@ pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
                 },
             ),
         ),
+        (
+            "abs",
+            DbFunction::builtin(vec![ArgType::One(Type::Integer)], Type::Integer, |args| {
+                let ArgValue::One(int) = &args[0] else {
+                    panic!()
+                };
 
+                let i = int.int_value().expect("should be int value");
+                Ok(i.abs().into())
+            }),
+        ),
+        (
+            "abs",
+            DbFunction::builtin(vec![ArgType::One(Type::Float)], Type::Float, |args| {
+                let ArgValue::One(float) = &args[0] else {
+                    panic!()
+                };
+
+                let i = float.float_value().expect("should be float value");
+                Ok(i.abs().into())
+            }),
+        ),
     ])
 });

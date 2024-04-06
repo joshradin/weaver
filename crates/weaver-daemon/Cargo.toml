@@ -24,3 +24,7 @@ tracing = "0.1.40"
 clap = { version = "4.4.11", features = ["derive"] }
 num_cpus = "1.16.0"
 interprocess = "1.2.1"
+color-eyre = "0.6.3"
+tracing-error = "0.2.0"
+tempfile = "3.10.1"
+ctrlc = "3.4.4"

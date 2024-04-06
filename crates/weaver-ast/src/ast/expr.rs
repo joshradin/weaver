@@ -10,6 +10,7 @@ use crate::ast::identifier::{ResolvedColumnRef, UnresolvedColumnRef};
 use crate::ast::literal::Binary;
 use crate::ast::{Identifier, Literal, ReferencesCols};
 
+/// A reference to a column, can either be in a resolved or unresolved state.
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize, Display, From)]
 pub enum ColumnRef {
     Unresolved(UnresolvedColumnRef),
@@ -17,6 +18,7 @@ pub enum ColumnRef {
 }
 
 impl ColumnRef {
+    /// Gets this column ref as resolved
     pub fn resolved(&self) -> Option<&ResolvedColumnRef> {
         if let Self::Resolved(resolved) = self {
             Some(resolved)
@@ -25,6 +27,7 @@ impl ColumnRef {
         }
     }
 
+    /// Gets this column ref as unresolved
     pub fn unresolved(&self) -> Option<&UnresolvedColumnRef> {
         if let Self::Unresolved(unresolved) = self {
             Some(unresolved)

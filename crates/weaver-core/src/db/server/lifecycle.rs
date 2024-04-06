@@ -1,9 +1,10 @@
 use std::collections::VecDeque;
 use std::fmt::{Debug, Formatter};
+use std::process::exit;
 use std::sync::Arc;
 
 use parking_lot::{Mutex, RwLock};
-use tracing::{error, error_span, info, instrument, warn, Span};
+use tracing::{debug, error, error_span, info, instrument, Span, warn};
 
 use crate::db::server::{WeakWeaverDb, WeaverDb};
 use crate::error::WeaverError;
@@ -25,8 +26,10 @@ struct WeaverDbLifecycleServiceInternal {
     weak: WeakWeaverDb,
     initialization_functions:
         Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
-    bootstrapping_functions: Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
-    teardown_functions: Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
+    bootstrapping_functions:
+        Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
+    teardown_functions:
+        Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
 }
 
 #[derive(Clone)]
@@ -45,7 +48,7 @@ impl Debug for WeaverDbLifecycleService {
 
 impl WeaverDbLifecycleService {
     pub(crate) fn new(db: WeakWeaverDb) -> Self {
-        Self {
+        let mut service = Self {
             helper: Arc::new(Mutex::new(WeaverDbLifecycleServiceInternal {
                 weak: db,
 
@@ -54,7 +57,10 @@ impl WeaverDbLifecycleService {
                 teardown_functions: vec![],
             })),
             phase: Arc::new(RwLock::new(LifecyclePhase::Uninitialized)),
-        }
+        };
+
+
+        service
     }
 
     /// Runs on init
@@ -112,6 +118,7 @@ impl WeaverDbLifecycleService {
             "Starting weaver db server version {}",
             env!("CARGO_PKG_VERSION")
         );
+        Span::current().record("phase", format!("{:?}", phase_lock));
         drop(phase_lock);
 
         let res = self.startup_();
@@ -136,34 +143,39 @@ impl WeaverDbLifecycleService {
         let init_functions = VecDeque::from_iter(helper.initialization_functions.drain(..));
 
         info!("Initializing weaver...");
-        error_span!("startup", phase = "initialization").in_scope(|| -> Result<(), WeaverError> {
-            for init_function in init_functions {
-                init_function(&mut weaver)?;
-            }
+        error_span!("startup", phase = "initialization").in_scope(
+            || -> Result<(), WeaverError> {
+                for init_function in init_functions {
+                    init_function(&mut weaver)?;
+                }
 
-            *self.phase.write() = LifecyclePhase::Initialized;
-            Ok(())
-        })?;
+                info!("initialization completed");
+                *self.phase.write() = LifecyclePhase::Initialized;
+                Ok(())
+            },
+        )?;
         if !weaver.is_bootstrapped() {
             *self.phase.write() = LifecyclePhase::Bootstrapping;
-            error_span!("startup", phase = "bootstrap").in_scope(|| -> Result<(), WeaverError> {
-                info!("Bootstrapping weaver...");
-                // bootstrap
-                let bootstrap_functions =
-                    VecDeque::from_iter(helper.bootstrapping_functions.drain(..));
+            error_span!("startup", phase = "bootstrap").in_scope(
+                || -> Result<(), WeaverError> {
+                    info!("Bootstrapping weaver...");
+                    // bootstrap
+                    let bootstrap_functions =
+                        VecDeque::from_iter(helper.bootstrapping_functions.drain(..));
 
-                for bootstrap_function in bootstrap_functions {
-                    bootstrap_function(&mut weaver)?;
-                }
-                Ok(())
-            })?;
+                    for bootstrap_function in bootstrap_functions {
+                        bootstrap_function(&mut weaver)?;
+                    }
+                    Ok(())
+                },
+            )?;
         }
 
         *self.phase.write() = LifecyclePhase::Ready;
         Ok(())
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip_all, fields(phase="teardown"))]
     pub fn teardown(&mut self) -> Result<(), WeaverError> {
         let mut phase_lock = self.phase.write();
         match &*phase_lock {
@@ -177,6 +189,20 @@ impl WeaverDbLifecycleService {
         }
         warn!("Shutting down weaver...");
         drop(phase_lock);
+        let mut helper = &mut *self.helper.lock();
+        let mut weaver = helper
+            .weak
+            .upgrade()
+            .ok_or_else(|| WeaverError::NoCoreAvailable)?;
+        // bootstrap
+        let teardown_functions =
+            VecDeque::from_iter(helper.teardown_functions.drain(..));
+
+        for teardown in teardown_functions {
+            teardown(&mut weaver)?;
+        }
+
+        debug!("weaverdb strong: {}, weak: {}", Arc::strong_count(&weaver.shared), Arc::weak_count(&weaver.shared));
 
         *self.phase.write() = LifecyclePhase::Dead;
         warn!("Weaver dead");

@@ -103,4 +103,7 @@ pub trait WeaverStreamListener {
     type Stream: Stream;
     /// Accepts an incoming connection
     fn accept(&self) -> Result<WeaverStream<Self::Stream>, WeaverError>;
+
+    /// Non-blocking accept
+    fn try_accept(&self) -> Result<Option<WeaverStream<Self::Stream>>, WeaverError>;
 }

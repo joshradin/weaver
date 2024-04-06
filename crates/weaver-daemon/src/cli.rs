@@ -1,10 +1,13 @@
-use clap::{value_parser, ArgAction, Parser};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use clap::{ArgAction, Parser, value_parser};
 use tracing::level_filters::LevelFilter;
 
 /// App args
 #[derive(Debug, Parser)]
 pub struct App {
+    /// The working directory
+    pub working_dir: Option<PathBuf>,
     /// Sets the host ip for this
     #[clap(long, default_value = "localhost")]
     pub host: String,
@@ -17,7 +20,7 @@ pub struct App {
 
     /// Sets the location of the key store
     #[clap(long)]
-    pub key_store: Option<PathBuf>,
+    key_store: Option<PathBuf>,
 
     /// Sets the verbosity of the application
     #[clap(short)]
@@ -32,5 +35,18 @@ impl App {
             1 => LevelFilter::DEBUG,
             2.. => LevelFilter::TRACE,
         }
+    }
+
+    pub fn work_dir(&self) -> &Path {
+        self.working_dir
+            .as_ref()
+            .map(|p| p.as_ref())
+            .unwrap_or(Path::new("."))
+    }
+
+    pub fn key_store(&self) -> PathBuf {
+        self.key_store
+            .clone()
+            .unwrap_or_else(|| self.work_dir().join("keys"))
     }
 }

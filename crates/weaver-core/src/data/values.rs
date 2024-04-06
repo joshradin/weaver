@@ -141,6 +141,17 @@ impl From<Uuid> for DbVal {
     }
 }
 
+impl<T> From<Option<T>> for DbVal
+    where DbVal : From<T>
+{
+    fn from(value: Option<T>) -> Self {
+        match value {
+            None => { DbVal::Null }
+            Some(val) => { DbVal::from(val)}
+        }
+    }
+}
+
 impl Display for DbVal {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -206,8 +217,10 @@ impl PartialEq for DbVal {
         match (self, other) {
             (String(l, _), String(r, _)) => l == r,
             (Binary(l, _), Binary(r, _)) => l == r,
-            (Integer(l), Integer(r)) => l == r,
             (Boolean(l), Boolean(r)) => l == r,
+            (Integer(l), Integer(r)) => l == r,
+            (Integer(l), Float(r)) => *l as f64  == *r,
+            (Float(l), Integer(r)) => *l as i64  == *r,
             (Float(l), Float(r)) => l.total_cmp(r).is_eq(),
             (Null, Null) => true,
             _ => false,
@@ -222,11 +235,14 @@ impl PartialOrd for DbVal {
         use crate::data::DbVal::Null;
         use DbVal::*;
         let emit = Some(match (self, other) {
-            (String(l, l_max_len), String(r, r_max_len)) => l.cmp(&r),
+            (String(l, _), String(r, _)) => l.cmp(&r),
             (Binary(l, _), Binary(r, _)) => l.cmp(r),
             (Integer(l), Integer(r)) => l.cmp(r),
-            (Boolean(l), Boolean(r)) => l.cmp(r),
+            (Integer(l), Float(r)) => (*l as f64).total_cmp(r),
+            (Float(l), Integer(r)) => (*l as i64).cmp(r),
             (Float(l), Float(r)) => l.total_cmp(r),
+
+            (Boolean(l), Boolean(r)) => l.cmp(r),
             (Null, Null) => Ordering::Equal,
             (_, Null) => Ordering::Greater,
             (Null, _) => Ordering::Less,

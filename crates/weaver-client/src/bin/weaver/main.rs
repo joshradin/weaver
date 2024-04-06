@@ -26,7 +26,7 @@ fn main() -> eyre::Result<()> {
         .open(format!("{}.log", env!("CARGO_BIN_NAME")))?;
     CombinedLogger::init(vec![
         TermLogger::new(
-            LevelFilter::Trace,
+            LevelFilter::Debug,
             Config::default(),
             TerminalMode::Stderr,
             ColorChoice::Auto,

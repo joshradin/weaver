@@ -84,7 +84,16 @@ impl WeaverStreamListener for WeaverTcpListener {
 
     /// Accepts an incoming connection
     fn accept(&self) -> Result<WeaverStream<TcpStream>, WeaverError> {
-        let (mut stream, socket_addr) = self.tcp_listener.accept()?;
+        let (mut stream, socket_addr) = loop {
+            match self.tcp_listener.accept() {
+                Ok(stream) => {break stream }
+                Err(error) => {
+                    if error.kind() != ErrorKind::WouldBlock {
+                        return Err(error.into());
+                    }
+                }
+            }
+        };
 
         let mut db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
 
@@ -99,5 +108,32 @@ impl WeaverStreamListener for WeaverTcpListener {
         let socket = tcp_server_handshake(socket, db.auth_context(), &db.connect())?;
 
         Ok(socket)
+    }
+
+    fn try_accept(&self) -> Result<Option<WeaverStream<Self::Stream>>, WeaverError> {
+        self.tcp_listener.set_nonblocking(true)?;
+        let (mut stream, socket_addr) = match self.tcp_listener.accept() {
+            Ok(stream ) => { stream }
+            Err(e ) => {
+                return match e.kind() {
+                    ErrorKind::WouldBlock => { Ok(None)}
+                    _ => Err(e.into())
+                }
+            }
+        };
+        self.tcp_listener.set_nonblocking(false)?;
+        let mut db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
+
+        let mut socket = WeaverStream::new(
+            Some(socket_addr),
+            stream.local_addr().ok(),
+            false,
+            Transport::Insecure(stream.into()),
+        );
+
+        handshake_listener(&mut socket, Duration::from_secs(10))?; // ensures correct connection type first
+        let socket = tcp_server_handshake(socket, db.auth_context(), &db.connect())?;
+
+        Ok(Some(socket))
     }
 }

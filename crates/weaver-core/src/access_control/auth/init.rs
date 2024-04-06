@@ -24,7 +24,7 @@ pub struct AuthConfig {
 impl AuthConfig {
     pub fn in_path<P: AsRef<Path>>(path: P) -> Self {
         Self {
-            key_store: path.as_ref().join("keys"),
+            key_store: path.as_ref().join("../../../../../weaver/keys"),
             force_recreate: false,
         }
     }
@@ -33,7 +33,7 @@ impl AuthConfig {
 impl Default for AuthConfig {
     fn default() -> Self {
         AuthConfig {
-            key_store: PathBuf::from("keys"),
+            key_store: PathBuf::from("../../../../../weaver/keys"),
             force_recreate: false,
         }
     }

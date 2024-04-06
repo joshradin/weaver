@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Weak};
 
 use indexmap::IndexMap;
+use nom::combinator::cond;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use tracing::trace;
@@ -113,14 +114,16 @@ impl QueryExecutor {
                         let mut to_filter = row_stack.pop().expect("nothing to filter");
                         let mut owned = vec![];
                         while let Some(row) = to_filter.next() {
-                            if expression_evaluator
+                            let evaluated = expression_evaluator
                                 .evaluate_one_row(
                                     condition,
                                     &row,
                                     to_filter.schema(),
                                     filtered.id(),
                                 )?
-                                .bool_value()
+                                .bool_value();
+                            trace!("{row:?} . {condition} = {evaluated:?}");
+                            if evaluated
                                 == Some(true)
                             {
                                 owned.push(row);

@@ -18,10 +18,15 @@ use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::WeaverDb;
 use weaver_core::error::WeaverError;
 use weaver_core::monitoring::{Monitor, Monitorable};
-pub fn init_tracing() -> Result<(), Box<dyn Error + Send + Sync>> {
+
+pub fn init_tracing(
+    level_filter: impl Into<Option<LevelFilter>>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     tracing_subscriber::fmt()
-        .with_max_level(LevelFilter::DEBUG)
+        .with_max_level(level_filter.into().unwrap_or(LevelFilter::DEBUG))
         .with_thread_ids(true)
+        .with_file(true)
+        .with_line_number(true)
         .event_format(tracing_subscriber::fmt::format())
         .try_init()
 }

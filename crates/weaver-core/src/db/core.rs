@@ -212,9 +212,10 @@ impl Drop for WeaverDbCore {
     fn drop(&mut self) {
         if let Some(lock_file) = self.lock_file.take() {
             drop(lock_file.unlock());
-            let _ = std::fs::remove_file(&self.path.join("weaver.lock"));
+            let re = std::fs::remove_file(&self.path.join("weaver.lock"));
+            info!("lock file deleted: {}", re.is_ok());
         }
-        info!("Shutting down distro db core");
+        info!("Shut down distro db core");
     }
 }
 

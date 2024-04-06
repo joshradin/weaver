@@ -4,7 +4,7 @@ use std::sync::{Arc, OnceLock, Weak};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crossbeam::channel::{Sender, unbounded};
 use parking_lot::{Mutex, RwLock};
@@ -13,7 +13,6 @@ use tempfile::TempDir;
 use tracing::{
     debug, error, error_span, info, info_span, Level, Span, span_enabled, trace, trace_span, warn,
 };
-use tracing::field::debug;
 
 use weaver_ast::ast::Query;
 
@@ -30,7 +29,6 @@ use crate::db::core::{bootstrap, WeaverDbCore};
 use crate::db::server::init::engines::init_engines;
 use crate::db::server::init::system::init_system_tables;
 use crate::db::server::init::weaver::init_weaver_schema;
-use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
 use crate::db::server::lifecycle::{LifecyclePhase, WeaverDbLifecycleService};
@@ -53,6 +51,8 @@ use crate::tx::Tx;
 
 use super::layers::packets::{IntoDbResponse, Packet};
 
+use crate::db::server::layers::{Layer, Layers};
+
 /// A server that allows for multiple connections.
 #[derive(Clone)]
 pub struct WeaverDb {
@@ -63,6 +63,7 @@ pub(super) struct WeaverDbShared {
     core: Arc<RwLock<WeaverDbCore>>,
     message_queue: Sender<MainQueueItem>,
     main_handle: Option<JoinHandle<()>>,
+    worker_continue: Arc<AtomicBool>,
     worker_handles: Mutex<Vec<JoinHandle<Result<(), WeaverError>>>>,
 
     /// Should only be bound to TCP once.
@@ -193,6 +194,7 @@ impl WeaverDb {
                 core: shard,
                 message_queue: sc,
                 main_handle: Some(main_handle),
+                worker_continue: Arc::new(AtomicBool::new(true)),
                 worker_handles: Mutex::default(),
                 tcp_bound: AtomicBool::new(false),
                 tcp_local_address: Default::default(),
@@ -211,6 +213,9 @@ impl WeaverDb {
         let mut db = WeaverDb { shared: inner };
 
         let mut service = db.lifecycle_service();
+
+        let lock_file = path.join("weaver.lock");
+
         service.on_init(init_engines);
         service.on_init(init_system_tables);
         service.on_bootstrap(move |weaver_db| {
@@ -225,6 +230,42 @@ impl WeaverDb {
                 }))
                 .join()??
                 .to_result()?;
+            Ok(())
+        });
+
+        service.on_teardown(move |db| {
+            let _ = db.shared.worker_continue.compare_exchange(
+                true,
+                false,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            );
+            let now = Instant::now();
+
+            info!("Giving workers 5 seconds to terminate gracefully");
+            let mut workers = db.shared.worker_handles.lock();
+            while now.elapsed() < Duration::from_secs(5) && !workers.is_empty() {
+                if let Some(finished) = workers.iter().position(|w| w.is_finished()) {
+                    let worker = workers.remove(finished);
+                    let _ = worker.join();
+                }
+            }
+
+            if !workers.is_empty() {
+                warn!(
+                    "unfinished workers: {:?}",
+                    workers
+                        .iter()
+                        .map(|i| i
+                            .thread()
+                            .name()
+                            .map(ToString::to_string)
+                            .unwrap_or(format!("{:?}", i.thread().id())))
+                        .collect::<Vec<_>>()
+                );
+            }
+
+            std::fs::remove_file(lock_file)?;
             Ok(())
         });
 
@@ -299,10 +340,11 @@ impl WeaverDb {
             let _ = self.shared.tcp_local_address.set(listener.local_addr()?);
 
             let self_clone = self.weak();
+            let cont = self.shared.worker_continue.clone();
             let worker = thread::Builder::new()
                 .name("distro-db-tcp".to_string())
                 .spawn(move || -> Result<(), WeaverError> {
-                    Self::tcp_handler(listener, self_clone)
+                    Self::tcp_handler(listener, self_clone, cont)
                 })?;
             self.shared.worker_handles.lock().push(worker);
             Ok(())
@@ -331,53 +373,70 @@ impl WeaverDb {
             let mut listener = WeaverLocalSocketListener::bind(&path, weak)?;
 
             let self_clone = self.weak();
+            let cont = self.shared.worker_continue.clone();
             let worker = thread::Builder::new()
                 .name("distro-db-local-socket".to_string())
                 .spawn(move || -> Result<(), WeaverError> {
-                    Self::local_socket_handler(listener, self_clone)
+                    Self::local_socket_handler(listener, self_clone, cont)
                 })?;
+
             self.shared.worker_handles.lock().push(worker);
+
+            self.lifecycle_service().on_teardown(move |db| {
+                warn!("removing socket file...");
+                std::fs::remove_file(path)?;
+                Ok(())
+            });
+
             Ok(())
         } else {
             Err(WeaverError::TcpAlreadyBound)
         }
     }
 
-    fn tcp_handler(mut listener: WeaverTcpListener, db: WeakWeaverDb) -> Result<(), WeaverError> {
-        loop {
-            let Ok(mut stream) = listener.accept() else {
-                warn!("Listener closed");
-                break;
-            };
-
-            let Some(weaver) = db.clone().upgrade() else {
-                warn!("distro db closed");
-                break;
-            };
-
-            weaver.handle_connection(stream)?;
-        }
-        info!("Tcp listener shut down");
+    fn tcp_handler(
+        listener: WeaverTcpListener,
+        db: WeakWeaverDb,
+        cont: Arc<AtomicBool>,
+    ) -> Result<(), WeaverError> {
+        Self::stream_handler(listener, db, cont)?;
+        info!("tcp listener shut down");
         Ok(())
     }
     fn local_socket_handler(
-        mut listener: WeaverLocalSocketListener,
+        listener: WeaverLocalSocketListener,
         db: WeakWeaverDb,
+        cont: Arc<AtomicBool>,
     ) -> Result<(), WeaverError> {
-        loop {
-            let Ok(mut stream) = listener.accept() else {
+        Self::stream_handler(listener, db, cont)?;
+        info!("local socket listener shut down");
+        Ok(())
+    }
+
+    fn stream_handler<T: WeaverStreamListener>(
+        listener: T,
+        db: WeakWeaverDb,
+        cont: Arc<AtomicBool>,
+    ) -> Result<(), WeaverError>
+        where T::Stream : Send + Sync + 'static
+    {
+        while cont.load(Ordering::Relaxed) {
+            let Ok(mut stream) = listener.try_accept() else {
                 warn!("Listener closed");
                 break;
             };
 
+            let Some(stream) = stream else {
+                continue;
+            };
+
             let Some(weaver) = db.clone().upgrade() else {
-                warn!("distro db closed");
+                warn!("weaver closed");
                 break;
             };
 
             weaver.handle_connection(stream)?;
         }
-        info!("Tcp listener shut down");
         Ok(())
     }
 
@@ -523,7 +582,7 @@ impl Monitorable for WeaverDb {
 impl Drop for WeaverDbShared {
     fn drop(&mut self) {
         info!("db server dropped, running teardown if not already");
-        let _ = self.lifecycle_service.teardown().unwrap();
+        let _ = self.lifecycle_service.teardown();
     }
 }
 

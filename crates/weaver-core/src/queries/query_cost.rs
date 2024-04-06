@@ -9,9 +9,11 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Mul;
+use crate::data::row::Row;
 
 use crate::data::values::DbVal;
 use crate::dynamic_table::DynamicTable;
+use crate::error::WeaverError;
 use crate::rows::Rows;
 use crate::tx::Tx;
 
@@ -133,6 +135,19 @@ impl CostTable {
             )
         }
         output
+    }
+
+    pub fn flush_to_table<T : DynamicTable + ?Sized>(&self, table: &T, tx: &Tx) -> Result<(), WeaverError> {
+        for (id, cost) in &self.table {
+            let row = Row::from([
+                DbVal::from(id),
+                DbVal::from(cost.base),
+                DbVal::from(cost.row_factor as i64),
+                DbVal::from(cost.row_log.map(|i| i as i64)),
+            ]);
+            table.insert(tx, row)?;
+        }
+        Ok(())
     }
 
     /// Sets a cost within the table.

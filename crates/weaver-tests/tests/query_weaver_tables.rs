@@ -12,7 +12,7 @@ use weaver_tests::{init_tracing, run_full_stack};
 
 #[test]
 fn can_connect() -> eyre::Result<()> {
-    let _ = init_tracing();
+    let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
     run_full_stack(temp_dir.path(), |server, client| Ok(()))?;
 
@@ -21,7 +21,7 @@ fn can_connect() -> eyre::Result<()> {
 
 #[test]
 fn get_processes() -> eyre::Result<()> {
-    let _ = init_tracing();
+    let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
     run_full_stack(temp_dir.path(), |server, client| {
         info!("trying to get system processes");
@@ -36,7 +36,7 @@ fn get_processes() -> eyre::Result<()> {
 
 #[test]
 fn get_tables() -> eyre::Result<()> {
-    let _ = init_tracing();
+    let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
     run_full_stack(temp_dir.path(), |server, client| {
         info!("trying to get tables");
@@ -51,7 +51,7 @@ fn get_tables() -> eyre::Result<()> {
 
 #[test]
 fn get_tables_with_schema() -> eyre::Result<()> {
-    let _ = init_tracing();
+    let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
     run_full_stack(temp_dir.path(), |server, client| {
         info!("trying to get tables");
@@ -76,7 +76,7 @@ fn get_tables_with_schema() -> eyre::Result<()> {
 
 #[test]
 fn explain_get_tables_with_schema() -> eyre::Result<()> {
-    let _ = init_tracing();
+    let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
     run_full_stack(temp_dir.path(), |server, client| {
         info!("trying to get tables");

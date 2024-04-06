@@ -228,18 +228,19 @@ fn runtime_eval_single_row<'a>(
                 op: bin_op,
                 right: r,
             } => {
-                let l = stack.pop().ok_or_else(|| {
-                    WeaverError::EvaluationFailed(
-                        op.clone(),
-                        "missing left value on stack for binop".to_string(),
-                    )
-                })?;
                 let r = stack.pop().ok_or_else(|| {
                     WeaverError::EvaluationFailed(
                         op.clone(),
                         "missing right value on stack for binop".to_string(),
                     )
                 })?;
+                let l = stack.pop().ok_or_else(|| {
+                    WeaverError::EvaluationFailed(
+                        op.clone(),
+                        "missing left value on stack for binop".to_string(),
+                    )
+                })?;
+
                 let evaluated: DbVal = evaluate_binary(bin_op, l, r);
                 stack.push(Cow::Owned(evaluated));
             }

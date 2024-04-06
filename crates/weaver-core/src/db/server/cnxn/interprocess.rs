@@ -1,3 +1,4 @@
+use std::io::ErrorKind;
 use crate::access_control::auth::LoginContext;
 use crate::cnxn::handshake::handshake_listener;
 use crate::cnxn::stream::{tcp_server_handshake, WeaverStream};
@@ -50,7 +51,16 @@ impl WeaverStreamListener for WeaverLocalSocketListener {
     type Stream = LocalSocketStream;
 
     fn accept(&self) -> Result<WeaverStream<Self::Stream>, WeaverError> {
-        let mut stream = self.listener.accept()?;
+        let mut stream = loop {
+            match self.listener.accept() {
+                Ok(stream) => { break stream }
+                Err(error) => {
+                    if error.kind() != ErrorKind::WouldBlock {
+                        return Err(error.into())
+                    }
+                }
+            }
+        };
         let mut db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
 
         let mut socket = WeaverStream::new(None, None, true, Transport::Insecure(stream.into()));
@@ -59,5 +69,34 @@ impl WeaverStreamListener for WeaverLocalSocketListener {
         let socket = tcp_server_handshake(socket, db.auth_context(), &db.connect())?;
 
         Ok(socket)
+    }
+
+    fn try_accept(&self) -> Result<Option<WeaverStream<Self::Stream>>, WeaverError> {
+        self.listener.set_nonblocking(true)?;
+        let mut stream = match self.listener.accept() {
+            Ok(stream) => { stream }
+            Err(error) => {
+                return if error.kind() == ErrorKind::WouldBlock {
+                    Ok(None)
+                } else {
+                    Err(error.into())
+                }
+            }
+        };
+        self.listener.set_nonblocking(false)?;
+        let mut db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
+
+        let mut socket = WeaverStream::new(None, None, true, Transport::Insecure(stream.into()));
+
+        handshake_listener(&mut socket, Duration::from_secs(10))?; // ensures correct connection type first
+        let socket = tcp_server_handshake(socket, db.auth_context(), &db.connect())?;
+
+        Ok(Some(socket))
+    }
+}
+
+impl Drop for WeaverLocalSocketListener {
+    fn drop(&mut self) {
+        debug!("dropping local socket listener");
     }
 }

@@ -83,7 +83,7 @@ mod tests {
 
         #[test]
         fn parse_where_param() {
-            static QUERY: &str = "SELECT * FROM table";
+            static QUERY: &str = "SELECT * FROM `table`";
             let mut query_parser = QueryParser::new();
             let q = query_parser.parse(QUERY).expect("could not parse");
             println!("{}", serde_json::to_string_pretty(&q).unwrap());

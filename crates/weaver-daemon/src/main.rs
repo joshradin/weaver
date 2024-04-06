@@ -1,21 +1,12 @@
 use clap::Parser;
+use color_eyre::eyre;
+use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{fmt, Layer};
 
-use weaver_core::error::WeaverError;
-use weaver_daemon::{run, App};
+use weaver_daemon::{App, run};
 
-fn main() -> Result<(), WeaverError> {
+fn main() -> eyre::Result<()> {
     let app = App::parse();
-
-    let subscriber = tracing_subscriber::registry().with(
-        fmt::Layer::new()
-            .with_thread_names(true)
-            .with_filter(app.level_filter()),
-    );
-    tracing::subscriber::set_global_default(subscriber).unwrap();
-
     run(app)?;
-
     Ok(())
 }
