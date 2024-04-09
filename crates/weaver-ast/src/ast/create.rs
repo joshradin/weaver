@@ -22,19 +22,25 @@ impl Display for CreateTable {
         write!(
             f,
             "create {schema}`{name}` (",
-            schema = self.schema.as_ref().map(|i| format!("`{}`.", i)).unwrap_or_default(),
+            schema = self
+                .schema
+                .as_ref()
+                .map(|i| format!("`{}`.", i))
+                .unwrap_or_default(),
             name = self.name
         )?;
         if f.alternate() {
             writeln!(f)?;
             write!(f, "\t")?;
         }
-        write!(f, "{}",
+        write!(
+            f,
+            "{}",
             self.create_definitions
                 .iter()
                 .map(|i| i.to_string())
                 .collect::<Vec<_>>()
-                .join(if f.alternate() { ",\n\t" } else { ", "} )
+                .join(if f.alternate() { ",\n\t" } else { ", " })
         )?;
         if f.alternate() {
             writeln!(f)?;
@@ -48,7 +54,7 @@ impl Display for CreateTable {
 #[derive(Debug, Clone, Serialize, Deserialize, From, DisplayCustom)]
 pub enum CreateDefinition {
     Column(ColumnDefinition),
-    Constraint(ConstraintDefinition)
+    Constraint(ConstraintDefinition),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,7 +95,6 @@ impl Display for ColumnDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConstraintDefinition {
     symbol: Option<Identifier>,
-
 }
 
 impl Display for ConstraintDefinition {

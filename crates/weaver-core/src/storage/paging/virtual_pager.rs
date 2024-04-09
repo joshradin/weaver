@@ -94,8 +94,8 @@ const ENTRY_SIZE: usize = 24;
 
 impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
     fn open(paged: P) -> Result<Self, VirtualPagerError> {
-        if paged.len() == 0 {
-            let (_, _) = paged.new().map_err(VirtualPagerError::backing_error)?;
+        if paged.allocated() == 0 {
+            let (_, _) = paged.new_page().map_err(VirtualPagerError::backing_error)?;
         }
 
         Ok(Self {
@@ -115,8 +115,6 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
         let hash = self.hash_builder.hash_one(root_key);
         self.tlb.lock().get(&(hash, page)).copied()
     }
-
-
 
     /// adds a new root
     fn add_root(&self, key: K) -> Result<(), VirtualPagerError> {
@@ -192,9 +190,7 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
         Q: Hash,
     {
         let key_hash = self.hash_builder.hash_one(key);
-        Ok(self
-            .roots()?
-            .find(|(hash, _, _)| *hash == key_hash))
+        Ok(self.roots()?.find(|(hash, _, _)| *hash == key_hash))
     }
 
     fn with_root_details<Q: ?Sized, F, R>(
@@ -342,7 +338,7 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
                     trace!("creating page map directory...");
                     let (_, root_ptr) = self
                         .backing_pager
-                        .new()
+                        .new_page()
                         .map_err(VirtualPagerError::backing_error)?;
                     let _ = none.insert(NonZeroU64::new(root_ptr as u64).unwrap());
                     Ok(root_ptr)
@@ -375,7 +371,7 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
             if create_if_missing {
                 let (_, new_address) = self
                     .backing_pager
-                    .new()
+                    .new_page()
                     .map_err(VirtualPagerError::backing_error)?;
                 entry.set_address(new_address as u64);
                 let mut page = self
@@ -486,8 +482,8 @@ where
         self.parent.get_page_mut(&self.key, index)
     }
 
-    fn new(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
-        let next_id = self.len();
+    fn new_page(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
+        let next_id = self.allocated();
         let ret = self
             .parent
             .create_page(&self.key, next_id)
@@ -511,7 +507,7 @@ where
         Ok(())
     }
 
-    fn len(&self) -> usize {
+    fn allocated(&self) -> usize {
         self.parent
             .root_details(&self.key)
             .unwrap()
@@ -521,7 +517,7 @@ where
 
     /// Virtual pagers only return the reserved length for this virtual pager
     fn reserved(&self) -> usize {
-        self.len() * self.page_size()
+        self.allocated() * self.page_size()
     }
 }
 
@@ -564,10 +560,10 @@ mod tests {
             .expect("should exist now");
         vp_table.print_roots();
         println!("vp_table: {vp_table:#?}");
-        let (_, index) = one.new().expect("could not create page");
+        let (_, index) = one.new_page().expect("could not create page");
         assert_eq!(index, 0, "new index should be 0");
 
-        let (_, index) = one.new().expect("could not create page");
+        let (_, index) = one.new_page().expect("could not create page");
         assert_eq!(index, 1, "new index should be 1");
     }
 
@@ -580,7 +576,7 @@ mod tests {
             .expect("virtual page error")
             .expect("could not get");
         for _ in 0..1000 {
-            one.new()
+            one.new_page()
                 .unwrap_or_else(|e| panic!("could not create page: {e}"));
         }
     }
@@ -594,7 +590,7 @@ mod tests {
             .expect("virtual page error")
             .expect("could not get");
         for _ in 0..1000 {
-            one.new()
+            one.new_page()
                 .unwrap_or_else(|e| panic!("could not create page: {e}"));
         }
     }
@@ -615,14 +611,14 @@ mod tests {
         for id in 0..1000 {
             let id = id;
             let (_, new_id) = one
-                .new()
+                .new_page()
                 .unwrap_or_else(|e| panic!("could not create page: {e}"));
             assert_eq!(id, new_id);
             let (_, new_id) = two
-                .new()
+                .new_page()
                 .unwrap_or_else(|e| panic!("could not create page: {e}"));
             assert_eq!(id, new_id);
-            assert!(vp_table.shared.backing_pager.len() >= id * 2);
+            assert!(vp_table.shared.backing_pager.allocated() >= id * 2);
         }
         println!(
             "tlb: {:#?}",
@@ -638,7 +634,7 @@ mod tests {
         let vp_table2 = VirtualPagerTable::<usize, _>::new(vp1).unwrap();
         vp_table2.init(0).expect("could not init inner layer");
         let vp2 = vp_table2.get(0).unwrap().unwrap();
-        let (_page, index) = vp2.new().expect("create new page");
+        let (_page, index) = vp2.new_page().expect("create new page");
         assert_eq!(index, 0);
         vp2.free(index).unwrap();
     }

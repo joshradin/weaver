@@ -35,11 +35,7 @@ impl MMapFile {
 
 impl Monitorable for MMapFile {
     fn monitor(&self) -> Box<dyn Monitor> {
-        Box::new(
-            self.monitor
-                .get_or_init(StorageDeviceMonitor::new)
-                .clone(),
-        )
+        Box::new(self.monitor.get_or_init(StorageDeviceMonitor::new).clone())
     }
 }
 

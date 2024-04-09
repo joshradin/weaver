@@ -34,7 +34,10 @@ pub enum WeaverError {
     #[error("Unexpected value of type found. (expected {expected:?}, received: {actual:?})")]
     TypeError { expected: Type, actual: DbVal },
     #[error("Illegal definition for column {col:?}: {reason}")]
-    IllegalColumnDefinition { col: OwnedCol, reason: Box<WeaverError> },
+    IllegalColumnDefinition {
+        col: OwnedCol,
+        reason: Box<WeaverError>,
+    },
     #[error("Expected {expected} columns, but found {actual}")]
     BadColumnCount { expected: usize, actual: usize },
     #[error("Primary key must be unique and non null")]
@@ -170,7 +173,6 @@ pub enum WeaverError {
     #[error("{0} is not functionally dependent on {}", _1.iter().map(ToString::to_string).collect::<Vec<_>>().join(","))]
     ExpressionNotFunctionallyDependentOnGroupBy(Expr, Vec<Expr>),
 
-
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {
         msg: String,
@@ -179,8 +181,6 @@ pub enum WeaverError {
     },
     #[error("{0}")]
     Custom(String),
-
-
 }
 
 impl WeaverError {
@@ -217,7 +217,9 @@ impl<S> From<HandshakeError<S>> for WeaverError {
         match value {
             HandshakeError::SetupFailure(error) => WeaverError::SslHandshakeSetupError(error),
             HandshakeError::Failure(error) => WeaverError::SslHandshakeFailure(error.into_error()),
-            HandshakeError::WouldBlock(error) => WeaverError::SslHandshakeWouldBlock(error.into_error()),
+            HandshakeError::WouldBlock(error) => {
+                WeaverError::SslHandshakeWouldBlock(error.into_error())
+            }
         }
     }
 }

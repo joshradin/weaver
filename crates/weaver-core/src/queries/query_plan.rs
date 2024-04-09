@@ -3,7 +3,9 @@ use std::fmt::{Debug, Formatter};
 use itertools::Itertools;
 use uuid::Uuid;
 
-use weaver_ast::ast::{CreateTable, Expr, JoinConstraint, JoinOperator, LoadData, OrderDirection, ReferencesCols};
+use weaver_ast::ast::{
+    CreateTable, Expr, JoinConstraint, JoinOperator, LoadData, OrderDirection, ReferencesCols,
+};
 
 use crate::data::row::Row;
 use crate::data::types::Type;
@@ -186,7 +188,7 @@ impl QueryPlanNode {
         self.id
     }
 
-    fn as_row<'a>(&self) -> Row {
+    fn as_row<'a>(&self) -> Row<'a> {
         let mut values: Vec<DbVal> = vec![];
         values.push(self.id.into());
         values.push("simple".into());

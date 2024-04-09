@@ -1,14 +1,11 @@
-
 use std::io::stdout;
 
 use tempfile::TempDir;
 use tracing::info;
 
-
 use weaver_client::write_rows::write_rows;
 use weaver_core::ast::Query;
 use weaver_tests::{init_tracing, run_full_stack};
-
 
 #[test]
 fn can_connect() -> eyre::Result<()> {

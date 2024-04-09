@@ -15,9 +15,8 @@ pub struct Collation {
 }
 
 impl Collation {
-
     /// Creates a new collation
-    pub fn new<S : AsRef<str>, I : IntoIterator<Item=(char, u32)>>(name: S, mapping: I) -> Self {
+    pub fn new<S: AsRef<str>, I: IntoIterator<Item = (char, u32)>>(name: S, mapping: I) -> Self {
         Self {
             name: name.as_ref().to_string(),
             chars: mapping.into_iter().collect(),
@@ -26,7 +25,7 @@ impl Collation {
 
     /// Gets the lexicographical value of a char, if present within the collation
     pub fn to_lexicographical_value(&self, c: char) -> Option<u32> {
-        self.chars.get(&c).map(|&s| s)
+        self.chars.get(&c).copied()
     }
 
     /// Converts a string into an iterator of the given lexicographical values.
@@ -68,24 +67,15 @@ impl Collation {
 
         loop {
             match (l.next(), r.next()) {
-                (Some(l), Some(r)) => {
-                    match l.cmp(&r) {
-                        Ordering::Less => return Some(Ordering::Less),
-                        Ordering::Greater => return Some(Ordering::Greater),
-                        _ => {}
-                    }
-                }
-                (Some(_), None) => {
-                    return Some(Ordering::Greater)
-                }
-                (None, Some(_)) => {
-                    return Some(Ordering::Less)
-                }
-                (None, None) => {
-                    return Some(Ordering::Equal)
-                }
+                (Some(l), Some(r)) => match l.cmp(&r) {
+                    Ordering::Less => return Some(Ordering::Less),
+                    Ordering::Greater => return Some(Ordering::Greater),
+                    _ => {}
+                },
+                (Some(_), None) => return Some(Ordering::Greater),
+                (None, Some(_)) => return Some(Ordering::Less),
+                (None, None) => return Some(Ordering::Equal),
             }
-
         }
     }
 }
@@ -93,10 +83,7 @@ impl Collation {
 /// Default charsets
 impl Collation {
     pub fn utf8() -> Self {
-        Collation::new(
-            "utf8",
-            []
-        )
+        Collation::new("utf8", [])
     }
 }
 

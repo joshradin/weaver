@@ -2,7 +2,7 @@
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
 use std::collections::BTreeMap;
-use std::panic::{panic_any};
+use std::panic::panic_any;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::thread;

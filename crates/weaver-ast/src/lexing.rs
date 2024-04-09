@@ -1,7 +1,4 @@
-
-
-
-use nom::{Finish};
+use nom::Finish;
 
 pub use token::*;
 
@@ -19,7 +16,7 @@ impl<'a> Tokenizer<'a> {
     pub fn new(src: &'a str) -> Self {
         Self { src, consumed: 0 }
     }
-    pub fn next(&mut self) -> Spanned<Token<'a>, usize, TokenError> {
+    pub fn next_token(&mut self) -> Spanned<Token<'a>, usize, TokenError> {
         let (rest, (l, token, r)) = parsers::token(self.src, self.consumed).finish().map_err(
             |nom::error::Error { input, code }| nom::error::Error {
                 input: input.to_string(),
@@ -45,7 +42,7 @@ impl<'a> Iterator for TokenizerIter<'a> {
         if self.eof_reached {
             return None;
         }
-        let next = self.tokenizer.next();
+        let next = self.tokenizer.next_token();
         if let Ok((_, Token::Eof, _)) = &next {
             self.eof_reached = true;
             return None;

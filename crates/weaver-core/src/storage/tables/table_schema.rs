@@ -47,7 +47,7 @@ impl TableSchema {
             engine: EngineKey::new(IN_MEMORY_KEY),
         }
     }
-    
+
     pub fn get_key(&self, key_name: &str) -> Result<&Key, WeaverError> {
         self.keys
             .iter()
@@ -142,9 +142,8 @@ impl TableSchema {
             return Some(ret);
         }
 
-
         if source.schema() == "<select>" {
-            return self.column_index(source.column().as_ref())
+            return self.column_index(source.column().as_ref());
         }
 
         if source.schema().as_ref() != self.schema || source.table().as_ref() != self.name {
@@ -260,9 +259,9 @@ impl TableSchema {
                     _ => {}
                 }
 
-                if &**val == &DbVal::Null && col.default_value.is_some() {
+                if **val == DbVal::Null && col.default_value.is_some() {
                     *val.to_mut() = col.default_value.as_ref().cloned().unwrap();
-                } else if &**val == &DbVal::Null && col.auto_increment.is_some() {
+                } else if **val == DbVal::Null && col.auto_increment.is_some() {
                     *val.to_mut() = DbVal::Integer(table.auto_increment(col.name()));
                 }
                 col.validate(val)

@@ -1,30 +1,25 @@
 //! An in-memory storage engine
 
-
-
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{OnceLock};
+use std::sync::OnceLock;
 
-
-
-
-use tracing::{trace};
+use tracing::trace;
 
 use crate::data::row::{OwnedRow, Row};
 use crate::data::types::Type;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, OwnedCol};
 use crate::error::WeaverError;
-use crate::key::{KeyDataRange};
+use crate::key::KeyDataRange;
 use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable};
 use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, Rows};
 use crate::storage::b_plus_tree::BPlusTree;
 use crate::storage::paging::buffered_pager::BufferedPager;
 use crate::storage::paging::virtual_pager::{VirtualPager, VirtualPagerTable};
 use crate::storage::tables::table_schema::{ColumnDefinition, TableSchema};
-use crate::storage::{Pager};
+use crate::storage::Pager;
 use crate::tx::{Tx, TxId, TX_ID_COLUMN};
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
@@ -57,7 +52,11 @@ impl<P: Pager + Sync + Send> Debug for UnbufferedTable<P> {
 
 impl<P: Pager + Sync + Send> UnbufferedTable<P> {
     /// Creates a new, empty in memory table
-    pub fn new(mut schema: TableSchema, paged: P, transactional: bool) -> Result<Self, WeaverError> {
+    pub fn new(
+        mut schema: TableSchema,
+        paged: P,
+        transactional: bool,
+    ) -> Result<Self, WeaverError> {
         if transactional
             && !schema
                 .sys_columns()
@@ -229,13 +228,11 @@ where
 
     fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError> {
         match key_index.kind() {
-            KeyIndexKind::All => {
-                self.main_buffer.count(KeyDataRange::from(..))
-            }
-            KeyIndexKind::Range { low, high } => {
-                self.main_buffer.count(KeyDataRange::from((low.clone(), high.clone())))
-            }
-            KeyIndexKind::One(_) => { Ok(1)}
+            KeyIndexKind::All => self.main_buffer.count(KeyDataRange::from(..)),
+            KeyIndexKind::Range { low, high } => self
+                .main_buffer
+                .count(KeyDataRange::from((low.clone(), high.clone()))),
+            KeyIndexKind::One(_) => Ok(1),
         }
     }
 

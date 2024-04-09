@@ -1,9 +1,8 @@
 use std::io::stdout;
 use std::path::Path;
 
-use tempfile::{tempdir};
+use tempfile::tempdir;
 use tracing::info;
-
 
 use weaver_client::write_rows::write_rows;
 use weaver_core::ast::Query;

@@ -1,21 +1,21 @@
-use crate::cancellable_task::{Cancel, CancelRecv, Cancelled};
-use crate::db::core::WeaverDbCore;
-use crate::db::server::processes::WeaverProcessInfo;
-use crate::db::server::WeaverDb;
-
-use crate::error::WeaverError;
-use crate::rows::OwnedRows;
-use crate::storage::tables::shared_table::SharedTable;
-use crate::tx::{Tx};
-use crossbeam::channel::Receiver;
-use serde::{Deserialize, Serialize};
-
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crossbeam::channel::Receiver;
+use serde::{Deserialize, Serialize};
 use tracing::Span;
+
 use weaver_ast::ast::Query;
+
+use crate::cancellable_task::{Cancel, Cancelled, CancelRecv};
+use crate::db::core::WeaverDbCore;
+use crate::db::server::processes::WeaverProcessInfo;
+use crate::db::server::WeaverDb;
+use crate::error::WeaverError;
+use crate::rows::OwnedRows;
+use crate::storage::tables::shared_table::SharedTable;
+use crate::tx::Tx;
 
 /// Headers are used to convey extra data in requests
 #[derive(Default, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -152,26 +152,19 @@ impl From<(DbReqBody, Span)> for DbReq {
     }
 }
 
+pub type CoreWriteCallback =
+    dyn FnOnce(&mut WeaverDbCore, &Receiver<Cancel>) -> Result<DbResp, Cancelled> + Send + Sync;
+pub type CoreReadCallback =
+    dyn FnOnce(&WeaverDbCore, &Receiver<Cancel>) -> Result<DbResp, Cancelled> + Send + Sync;
+pub type ServerCallback =
+    dyn FnOnce(&mut WeaverDb, &Receiver<Cancel>) -> Result<DbResp, Cancelled> + Send + Sync;
+
 /// The base request that is sent to the database
 
 pub enum DbReqBody {
-    OnCoreWrite(
-        Box<
-            dyn FnOnce(&mut WeaverDbCore, &Receiver<Cancel>) -> Result<DbResp, Cancelled>
-                + Send
-                + Sync,
-        >,
-    ),
-    OnCore(
-        Box<
-            dyn FnOnce(&WeaverDbCore, &Receiver<Cancel>) -> Result<DbResp, Cancelled> + Send + Sync,
-        >,
-    ),
-    OnServer(
-        Box<
-            dyn FnOnce(&mut WeaverDb, &Receiver<Cancel>) -> Result<DbResp, Cancelled> + Send + Sync,
-        >,
-    ),
+    OnCoreWrite(Box<CoreWriteCallback>),
+    OnCore(Box<CoreReadCallback>),
+    OnServer(Box<ServerCallback>),
     /// Send a query to the request
     TxQuery(Tx, Query),
     Ping,

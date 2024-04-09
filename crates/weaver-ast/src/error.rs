@@ -1,5 +1,4 @@
-
-use crate::lexing::{TokenError};
+use crate::lexing::TokenError;
 use thiserror::Error;
 
 /// A parse error

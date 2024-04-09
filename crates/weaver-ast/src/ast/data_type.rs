@@ -8,14 +8,12 @@ pub enum DataType {
     Float(FloatType),
     VarCharType(VarCharType),
     VarBinaryType(VarBinaryType),
-    BooleanType(BooleanType)
+    BooleanType(BooleanType),
 }
 
 #[derive(Copy, Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Display)]
 #[display("int")]
 pub struct IntType(pub u8);
-
-
 
 #[derive(Copy, Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Display)]
 #[display("float")]

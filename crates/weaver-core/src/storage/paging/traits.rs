@@ -39,7 +39,7 @@ pub trait Pager: Monitorable {
 
     /// Creates a new page, returning mutable reference to the page and the index
     /// it was created at
-    fn new(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err>;
+    fn new_page(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err>;
 
     /// Removes the page at a given index, freeing the space it's allocated with.
     ///
@@ -49,7 +49,7 @@ pub trait Pager: Monitorable {
     fn free(&self, index: usize) -> Result<(), Self::Err>;
 
     /// Gets the total number of pages allocated
-    fn len(&self) -> usize;
+    fn allocated(&self) -> usize;
 
     /// Gets the total length of the memory reserved space, in bytes, of the paged object
     fn reserved(&self) -> usize;
@@ -60,13 +60,11 @@ pub trait Pager: Monitorable {
     }
 
     fn iter(&self) -> impl Iterator<Item = Result<(Self::Page<'_>, usize), Self::Err>> + '_ {
-        (0..self.len())
-            .map(|index| self.get(index).map(|page| (page, index)))
+        (0..self.allocated()).map(|index| self.get(index).map(|page| (page, index)))
     }
 
     fn iter_mut(&self) -> impl Iterator<Item = Result<(Self::PageMut<'_>, usize), Self::Err>> + '_ {
-        (0..self.len())
-            .map(|index| self.get_mut(index).map(|page| (page, index)))
+        (0..self.allocated()).map(|index| self.get_mut(index).map(|page| (page, index)))
     }
 }
 
@@ -108,6 +106,9 @@ where
 {
     /// Gets the total length of the page
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     /// Gets this page as a slice
     fn as_slice(&self) -> &[u8];
 
@@ -253,9 +254,11 @@ where
     }
 }
 
+type ArcVecPage = Arc<RwLock<Box<[u8]>>>;
+
 /// An implementation over pages
 pub struct VecPager {
-    pages: RwLock<Vec<Arc<RwLock<Box<[u8]>>>>>,
+    pages: RwLock<Vec<ArcVecPage>>,
     usage: RwLock<HashMap<usize, Arc<AtomicI32>>>,
     page_len: usize,
 }
@@ -347,7 +350,7 @@ impl Pager for VecPager {
         })
     }
 
-    fn new(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
+    fn new_page(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
         let index = self.pages.read().len();
         self.pages
             .write()
@@ -366,7 +369,7 @@ impl Pager for VecPager {
         Ok(())
     }
 
-    fn len(&self) -> usize {
+    fn allocated(&self) -> usize {
         self.pages.read().iter().fuse().count()
     }
 

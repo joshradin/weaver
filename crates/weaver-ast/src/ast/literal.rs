@@ -95,10 +95,14 @@ impl From<Binary> for Vec<u8> {
 
 impl Display for Binary {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use std::fmt::Write;
         write!(
             f,
             "x'{}'",
-            self.0.iter().map(|s| format!("{s:x}")).collect::<String>()
+            self.0.iter().fold(String::new(), |mut output, s| {
+                let _ = write!(output, "{s:x}");
+                output
+            })
         )
     }
 }

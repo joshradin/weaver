@@ -2,15 +2,12 @@
 //!
 //! This is persistent information that is stored between executions
 
-
-
 use std::time::Instant;
 
 use crate::data::types::Type;
 use tracing::{debug, info_span};
 
 use crate::db::core::WeaverDbCore;
-
 
 use crate::dynamic_table::EngineKey;
 use crate::error::WeaverError;

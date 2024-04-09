@@ -5,9 +5,9 @@ use std::thread;
 use std::thread::JoinHandle;
 
 use crossbeam::channel::{bounded, Sender};
-use eyre::{eyre};
-use tracing::{debug, error, error_span, warn};
+use eyre::eyre;
 use tracing::level_filters::LevelFilter;
+use tracing::{debug, error, error_span, warn};
 
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::init::AuthConfig;
@@ -106,7 +106,10 @@ where
         let mut context = LoginContext::new();
         context.set_user("root");
         match server {
-            Ok(_) => Ok(WeaverClient::connect_localhost(path.join("weaverdb.socket"), context)?),
+            Ok(_) => Ok(WeaverClient::connect_localhost(
+                path.join("weaverdb.socket"),
+                context,
+            )?),
             Err(err) => Err(eyre!("can not start client without server: {}", err)),
         }
     })

@@ -4,12 +4,14 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 use weaver_ast::ast;
-use weaver_ast::ast::{BinaryOp, ColumnRef, DataType, Expr, FunctionArgs, VarBinaryType, VarCharType};
+use weaver_ast::ast::{
+    BinaryOp, ColumnRef, DataType, Expr, FunctionArgs, VarBinaryType, VarCharType,
+};
 
 use crate::data::values::DbVal;
 use crate::error::WeaverError;
-use crate::queries::execution::evaluation::{find_function, FunctionKind};
 use crate::queries::execution::evaluation::functions::{ArgType, FunctionRegistry};
+use crate::queries::execution::evaluation::{find_function, FunctionKind};
 use crate::storage::tables::table_schema::TableSchema;
 
 #[derive(Debug, Deserialize, Serialize, Hash, Eq, PartialEq, Copy, Clone)]
@@ -107,11 +109,10 @@ impl DbTypeOf for Expr {
     ) -> Result<Type, WeaverError> {
         match self {
             Expr::Column { column } => match (column, context_schema) {
-                (ColumnRef::Resolved(resolved), Some(schema)) => {
-                    Ok(schema.column_by_source(resolved)
-                        .ok_or_else(|| WeaverError::ColumnNotFound(resolved.to_string()))?
-                        .data_type())
-                }
+                (ColumnRef::Resolved(resolved), Some(schema)) => Ok(schema
+                    .column_by_source(resolved)
+                    .ok_or_else(|| WeaverError::ColumnNotFound(resolved.to_string()))?
+                    .data_type()),
                 (ColumnRef::Unresolved(unresolved), None) => {
                     Err(WeaverError::ColumnNotResolved(unresolved.clone()))
                 }
@@ -136,23 +137,21 @@ impl DbTypeOf for Expr {
                     .or(right.type_of(functions, context_schema)),
             },
             Expr::FunctionCall { function, args } => {
-                let FunctionKind {
-                    normal, aggregate
-                } = find_function(functions, function, args, context_schema)?;
+                let FunctionKind { normal, aggregate } =
+                    find_function(functions, function, args, context_schema)?;
 
-                normal.or(aggregate)
-                    .map(|func| {
-                        *func.return_type()
-                    })
+                normal
+                    .or(aggregate)
+                    .map(|func| *func.return_type())
                     .ok_or_else(|| {
                         let arg_types = match args {
-                            FunctionArgs::Params { exprs, .. } => {
-                                exprs.iter().map(|i| i.type_of(functions, context_schema))
-                                     .flat_map(|i| i.ok())
-                                     .map(ArgType::One)
-                                     .collect()
-                            }
-                            FunctionArgs::Wildcard { ..}=> {
+                            FunctionArgs::Params { exprs, .. } => exprs
+                                .iter()
+                                .map(|i| i.type_of(functions, context_schema))
+                                .flat_map(|i| i.ok())
+                                .map(ArgType::One)
+                                .collect(),
+                            FunctionArgs::Wildcard { .. } => {
                                 vec![ArgType::Rows]
                             }
                         };

@@ -4,7 +4,6 @@ use crossbeam::channel::{unbounded, Receiver, RecvError, Sender};
 use std::io;
 use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
 
-
 use crate::access_control::users::User;
 use crate::db::server::cnxn::stream::WeaverStream;
 use crate::db::server::cnxn::transport::{StreamSniffer, Transport};
@@ -114,7 +113,6 @@ pub fn internal_wstream() -> (WeaverStream<InternalStream>, WeaverStream<Interna
     stream2.set_user(User::new("root", "localhost"));
     (stream1, stream2)
 }
-
 
 /// to send a discrete packet of information to a stream
 pub fn packet_write<T: Serialize, W: Write>(writer: &mut W, data: &T) -> Result<usize, io::Error> {

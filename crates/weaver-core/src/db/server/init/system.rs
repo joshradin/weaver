@@ -27,11 +27,13 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), WeaverError> {
     let connection = Arc::new(db.connect());
     let clone = connection.clone();
     connection
-        .send(DbReq::on_core(move |core, _cancel| -> Result<(), WeaverError> {
-            add_process_list(core, &clone)?;
-            init_auth(core, &clone)?;
-            Ok(())
-        }))
+        .send(DbReq::on_core(
+            move |core, _cancel| -> Result<(), WeaverError> {
+                add_process_list(core, &clone)?;
+                init_auth(core, &clone)?;
+                Ok(())
+            },
+        ))
         .join()??;
 
     let duration = start.elapsed();

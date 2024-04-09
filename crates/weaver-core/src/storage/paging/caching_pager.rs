@@ -82,7 +82,8 @@ impl<P: Pager> Pager for LruCachingPager<P> {
                     monitor.misses.fetch_add(1, Ordering::Relaxed);
                 }
                 Ok(CachedPage::from_page(orig))
-            }).cloned()
+            })
+            .cloned()
         }
     }
 
@@ -96,11 +97,11 @@ impl<P: Pager> Pager for LruCachingPager<P> {
         })
     }
 
-    fn new(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
+    fn new_page(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
         if let Some(monitor) = self.monitor.get() {
             monitor.misses.fetch_add(1, Ordering::Relaxed);
         }
-        self.delegate.new()
+        self.delegate.new_page()
     }
 
     fn free(&self, index: usize) -> Result<(), Self::Err> {
@@ -108,8 +109,8 @@ impl<P: Pager> Pager for LruCachingPager<P> {
         self.delegate.free(index)
     }
 
-    fn len(&self) -> usize {
-        self.delegate.len()
+    fn allocated(&self) -> usize {
+        self.delegate.allocated()
     }
 
     fn reserved(&self) -> usize {

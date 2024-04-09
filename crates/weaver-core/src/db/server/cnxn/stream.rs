@@ -13,7 +13,7 @@ use crate::error::WeaverError;
 use std::fmt::Debug;
 use std::io::{Read, Write};
 use std::mem::size_of;
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::sync::OnceLock;
 use tracing::{debug_span, trace};
 

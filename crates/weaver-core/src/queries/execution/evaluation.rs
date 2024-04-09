@@ -1,20 +1,17 @@
 use std::borrow::Cow;
 
-use std::collections::{BTreeMap};
-
-
+use std::collections::BTreeMap;
 
 use itertools::Itertools;
 
-
-use tracing::{trace};
+use tracing::trace;
 use uuid::Uuid;
 
 use builtins::BUILTIN_FUNCTIONS_REGISTRY;
 use weaver_ast::ast::{BinaryOp, ColumnRef, Expr, FunctionArgs, Identifier, UnaryOp};
 
 use crate::data::row::Row;
-use crate::data::types::{DbTypeOf};
+use crate::data::types::DbTypeOf;
 use crate::data::values::DbVal;
 use crate::error::WeaverError;
 use crate::queries::execution::evaluation::functions::{
@@ -41,7 +38,7 @@ impl ExpressionEvaluator {
                 registry
             }
         };
-        
+
         Self {
             compiled_evaluators: Default::default(),
             functions: registry,
@@ -127,9 +124,7 @@ fn runtime_eval_many_rows<'a>(
     function_registry: &FunctionRegistry,
 ) -> Result<Cow<'a, DbVal>, WeaverError> {
     match expr {
-        Expr::Column { column } => {
-            get_from_column(rows[0], scope, expr, column)
-        }
+        Expr::Column { column } => get_from_column(rows[0], scope, expr, column),
         Expr::Literal { literal } => Ok(Cow::Owned(DbVal::from(literal.clone()))),
         Expr::BindParameter { .. } => {
             panic!("bind parameter at this point is probably bad")
@@ -147,8 +142,15 @@ fn runtime_eval_many_rows<'a>(
             function: function_name,
             args,
         } => {
-            let FunctionKind { aggregate: Some(function), .. } = find_function(function_registry, function_name, args, scope)? else {
-                return Err(WeaverError::UnknownFunction(function_name.to_string(), arg_types(function_registry, args, true, scope)))
+            let FunctionKind {
+                aggregate: Some(function),
+                ..
+            } = find_function(function_registry, function_name, args, scope)?
+            else {
+                return Err(WeaverError::UnknownFunction(
+                    function_name.to_string(),
+                    arg_types(function_registry, args, true, scope),
+                ));
             };
 
             let args = match args {
@@ -248,8 +250,15 @@ fn runtime_eval_single_row<'a>(
                 function: function_name,
                 args,
             } => {
-                let FunctionKind { normal: Some(function), .. } = find_function(functions, function_name, args, schema)? else {
-                    return Err(WeaverError::UnknownFunction(function_name.to_string(), arg_types(functions, args, false, schema)))
+                let FunctionKind {
+                    normal: Some(function),
+                    ..
+                } = find_function(functions, function_name, args, schema)?
+                else {
+                    return Err(WeaverError::UnknownFunction(
+                        function_name.to_string(),
+                        arg_types(functions, args, false, schema),
+                    ));
                 };
 
                 let args = match args {
@@ -287,7 +296,7 @@ fn runtime_eval_single_row<'a>(
 #[derive(Debug)]
 pub struct FunctionKind<'a> {
     pub normal: Option<&'a DbFunction>,
-    pub aggregate: Option<&'a DbFunction>
+    pub aggregate: Option<&'a DbFunction>,
 }
 
 pub fn find_function<'a, 't>(
@@ -296,36 +305,47 @@ pub fn find_function<'a, 't>(
     args: &FunctionArgs,
     schema: impl Into<Option<&'t TableSchema>>,
 ) -> Result<FunctionKind<'a>, WeaverError> {
-    let schema= schema.into();
+    let schema = schema.into();
     let normal = {
         let arg_types = arg_types(functions, args, false, schema);
 
-        functions.get(function_name, &arg_types).ok_or_else(|| {
-            WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types)
-        }).ok()
+        functions
+            .get(function_name, &arg_types)
+            .ok_or_else(|| {
+                WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types)
+            })
+            .ok()
     };
 
     let aggregate = {
         let arg_types = arg_types(functions, args, true, schema);
-        functions.get(function_name, &arg_types).ok_or_else(|| {
-            WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types)
-        }).ok()
+        functions
+            .get(function_name, &arg_types)
+            .ok_or_else(|| {
+                WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types)
+            })
+            .ok()
     };
 
     if aggregate.as_ref().or(normal.as_ref()).is_none() {
         let arg_types = arg_types(functions, args, false, schema);
-        return Err(WeaverError::UnknownFunction(function_name.as_ref().to_string(), arg_types))
+        return Err(WeaverError::UnknownFunction(
+            function_name.as_ref().to_string(),
+            arg_types,
+        ));
     }
 
     trace!("normal: {normal:?}, aggregate: {aggregate:?}");
 
-    Ok(FunctionKind {
-        normal,
-        aggregate,
-    })
+    Ok(FunctionKind { normal, aggregate })
 }
 
-fn arg_types<'t>(functions: &FunctionRegistry, args: &FunctionArgs, is_agg: bool, schema: impl Into<Option<&'t TableSchema>>) -> Vec<ArgType> {
+fn arg_types<'t>(
+    functions: &FunctionRegistry,
+    args: &FunctionArgs,
+    is_agg: bool,
+    schema: impl Into<Option<&'t TableSchema>>,
+) -> Vec<ArgType> {
     let schema = schema.into();
     let arg_types = match args {
         FunctionArgs::Params { exprs, .. } => exprs
@@ -438,8 +458,8 @@ mod tests {
     use crate::data::row::Row;
     use crate::data::types::Type;
     use crate::error::WeaverError;
-    use crate::queries::execution::evaluation::{runtime_eval_many_rows, runtime_eval_single_row};
     use crate::queries::execution::evaluation::builtins::BUILTIN_FUNCTIONS_REGISTRY;
+    use crate::queries::execution::evaluation::{runtime_eval_many_rows, runtime_eval_single_row};
     use crate::storage::tables::table_schema::{TableSchema, TableSchemaBuilder};
 
     #[test]

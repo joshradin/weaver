@@ -1,7 +1,11 @@
 //! Visitors for queries
 
-use crate::ast::{ColumnDefinition, ColumnRef, Create, CreateDefinition, CreateTable, DataType, Expr, FromClause, FunctionArgs, Identifier, JoinClause, JoinConstraint, Literal, LoadData, OrderBy, Query, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
 use crate::ast::select::Select;
+use crate::ast::{
+    ColumnDefinition, ColumnRef, Create, CreateDefinition, CreateTable, DataType, Expr, FromClause,
+    FunctionArgs, Identifier, JoinClause, JoinConstraint, Literal, LoadData, OrderBy, Query,
+    ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef,
+};
 
 /// Creates a mut visitor
 #[macro_export]
@@ -117,8 +121,8 @@ visit_mut! {
             condition,
             group_by,
             order_by,
-            
-            
+
+
             ..
         } = select;
 

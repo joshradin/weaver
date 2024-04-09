@@ -6,7 +6,7 @@ use crate::lexing::{Spanned, Token, TokenError, Tokenizer};
 
 use lalrpop_util::{lalrpop_mod, ParseError};
 
-lalrpop_mod!(weaver_query);
+lalrpop_mod!(#[allow(clippy::complexity)] weaver_query);
 
 #[derive(Debug)]
 struct LR1Parser<'a, I: Iterator<Item = Spanned<Token<'a>, usize, TokenError>>> {
@@ -69,16 +69,13 @@ where
     <I as IntoIterator>::IntoIter: 'a,
 {
     let parser = LR1Parser::new(src, tokens.into_iter());
-    
+
     parser.parse()
 }
 
 pub fn parse_literal(string: &str) -> Result<Literal, ParseQueryError> {
     let tokenizer = Tokenizer::new(string);
-    let result = weaver_query::LiteralParser::new().parse(
-        string,
-        tokenizer,
-    );
+    let result = weaver_query::LiteralParser::new().parse(string, tokenizer);
     result.map_err(|e| match e {
         ParseError::InvalidToken { .. } => {
             todo!()

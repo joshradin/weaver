@@ -2,7 +2,6 @@ use derive_more::Display;
 use std::borrow::Cow;
 use std::fmt::Formatter;
 
-
 use thiserror::Error;
 
 /// The token kind is the lexical meaning of a [Token], and defines how it may be used
@@ -123,9 +122,9 @@ SELECT user, password, grants FROM users
  JOIN grants on grants.user_id = 15 and grants.username = "root";
         "#;
         let mut tokenizer = Tokenizer::new(query);
-        let token = tokenizer.next().expect("should have next token");
+        let token = tokenizer.next_token().expect("should have next token");
         assert_eq!(token.1, Token::Select);
-        let token = tokenizer.next().expect("should have next token");
+        let token = tokenizer.next_token().expect("should have next token");
         assert!(matches!(token, (_, Token::Ident(_), _)));
 
         let mut i = 0;
@@ -149,7 +148,7 @@ SELECT user, password, grants FROM users
         let mut tokenizer = Tokenizer::new(&joined);
         let mut name_iter = names.iter();
         loop {
-            let (l, name, r) = tokenizer.next().expect("could not get next ident");
+            let (l, name, r) = tokenizer.next_token().expect("could not get next ident");
             let Token::Ident(ident) = name else {
                 panic!("expected ident token")
             };
@@ -161,7 +160,7 @@ SELECT user, password, grants FROM users
                 "name from span should be same"
             );
 
-            match tokenizer.next().expect("tokenization failed") {
+            match tokenizer.next_token().expect("tokenization failed") {
                 (_, Token::Comma, _) => continue,
                 (_, Token::Eof, _) => break,
                 (_, other, _) => panic!("unexpected token: {other:?}"),

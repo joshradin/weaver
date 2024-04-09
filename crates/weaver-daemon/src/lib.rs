@@ -2,11 +2,11 @@ mod cli;
 
 pub use cli::App;
 
+use color_eyre::eyre;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
-use color_eyre::eyre;
 use tracing::{debug, info, info_span, trace, warn};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
@@ -15,7 +15,6 @@ use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::layers::packets::DbReqBody;
 use weaver_core::db::server::layers::packets::DbResp;
 use weaver_core::db::server::WeaverDb;
-
 
 /// Starts the application
 pub fn run(app: App) -> eyre::Result<()> {
@@ -43,14 +42,10 @@ pub fn run(app: App) -> eyre::Result<()> {
         force_recreate: false,
     };
 
-    let mut weaver = WeaverDb::new(
-        core,
-        auth_config,
-    )?;
+    let mut weaver = WeaverDb::new(core, auth_config)?;
 
     let pair = Arc::new((Mutex::new(false), Condvar::new()));
     let pair2 = pair.clone();
-
 
     weaver.lifecycle_service().startup()?;
     weaver.lifecycle_service().on_teardown(move |_| {
@@ -64,9 +59,9 @@ pub fn run(app: App) -> eyre::Result<()> {
         let mut svc = weaver.lifecycle_service().clone();
         ctrlc::set_handler(move || {
             let _ = svc.teardown();
-        }).expect("failed to set INTERRUPT handler");
+        })
+        .expect("failed to set INTERRUPT handler");
     }
-
 
     let socket_path = app.work_dir().join("weaverdb.socket");
     weaver.bind_tcp((&*app.host, app.port))?;

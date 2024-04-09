@@ -1,13 +1,18 @@
-use crate::data::types::Type;
-use derive_more::From;
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Write;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
+
+use derive_more::From;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
 use weaver_ast::ast;
+
+use crate::data::types::Type;
 use crate::error::WeaverError;
+
 
 /// A single value within a row
 #[derive(Clone, Deserialize, Serialize, From)]
@@ -142,12 +147,13 @@ impl From<Uuid> for DbVal {
 }
 
 impl<T> From<Option<T>> for DbVal
-    where DbVal : From<T>
+where
+    DbVal: From<T>,
 {
     fn from(value: Option<T>) -> Self {
         match value {
-            None => { DbVal::Null }
-            Some(val) => { DbVal::from(val)}
+            None => DbVal::Null,
+            Some(val) => DbVal::from(val),
         }
     }
 }
@@ -162,7 +168,10 @@ impl Display for DbVal {
                 write!(
                     f,
                     "{}",
-                    b.iter().map(|s| format!("{:x}", s)).collect::<String>()
+                    b.iter().fold(String::new(), |mut accum, s| {
+                        let _ = write!(accum, "{:x}", s);
+                        accum
+                    })
                 )
             }
             DbVal::Integer(i) => {
@@ -191,7 +200,10 @@ impl Debug for DbVal {
                 write!(
                     f,
                     "b\"{}\"",
-                    b.iter().map(|s| format!("{:x}", s)).collect::<String>()
+                    b.iter().fold(String::new(), |mut accum, s| {
+                        let _ = write!(accum, "{s:b}");
+                        accum
+                    })
                 )
             }
             DbVal::Integer(i) => {
@@ -218,8 +230,8 @@ impl PartialEq for DbVal {
             (Binary(l, _), Binary(r, _)) => l == r,
             (Boolean(l), Boolean(r)) => l == r,
             (Integer(l), Integer(r)) => l == r,
-            (Integer(l), Float(r)) => *l as f64  == *r,
-            (Float(l), Integer(r)) => *l as i64  == *r,
+            (Integer(l), Float(r)) => *l as f64 == *r,
+            (Float(l), Integer(r)) => *l as i64 == *r,
             (Float(l), Float(r)) => l.total_cmp(r).is_eq(),
             (Null, Null) => true,
             _ => false,
@@ -231,8 +243,14 @@ impl Eq for DbVal {}
 
 impl PartialOrd for DbVal {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DbVal {
+    fn cmp(&self, other: &Self) -> Ordering {
         use DbVal::*;
-        let emit = Some(match (self, other) {
+        match (self, other) {
             (String(l, _), String(r, _)) => l.cmp(r),
             (Binary(l, _), Binary(r, _)) => l.cmp(r),
             (Integer(l), Integer(r)) => l.cmp(r),
@@ -244,15 +262,8 @@ impl PartialOrd for DbVal {
             (Null, Null) => Ordering::Equal,
             (_, Null) => Ordering::Greater,
             (Null, _) => Ordering::Less,
-            _ => return None,
-        });
-        emit
-    }
-}
-
-impl Ord for DbVal {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).expect("could not compare")
+            _ => Ordering::Less,
+        }
     }
 }
 
@@ -264,16 +275,16 @@ impl Hash for DbVal {
             DbVal::Integer(s) => s.hash(state),
             DbVal::Boolean(s) => s.hash(state),
             DbVal::Float(f) => u64::from_be_bytes(f.to_be_bytes()).hash(state),
-            DbVal::Null => { },
+            DbVal::Null => {}
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    
-    use crate::key::KeyData;
     use std::collections::BTreeSet;
+
+    use crate::key::KeyData;
 
     #[test]
     fn order_strings() {

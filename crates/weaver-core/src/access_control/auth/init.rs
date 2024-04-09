@@ -104,7 +104,10 @@ fn x509(path: &Path, keys: Option<(Rsa<Private>, Rsa<Public>)>) -> Result<X509, 
         let private = PKey::from_rsa(private)?;
 
         let mut x509_name = X509NameBuilder::new()?;
-        x509_name.append_entry_by_text("CN", &whoami::fallible::hostname().expect("no hostname found"))?;
+        x509_name.append_entry_by_text(
+            "CN",
+            &whoami::fallible::hostname().expect("no hostname found"),
+        )?;
         let name = x509_name.build();
         builder.set_subject_name(name.as_ref())?;
         builder.set_issuer_name(name.as_ref())?;
@@ -128,7 +131,7 @@ fn x509(path: &Path, keys: Option<(Rsa<Private>, Rsa<Public>)>) -> Result<X509, 
 mod tests {
     use crate::access_control::auth::init::{init_auth_context, AuthConfig};
     use openssl::x509::X509;
-    
+
     use tempfile::tempdir;
 
     #[test]

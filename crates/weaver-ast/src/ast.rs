@@ -3,7 +3,6 @@
 use std::collections::HashSet;
 use std::fmt::Formatter;
 
-
 use derive_more::{Display, From as FromDerive};
 use serde::{Deserialize, Serialize};
 
@@ -14,8 +13,8 @@ pub use from::*;
 pub use identifier::{Identifier, ResolvedColumnRef, UnresolvedColumnRef};
 
 pub use literal::Literal;
-pub use select::*;
 pub use load::*;
+pub use select::*;
 
 use crate::error::ParseQueryError;
 use crate::QueryParser;

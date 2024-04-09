@@ -12,21 +12,27 @@ use crate::tx::Tx;
 
 use std::sync::Arc;
 
+pub type SystemReadFn = dyn for<'a> Fn(
+    &'a DbSocket,
+    &KeyIndex,
+) -> Result<Box<dyn Rows<'a> + Send + 'a>, WeaverError>
++ Send
++ Sync;
+
 /// Provide a system table
 pub struct SystemTable {
     table_schema: TableSchema,
     connection: Arc<DbSocket>,
-    on_read: Box<
-        dyn for<'a> Fn(&'a DbSocket, &KeyIndex) -> Result<Box<dyn Rows<'a> + Send + 'a>, WeaverError>
-            + Send
-            + Sync,
-    >,
+    on_read: Box<SystemReadFn>,
 }
 
 impl SystemTable {
     pub fn new<F>(table_schema: TableSchema, connection: Arc<DbSocket>, on_read: F) -> Self
     where
-        F: for<'a> Fn(&'a DbSocket, &KeyIndex) -> Result<Box<dyn Rows<'a> + Send + 'a>, WeaverError>
+        F: for<'a> Fn(
+                &'a DbSocket,
+                &KeyIndex,
+            ) -> Result<Box<dyn Rows<'a> + Send + 'a>, WeaverError>
             + Send
             + Sync
             + 'static,

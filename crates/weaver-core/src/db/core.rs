@@ -7,14 +7,12 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use tracing::{debug, debug_span, field, info, trace};
 
-
 use crate::db::start_db::start_db;
 use crate::dynamic_table::{DynamicTable, EngineKey, HasSchema, Table};
 use crate::error::WeaverError;
 
 use crate::storage::tables::shared_table::SharedTable;
 use crate::storage::tables::table_schema::TableSchema;
-
 
 use crate::tx::coordinator::TxCoordinator;
 use crate::tx::Tx;
@@ -66,6 +64,7 @@ impl WeaverDbCore {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path.join("weaver.lock"))?;
 
         lock_file.lock_exclusive()?;
@@ -146,7 +145,12 @@ impl WeaverDbCore {
             return Ok(());
         }
 
-        let span = debug_span!("open-table", schema=schema.schema(), table=schema.name(), engine = field::Empty);
+        let span = debug_span!(
+            "open-table",
+            schema = schema.schema(),
+            table = schema.name(),
+            engine = field::Empty
+        );
         let enter = span.enter();
 
         debug!("opening table {}.{} ...", schema.schema(), schema.name());

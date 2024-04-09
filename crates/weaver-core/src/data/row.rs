@@ -67,6 +67,10 @@ impl<'a> Row<'a> {
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Gets the types of the values
     pub fn types(&self) -> Vec<Option<Type>> {
         self.iter().map(|val| val.value_type()).collect()
@@ -193,12 +197,7 @@ impl<'a> From<&'a [DbVal]> for Row<'a> {
 
 impl<'a> From<&'a [Cow<'a, DbVal>]> for Row<'a> {
     fn from(value: &'a [Cow<'a, DbVal>]) -> Self {
-        Self(
-            value
-                .iter().cloned()
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-        )
+        Self(value.to_vec().into_boxed_slice())
     }
 }
 
@@ -342,7 +341,7 @@ impl<'a> From<Row<'a>> for OwnedRow {
     fn from(value: Row<'a>) -> Self {
         Self(Row(value
             .iter()
-            .map(|c| Cow::Owned(c.to_owned().into_owned()))
+            .map(|c| Cow::Owned(c.clone().into_owned()))
             .collect::<Vec<_>>()
             .into_boxed_slice()))
     }
@@ -362,7 +361,7 @@ impl<'a> From<&Row<'a>> for OwnedRow {
     fn from(value: &Row<'a>) -> Self {
         Self(Row(value
             .iter()
-            .map(|c| Cow::Owned(c.to_owned().into_owned()))
+            .map(|c| Cow::Owned(c.clone().into_owned()))
             .collect::<Vec<_>>()
             .into_boxed_slice()))
     }

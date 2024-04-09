@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use clap::{ArgAction, Parser, value_parser};
+use clap::{value_parser, ArgAction, Parser};
 use tracing::level_filters::LevelFilter;
 
 /// App args

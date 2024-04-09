@@ -374,7 +374,10 @@ mod tests {
         })
         .start(0);
         cancellable.cancel().expect("could not cancel");
-        assert!(matches!(cancellable.join(), Err(WeaverError::TaskCancelled)));
+        assert!(matches!(
+            cancellable.join(),
+            Err(WeaverError::TaskCancelled)
+        ));
     }
 
     /// Cancel a task using a spawned canceller from a separate thread
@@ -393,7 +396,10 @@ mod tests {
         })
         .join()
         .unwrap();
-        assert!(matches!(cancellable.join(), Err(WeaverError::TaskCancelled)));
+        assert!(matches!(
+            cancellable.join(),
+            Err(WeaverError::TaskCancelled)
+        ));
     }
 
     /// Cancel long loop

@@ -2,18 +2,17 @@
 
 use std::io::ErrorKind;
 
-
+use std::io;
 use std::thread::sleep;
 use std::time::Duration;
-use std::{io};
 
-use crossbeam::channel::{Receiver};
+use crossbeam::channel::Receiver;
 
 use tracing::{debug, error, info, trace, warn, Span};
 
 use weaver_ast::ast::Query;
 
-use crate::cancellable_task::{Cancel};
+use crate::cancellable_task::Cancel;
 use crate::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use crate::db::server::layers::packets::{DbReqBody, DbResp};
 use crate::db::server::processes::{ProcessState, WeaverProcessChild};
@@ -40,9 +39,9 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
         match handle_message(
             message,
             &mut stream,
-            &mut child,
+            (&mut child,
             cancel,
-            &socket,
+            &socket),
             &mut tx,
             &mut rows,
             span,
@@ -65,12 +64,12 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
     Ok(())
 }
 
+pub type Control<'a> = (&'a mut WeaverProcessChild, &'a Receiver<Cancel>, &'a DbSocket);
+
 fn handle_message<S: MessageStream + Send>(
     message: Message,
     stream: &mut S,
-    child: &mut WeaverProcessChild,
-    cancel: &Receiver<Cancel>,
-    socket: &DbSocket,
+    (child, cancel, socket): Control,
     tx: &mut Option<Tx>,
     mut rows: &mut Option<Box<dyn Rows>>,
     span: &Span,

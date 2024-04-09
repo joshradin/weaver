@@ -14,7 +14,7 @@ use weaver_ast::ast::{BinaryOp, Expr, JoinClause, JoinConstraint, JoinOperator};
 use crate::data::row::Row;
 use crate::data::values::DbVal;
 use crate::db::server::WeakWeaverDb;
-use crate::dynamic_table::{HasSchema};
+use crate::dynamic_table::HasSchema;
 use crate::error::WeaverError;
 
 use crate::queries::execution::strategies::Strategy;
@@ -22,7 +22,6 @@ use crate::queries::query_cost::Cost;
 use crate::queries::query_plan::{QueryPlanKind, QueryPlanNode};
 use crate::rows::{RefRows, Rows};
 use crate::storage::tables::table_schema::TableSchema;
-
 
 /// A join strategy
 pub trait JoinStrategy: Strategy {
@@ -78,6 +77,8 @@ pub struct JoinStrategySelector {
     strategies: Vec<Arc<dyn JoinStrategy>>,
 }
 
+pub type JoinStrategyCost = (Arc<dyn JoinStrategy>, Cost);
+
 impl JoinStrategySelector {
     /// Creates a new join strategy selector
     pub fn new(db: WeakWeaverDb) -> Self {
@@ -113,7 +114,7 @@ impl JoinStrategySelector {
     pub fn get_strategies_for_join(
         &self,
         join: &JoinClause,
-    ) -> Result<Vec<(Arc<dyn JoinStrategy>, Cost)>, WeaverError> {
+    ) -> Result<Vec<JoinStrategyCost>, WeaverError> {
         let mut vec = self
             .strategies
             .iter()
@@ -180,11 +181,7 @@ impl JoinStrategy for HashJoinTableStrategy {
         right: QueryPlanNode,
         join_clause: &JoinClause,
     ) -> Result<QueryPlanNode, WeaverError> {
-        let JoinClause {
-            op,
-            constraint,
-            ..
-        } = join_clause;
+        let JoinClause { op, constraint, .. } = join_clause;
         let target_schema = left.schema().join(right.schema());
         QueryPlanNode::builder()
             .cost(self.join_cost(join_clause).unwrap())

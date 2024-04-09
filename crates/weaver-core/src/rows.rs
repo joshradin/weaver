@@ -83,8 +83,8 @@ pub trait Rows<'t> {
     }
 
     fn map_owned<F: Fn(Row<'t>) -> OwnedRow>(self, callback: F) -> MappedOwnedRows<'t, Self, F>
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         MappedOwnedRows {
             inner: self,
@@ -116,7 +116,6 @@ pub trait Rows<'t> {
     }
 }
 
-
 impl<'a> Debug for dyn Rows<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BoxedRow").finish_non_exhaustive()
@@ -147,7 +146,8 @@ impl From<Box<dyn Rows<'_>>> for OwnedRows {
             vec.push(next.to_owned());
         }
         OwnedRows {
-            schema, rows: VecDeque::from(vec)
+            schema,
+            rows: VecDeque::from(vec),
         }
     }
 }
@@ -207,14 +207,13 @@ pub struct RefRows<'a> {
 }
 
 impl<'a> RefRows<'a> {
-    pub fn new(schema: TableSchema, rows: impl IntoIterator<Item=Row<'a>>) -> Self{
+    pub fn new(schema: TableSchema, rows: impl IntoIterator<Item = Row<'a>>) -> Self {
         Self {
             schema,
             rows: rows.into_iter().collect(),
         }
     }
 }
-
 
 impl<'a> Rows<'a> for RefRows<'a> {
     fn schema(&self) -> &TableSchema {
@@ -225,8 +224,6 @@ impl<'a> Rows<'a> for RefRows<'a> {
         self.rows.pop_front()
     }
 }
-
-
 
 #[derive(Debug)]
 pub struct MappedRows<'a, R: Rows<'a>, F: Fn(Row<'a>) -> Row<'a>> {

@@ -12,7 +12,7 @@ use std::num::NonZeroU32;
 
 use crate::data::row::OwnedRow;
 use crate::data::serde::{deserialize_data_typed, serialize_data_typed, serialize_data_untyped};
-use crate::key::{KeyData};
+use crate::key::KeyData;
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
 
 /// A cell can either just store a key, or a key-value
@@ -28,6 +28,10 @@ impl Cell {
             Cell::Key(k) => k.len(),
             Cell::KeyValue(kv) => kv.len(),
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Gets the key of this cell. Always present
@@ -121,6 +125,10 @@ impl KeyCell {
         2 * size_of::<u32>() + self.bytes.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Gets the id of the page this cell points to.
     pub fn page_id(&self) -> PageId {
         PageId::new(self.page_id.try_into().expect("must always be > 0"))
@@ -206,6 +214,9 @@ impl KeyValueCell {
         size_of::<Flags>() + 2 * size_of::<u32>() + self.key.len() + self.data_record.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     pub fn key_data(&self) -> KeyData {
         KeyData::from(deserialize_data_typed(&self.key).expect("should be valid"))
     }

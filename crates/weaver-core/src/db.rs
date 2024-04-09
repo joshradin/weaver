@@ -1,8 +1,5 @@
 //! The db is responsible for building tables
 
-
-
-
 pub mod core;
 pub mod server;
 

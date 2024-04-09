@@ -4,9 +4,7 @@ use std::fmt::Formatter;
 use std::ops::Deref;
 
 /// An identifier
-#[derive(
-    Debug, Ord, PartialOrd, Hash, Eq, PartialEq, Clone, Serialize, Deserialize,Display,
-)]
+#[derive(Debug, Ord, PartialOrd, Hash, Eq, PartialEq, Clone, Serialize, Deserialize, Display)]
 #[serde(transparent)]
 pub struct Identifier(pub String);
 
@@ -62,7 +60,9 @@ impl Display for UnresolvedColumnRef {
         write!(
             f,
             "?.{}{}",
-            self.table().map(|s| format!("{s}.")).unwrap_or("?.".to_string()),
+            self.table()
+                .map(|s| format!("{s}."))
+                .unwrap_or("?.".to_string()),
             self.column()
         )
     }
@@ -111,7 +111,11 @@ pub struct ResolvedColumnRef {
 }
 
 impl ResolvedColumnRef {
-    pub fn new(schema: impl Into<Identifier>, table: impl Into<Identifier>, column: impl Into<Identifier>) -> Self {
+    pub fn new(
+        schema: impl Into<Identifier>,
+        table: impl Into<Identifier>,
+        column: impl Into<Identifier>,
+    ) -> Self {
         Self {
             schema: schema.into(),
             table: table.into(),

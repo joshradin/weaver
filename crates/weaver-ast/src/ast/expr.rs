@@ -230,7 +230,10 @@ impl Expr {
                 ret.extend(left.postfix());
                 ret.extend(right.postfix());
             }
-            Expr::FunctionCall { args: FunctionArgs::Params { exprs, ..}, .. } => {
+            Expr::FunctionCall {
+                args: FunctionArgs::Params { exprs, .. },
+                ..
+            } => {
                 for arg in exprs.iter().rev() {
                     ret.extend(arg.postfix());
                 }
@@ -253,20 +256,25 @@ impl ReferencesCols for Expr {
                 right: r,
             } => l.columns().into_iter().chain(r.columns()).collect(),
             Expr::FunctionCall {
-                function: _, args: FunctionArgs::Params { distinct: _, exprs, ordered_by }
-            } => {
-                HashSet::from_iter(
-                    exprs.iter()
-                        .chain(ordered_by.iter().flatten())
-                        .flat_map(|expr| expr.columns())
-                )
-            }
+                function: _,
+                args:
+                    FunctionArgs::Params {
+                        distinct: _,
+                        exprs,
+                        ordered_by,
+                    },
+            } => HashSet::from_iter(
+                exprs
+                    .iter()
+                    .chain(ordered_by.iter().flatten())
+                    .flat_map(|expr| expr.columns()),
+            ),
             _ => HashSet::new(),
         }
     }
 }
 
-impl<I : Into<Literal>> From<I> for Expr {
+impl<I: Into<Literal>> From<I> for Expr {
     fn from(value: I) -> Self {
         let literal = value.into();
         Expr::Literal { literal }
@@ -281,8 +289,8 @@ pub enum FunctionArgs {
         ordered_by: Option<Vec<Expr>>,
     },
     Wildcard {
-        distinct: bool
-    }
+        distinct: bool,
+    },
 }
 
 impl Display for FunctionArgs {
@@ -316,7 +324,7 @@ impl Display for FunctionArgs {
                     }
                 )
             }
-            FunctionArgs::Wildcard { distinct} => {
+            FunctionArgs::Wildcard { distinct } => {
                 write!(f, "{}*", distinct.then_some("distinct ").unwrap_or(""))
             }
         }

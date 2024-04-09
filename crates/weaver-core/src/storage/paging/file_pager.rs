@@ -15,11 +15,11 @@ use parking_lot::RwLock;
 use crate::common::hex_dump::HexDump;
 use crate::common::track_dirty::Mad;
 use crate::error::WeaverError;
-use crate::monitoring::{Monitor, monitor_fn, Monitorable, MonitorCollector};
-use crate::storage::paging::traits::{Page, PageMut};
+use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable};
 use crate::storage::devices::ram_file::RandomAccessFile;
-use crate::storage::{PAGE_SIZE, Pager};
 use crate::storage::devices::StorageDevice;
+use crate::storage::paging::traits::{Page, PageMut};
+use crate::storage::{Pager, PAGE_SIZE};
 
 /// Provides a paged abstraction over a [RandomAccessFile]
 #[derive(Debug)]
@@ -207,7 +207,7 @@ impl<F: StorageDevice> Pager for FilePager<F> {
         })
     }
 
-    fn new(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
+    fn new_page(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
         let new_index = {
             let mut guard = self.raf.try_write().ok_or_else(|| {
                 io::Error::new(
@@ -229,7 +229,7 @@ impl<F: StorageDevice> Pager for FilePager<F> {
         Ok(())
     }
 
-    fn len(&self) -> usize {
+    fn allocated(&self) -> usize {
         self.usage_map.read().iter().count()
     }
 
@@ -309,9 +309,9 @@ mod tests {
     use crate::monitoring::Monitorable;
     use tempfile::tempfile;
 
+    use crate::storage::devices::ram_file::RandomAccessFile;
     use crate::storage::paging::file_pager::{FilePageMut, FilePager};
     use crate::storage::paging::traits::{Page, PageMut};
-    use crate::storage::devices::ram_file::RandomAccessFile;
     use crate::storage::Pager;
     use std::io::Write;
 
@@ -320,7 +320,7 @@ mod tests {
         let temp = tempfile().expect("could not create tempfile");
         let ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
         let paged = FilePager::with_file_and_page_len(ram, 4096);
-        let (mut page, index): (FilePageMut<_>, _) = paged.new().unwrap();
+        let (mut page, index): (FilePageMut<_>, _) = paged.new_page().unwrap();
         let slice = page.get_mut(..128).unwrap();
         slice[..6].copy_from_slice(&[0, 1, 2, 3, 4, 5]);
         drop(page);
@@ -337,7 +337,7 @@ mod tests {
         let mut monitor = paged.monitor();
 
         for i in 0..16 {
-            let (mut page, _) = paged.new().expect("could not get next page");
+            let (mut page, _) = paged.new_page().expect("could not get next page");
             write!(page.as_mut_slice(), "hello page {}", i).expect("could not write");
         }
 

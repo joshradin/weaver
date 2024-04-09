@@ -34,11 +34,14 @@ impl InMemoryTable {
     }
 
     /// Creates an in-memory table from a set of rows and a given schema
-    pub fn from_rows<'t>(mut schema: TableSchema, mut rows: impl Rows<'t>) -> Result<Self, WeaverError> {
+    pub fn from_rows<'t>(
+        mut schema: TableSchema,
+        mut rows: impl Rows<'t>,
+    ) -> Result<Self, WeaverError> {
         if let Some(pos) = schema
             .sys_columns()
             .iter()
-            .position(|col| &col.name() == &TX_ID_COLUMN)
+            .position(|col| col.name() == TX_ID_COLUMN)
         {
             schema.remove_sys_column(pos)?;
         }

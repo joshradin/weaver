@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 use std::fmt::{Debug, Formatter};
-
 use std::sync::Arc;
 
 use parking_lot::{Mutex, RwLock};
@@ -22,14 +21,13 @@ pub enum LifecyclePhase {
     Dead,
 }
 
+type LifecycleCallback = dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync;
+
 struct WeaverDbLifecycleServiceInternal {
     weak: WeakWeaverDb,
-    initialization_functions:
-        Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
-    bootstrapping_functions:
-        Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
-    teardown_functions:
-        Vec<Box<dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync>>,
+    initialization_functions: Vec<Box<LifecycleCallback>>,
+    bootstrapping_functions: Vec<Box<LifecycleCallback>>,
+    teardown_functions: Vec<Box<LifecycleCallback>>,
 }
 
 #[derive(Clone)]
@@ -48,9 +46,6 @@ impl Debug for WeaverDbLifecycleService {
 
 impl WeaverDbLifecycleService {
     pub(crate) fn new(db: WeakWeaverDb) -> Self {
-        
-
-
         Self {
             helper: Arc::new(Mutex::new(WeaverDbLifecycleServiceInternal {
                 weak: db,
@@ -175,7 +170,7 @@ impl WeaverDbLifecycleService {
         Ok(())
     }
 
-    #[instrument(skip_all, fields(phase="teardown"))]
+    #[instrument(skip_all, fields(phase = "teardown"))]
     pub fn teardown(&mut self) -> Result<(), WeaverError> {
         let mut phase_lock = self.phase.write();
         match &*phase_lock {
@@ -195,14 +190,17 @@ impl WeaverDbLifecycleService {
             .upgrade()
             .ok_or_else(|| WeaverError::NoCoreAvailable)?;
         // bootstrap
-        let teardown_functions =
-            VecDeque::from_iter(helper.teardown_functions.drain(..));
+        let teardown_functions = VecDeque::from_iter(helper.teardown_functions.drain(..));
 
         for teardown in teardown_functions {
             teardown(&mut weaver)?;
         }
 
-        debug!("weaverdb strong: {}, weak: {}", Arc::strong_count(&weaver.shared), Arc::weak_count(&weaver.shared));
+        debug!(
+            "weaverdb strong: {}, weak: {}",
+            Arc::strong_count(&weaver.shared),
+            Arc::weak_count(&weaver.shared)
+        );
 
         *self.phase.write() = LifecyclePhase::Dead;
         warn!("Weaver dead");

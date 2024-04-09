@@ -1,4 +1,3 @@
-use std::io::ErrorKind;
 use crate::access_control::auth::LoginContext;
 use crate::cnxn::handshake::handshake_listener;
 use crate::cnxn::stream::{tcp_server_handshake, WeaverStream};
@@ -7,6 +6,7 @@ use crate::cnxn::WeaverStreamListener;
 use crate::db::server::WeakWeaverDb;
 use crate::error::WeaverError;
 use interprocess::local_socket::LocalSocketListener;
+use std::io::ErrorKind;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::Path;
 use std::time::Duration;
@@ -53,10 +53,10 @@ impl WeaverStreamListener for WeaverLocalSocketListener {
     fn accept(&self) -> Result<WeaverStream<Self::Stream>, WeaverError> {
         let stream = loop {
             match self.listener.accept() {
-                Ok(stream) => { break stream }
+                Ok(stream) => break stream,
                 Err(error) => {
                     if error.kind() != ErrorKind::WouldBlock {
-                        return Err(error.into())
+                        return Err(error.into());
                     }
                 }
             }
@@ -74,7 +74,7 @@ impl WeaverStreamListener for WeaverLocalSocketListener {
     fn try_accept(&self) -> Result<Option<WeaverStream<Self::Stream>>, WeaverError> {
         self.listener.set_nonblocking(true)?;
         let stream = match self.listener.accept() {
-            Ok(stream) => { stream }
+            Ok(stream) => stream,
             Err(error) => {
                 return if error.kind() == ErrorKind::WouldBlock {
                     Ok(None)

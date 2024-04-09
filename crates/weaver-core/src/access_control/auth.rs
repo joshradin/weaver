@@ -21,7 +21,6 @@ pub mod handshake {
     use std::fmt::Debug;
 
     use tracing::{debug, error_span, warn};
-    
 
     use crate::access_control::auth::context::AuthContext;
     use crate::access_control::auth::LoginContext;
@@ -29,7 +28,7 @@ pub mod handshake {
     use crate::common::stream_support::{packet_read, packet_write, Stream};
     use crate::data::values::DbVal;
     use crate::db::server::cnxn::stream::WeaverStream;
-    
+
     use crate::db::server::layers::packets::DbResp;
     use crate::db::server::socket::DbSocket;
     use crate::error::WeaverError;

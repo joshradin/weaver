@@ -1,8 +1,7 @@
 //! # weaver-ast
 
-
-use std::io::Write;
 use std::io;
+use std::io::Write;
 
 use lexing::Tokenizer;
 
@@ -67,7 +66,6 @@ pub trait ToSql {
         String::from_utf8_lossy(&buffer).to_string()
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -1,37 +1,40 @@
 //! Creates an unoptimized [query plan](QueryPlan) from a [query](Query)
 
-
-use std::cell::{RefCell};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::From;
 use std::marker::PhantomData;
 
-
-
 use tracing::{debug, debug_span, error_span, trace};
 
 use weaver_ast::ast;
-use weaver_ast::ast::{BinaryOp, ColumnRef, Create, Expr, FromClause, FunctionArgs, Identifier, JoinClause, JoinOperator, OrderBy, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
+use weaver_ast::ast::visitor::{
+    visit_result_column_mut, visit_select_mut, visit_table_or_sub_query_mut, VisitorMut,
+};
 use weaver_ast::ast::Select;
-use weaver_ast::ast::visitor::{visit_result_column_mut, visit_select_mut, visit_table_or_sub_query_mut, VisitorMut};
+use weaver_ast::ast::{
+    BinaryOp, ColumnRef, Create, Expr, FromClause, FunctionArgs, Identifier, JoinClause,
+    JoinOperator, OrderBy, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery,
+    UnresolvedColumnRef,
+};
 
-use crate::data::types::{DbTypeOf};
+use crate::data::types::DbTypeOf;
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::socket::DbSocket;
 use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::{DynamicTable, HasSchema, Table};
 use crate::error::WeaverError;
 use crate::key::KeyData;
-use crate::queries::execution::evaluation::{find_function, FunctionKind};
 use crate::queries::execution::evaluation::functions::FunctionRegistry;
+use crate::queries::execution::evaluation::{find_function, FunctionKind};
 use crate::queries::execution::strategies::join::JoinStrategySelector;
 use crate::queries::query_cost::{Cost, CostTable};
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{KeyIndex, KeyIndexKind};
-use crate::storage::tables::{TableRef};
 use crate::storage::tables::table_schema::{
     ColumnDefinition, Key, TableSchema, TableSchemaBuilder,
 };
+use crate::storage::tables::TableRef;
 use crate::tx::Tx;
 
 #[derive(Debug)]
@@ -70,7 +73,7 @@ impl QueryPlanFactory {
                 .map_err(|_| WeaverError::CostTableNotLoaded)?;
 
             let cost_table = CostTable::from_table(&cost_table, tx);
-            if &cost_table != &*self.cost_table.borrow() {
+            if cost_table != *self.cost_table.borrow() {
                 *self.cost_table.borrow_mut() = cost_table;
             }
 
@@ -176,7 +179,7 @@ impl QueryPlanFactory {
             .in_scope(|| self.get_involved_tables(query, plan_context))?;
         debug!("collected tables: {:?}", tables.keys());
         debug!("resolving all identifiers");
-        let ref query = {
+        let query = &{
             let mut query = query.clone();
 
             let in_use = plan_context
@@ -252,6 +255,7 @@ impl QueryPlanFactory {
         node
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_to_plan_node(
         &self,
         db: &DbSocket,
@@ -422,7 +426,8 @@ impl QueryPlanFactory {
                             .rows(outer.rows)
                             .kind(QueryPlanKind::OrderedBy {
                                 ordered: Box::new(outer),
-                                order: order.iter()
+                                order: order
+                                    .iter()
                                     .map(|OrderBy(expr, dir)| {
                                         (expr.clone(), dir.unwrap_or_default())
                                     })
@@ -493,10 +498,7 @@ impl QueryPlanFactory {
                         None => expr.to_string(),
                         Some(alias) => alias.to_string(),
                     };
-                    let non_null = match expr {
-                        Expr::Column { column: _ } => true,
-                        _ => false,
-                    };
+                    let non_null = matches!(expr, Expr::Column { .. });
 
                     let db_type = expr.type_of(function_registry, Some(from_node.schema()))?;
 
@@ -518,7 +520,7 @@ impl QueryPlanFactory {
     fn group_by_to_plan_node(
         &self,
         columns: &Vec<ResultColumn>,
-        groups: &Vec<Expr>,
+        groups: &[Expr],
         grouped: QueryPlanNode,
         function_registry: &FunctionRegistry,
     ) -> Result<QueryPlanNode, WeaverError> {
@@ -539,7 +541,7 @@ impl QueryPlanFactory {
                     )? {
                         return Err(WeaverError::ExpressionNotFunctionallyDependentOnGroupBy(
                             expr.clone(),
-                            groups.clone(),
+                            groups.to_owned(),
                         ));
                     }
                 }
@@ -556,10 +558,7 @@ impl QueryPlanFactory {
                         None => expr.to_string(),
                         Some(alias) => alias.to_string(),
                     };
-                    let non_null = match expr {
-                        Expr::Column { column: _ } => true,
-                        _ => false,
-                    };
+                    let non_null = matches!(expr, Expr::Column { column: _ });
 
                     let db_type = expr.type_of(function_registry, Some(grouped.schema()))?;
 
@@ -584,7 +583,7 @@ impl QueryPlanFactory {
             .rows(grouped.rows)
             .kind(QueryPlanKind::GroupBy {
                 grouped: Box::new(grouped),
-                grouped_by: groups.clone(),
+                grouped_by: groups.to_owned(),
                 result_columns: cols,
             })
             .schema(schema)
@@ -617,8 +616,8 @@ impl QueryPlanFactory {
         ) -> Result<bool, WeaverError> {
             Ok(match dependent {
                 Expr::Column { column } => {
-                    !(!source_columns
-                        .contains(column.resolved().expect("all columns must be resolved")))
+                    source_columns
+                        .contains(column.resolved().expect("all columns must be resolved"))
                 }
                 Expr::Literal { .. } => true,
                 Expr::BindParameter { .. } => {
@@ -837,12 +836,12 @@ impl QueryPlanFactory {
 
     pub fn parse_column_ref(&self, col: &str) -> ColumnRef {
         let split = col.split('.').collect::<Vec<_>>();
-        match &split[..] {
-            &[col] => UnresolvedColumnRef::with_column(Identifier::new(col)).into(),
-            &[table, col] => {
+        match split[..] {
+            [col] => UnresolvedColumnRef::with_column(Identifier::new(col)).into(),
+            [table, col] => {
                 UnresolvedColumnRef::with_table(Identifier::new(table), Identifier::new(col)).into()
             }
-            &[schema, table, col] => ResolvedColumnRef::new(
+            [schema, table, col] => ResolvedColumnRef::new(
                 Identifier::new(schema),
                 Identifier::new(table),
                 Identifier::new(col),
@@ -973,7 +972,6 @@ where
 {
     type Err = WeaverError;
 
-
     fn visit_column_ref_mut(&mut self, column: &mut ColumnRef) -> Result<(), Self::Err> {
         if let ColumnRef::Unresolved(ref unresolved) = column {
             if let Some((schema, table)) = unresolved.table().and_then(|i| self.aliases.get(i)) {
@@ -990,10 +988,6 @@ where
                 );
                 *column = ColumnRef::Resolved(resolved);
             } else {
-
-
-
-
                 debug!("resolving column {unresolved:?}...");
                 let column_id = unresolved.column();
                 if let Some(level_aliases) = self.column_aliases.get(&self.select_level) {
@@ -1001,7 +995,7 @@ where
                         let resolved = ResolvedColumnRef::new(
                             "<select>",
                             format!("{}", self.select_level),
-                            column_id.clone()
+                            column_id.clone(),
                         );
                         debug!("resolved = {resolved}");
                         *column = ColumnRef::Resolved(resolved);
@@ -1035,7 +1029,10 @@ where
                 self.aliases
                     .insert(alias.clone(), (schema.clone(), table_name.clone()));
             }
-            TableOrSubQuery::Select { select: _, alias: _ } => {
+            TableOrSubQuery::Select {
+                select: _,
+                alias: _,
+            } => {
                 panic!("don't know how to handle subquery and aliases");
             }
             _ => {}
@@ -1048,7 +1045,11 @@ where
         &mut self,
         result_column: &mut ResultColumn,
     ) -> Result<(), Self::Err> {
-        if let ResultColumn::Expr { expr: _, alias: Some(alias) } = result_column {
+        if let ResultColumn::Expr {
+            expr: _,
+            alias: Some(alias),
+        } = result_column
+        {
             // debug!("dealing with result column {expr} alias {alias}")
             self.column_aliases
                 .entry(self.select_level)

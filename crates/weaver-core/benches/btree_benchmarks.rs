@@ -17,8 +17,7 @@ fn insert_rand<'a>(
     monitor_collector: impl Into<Option<&'a mut MonitorCollector>>,
 ) -> BPlusTree<VecPager> {
     insert(
-        (0..count)
-            .map(|_| rand::thread_rng().gen_range(0..count as i64)),
+        (0..count).map(|_| rand::thread_rng().gen_range(0..count as i64)),
         page_len,
         monitor_collector,
     )

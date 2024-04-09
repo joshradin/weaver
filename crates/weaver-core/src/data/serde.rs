@@ -1,9 +1,8 @@
-
 use nom::bytes::complete::take;
 use nom::combinator::map;
 use nom::error::ParseError;
 use nom::{Finish, IResult};
-use tracing::{trace};
+use tracing::trace;
 
 use crate::data::row::Row;
 use crate::data::types::Type;
@@ -234,19 +233,17 @@ fn parse_byte_string(bytes: &[u8]) -> IResult<&[u8], &[u8]> {
 fn u16_parser<'a, E: ParseError<&'a [u8]>>(
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], u16, E> + Sized {
     map(take(2_usize), |b: &[u8]| {
-        
         u16::from_be_bytes(b.try_into().expect("infallible"))
     })
 }
 fn u32_parser<'a, E: ParseError<&'a [u8]>>(
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], u32, E> + Sized {
     map(take(4_usize), |b: &[u8]| {
-        
         u32::from_be_bytes(b.try_into().expect("infallible"))
     })
 }
 
-pub fn serialize_data_typed<'a, V: AsRef<DbVal>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
+pub fn serialize_data_typed<V: AsRef<DbVal>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
     let mut serializer = DataSerializer::new(SerdeMode::Typed);
 
     let data = data.into_iter().collect::<Vec<_>>();
@@ -262,7 +259,7 @@ pub fn serialize_data_typed<'a, V: AsRef<DbVal>, I: IntoIterator<Item = V>>(data
     ret
 }
 
-pub fn serialize_data_untyped<'a, V: AsRef<DbVal>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
+pub fn serialize_data_untyped<V: AsRef<DbVal>, I: IntoIterator<Item = V>>(data: I) -> Vec<u8> {
     let mut serializer = DataSerializer::new(SerdeMode::Untyped);
     let data = data.into_iter().collect::<Vec<_>>();
     trace!(
@@ -286,7 +283,7 @@ pub fn deserialize_data_typed<B: AsRef<[u8]>>(data: B) -> Result<Vec<DbVal>, Rea
     ret
 }
 
-pub fn deserialize_data_untyped<'a, B: AsRef<[u8]>, I: IntoIterator<Item = Type>>(
+pub fn deserialize_data_untyped< B: AsRef<[u8]>, I: IntoIterator<Item = Type>>(
     data: B,
     types: I,
 ) -> Result<Vec<DbVal>, ReadDataError> {

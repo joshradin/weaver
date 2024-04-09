@@ -5,11 +5,11 @@
 //! the same cost regardless of amount of rows, so the row factor will be 0, a select would
 //! have a row factor of 1, and a merge could have a row factor of 2.
 
+use crate::data::row::Row;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Mul;
-use crate::data::row::Row;
 
 use crate::data::values::DbVal;
 use crate::dynamic_table::DynamicTable;
@@ -137,7 +137,11 @@ impl CostTable {
         output
     }
 
-    pub fn flush_to_table<T : DynamicTable + ?Sized>(&self, table: &T, tx: &Tx) -> Result<(), WeaverError> {
+    pub fn flush_to_table<T: DynamicTable + ?Sized>(
+        &self,
+        table: &T,
+        tx: &Tx,
+    ) -> Result<(), WeaverError> {
         for (id, cost) in &self.table {
             let row = Row::from([
                 DbVal::from(id),

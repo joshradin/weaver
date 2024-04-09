@@ -230,7 +230,6 @@ mod tests {
     use crate::data::values::DbVal;
     use crate::key::{KeyData, KeyDataRange};
     use std::collections::{BTreeSet, HashSet};
-    
 
     #[test]
     fn order_keys() {

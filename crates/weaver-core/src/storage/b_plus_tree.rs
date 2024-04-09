@@ -36,7 +36,7 @@ impl<P: Pager> Debug for BPlusTree<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut mapping = BTreeMap::new();
         let guard = &self.allocator;
-        for i in 0..guard.len() {
+        for i in 0..guard.allocated() {
             if let Ok(page) = Pager::get(&**guard, i) {
                 mapping.insert(
                     page.page_id(),
@@ -58,7 +58,7 @@ where
     /// Creates a new bplus tree around a pager
     pub fn new(pager: P) -> Self {
         let allocator = SlottedPager::new(pager);
-        let root = if allocator.len() > 0 {
+        let root = if allocator.allocated() > 0 {
             let mut ptr = Pager::get(&allocator, 0)
                 .unwrap_or_else(|_| panic!("should not fail because len > 0"));
             while let Some(parent) = ptr.parent() {
@@ -138,9 +138,7 @@ where
                 self.split(id)?;
                 Ok(true)
             }
-            Err(e) => {
-                Err(e)
-            }
+            Err(e) => Err(e),
         }
     }
 
@@ -299,13 +297,11 @@ where
         let cell = leaf.get(key_data)?;
         match cell {
             None => Ok(None),
-            Some(Cell::Key(_)) => {
-                Err(WeaverError::CellTypeMismatch {
-                    page_id: leaf.page_id(),
-                    expected: PageType::KeyValue,
-                    actual: PageType::Key,
-                })
-            }
+            Some(Cell::Key(_)) => Err(WeaverError::CellTypeMismatch {
+                page_id: leaf.page_id(),
+                expected: PageType::KeyValue,
+                actual: PageType::Key,
+            }),
             Some(Cell::KeyValue(value)) => Ok(Some(Box::from(value.record()))),
         }
     }
@@ -335,23 +331,23 @@ where
             page_ptr = right;
         }
 
-        pages
-            .into_iter()
-            .try_fold(0_u64, |accum, page_id| {
-                let page = self.allocator.get(page_id)?;
-                let page_range = page.key_range()?;
-                if let Some(on_page) = page_range.intersection(&range) {
-                    let page_cells = page
-                        .get_range(on_page)?.len();
-                    Ok(accum + page_cells as u64)
-                } else {
-                    Ok(accum)
-                }
-            })
+        pages.into_iter().try_fold(0_u64, |accum, page_id| {
+            let page = self.allocator.get(page_id)?;
+            let page_range = page.key_range()?;
+            if let Some(on_page) = page_range.intersection(&range) {
+                let page_cells = page.get_range(on_page)?.len();
+                Ok(accum + page_cells as u64)
+            } else {
+                Ok(accum)
+            }
+        })
     }
 
     /// Gets the set of rows from a given range
-    pub fn range<T: Into<KeyDataRange>>(&self, key_data_range: T) -> Result<Vec<Box<[u8]>>, WeaverError> {
+    pub fn range<T: Into<KeyDataRange>>(
+        &self,
+        key_data_range: T,
+    ) -> Result<Vec<Box<[u8]>>, WeaverError> {
         let range = key_data_range.into();
         let Some(root) = *self.root.read() else {
             return Ok(vec![]);
@@ -446,13 +442,10 @@ where
                         } else {
                             match kdr.end_bound() {
                                 Bound::Included(i) => i.cmp(key_data),
-                                Bound::Excluded(i) => {
-                                    
-                                    match i.cmp(key_data) {
-                                        Ordering::Equal => Ordering::Less,
-                                        v => v,
-                                    }
-                                }
+                                Bound::Excluded(i) => match i.cmp(key_data) {
+                                    Ordering::Equal => Ordering::Less,
+                                    v => v,
+                                },
                                 Bound::Unbounded => Ordering::Less,
                             }
                         }
@@ -526,13 +519,10 @@ where
                         } else {
                             match kdr.end_bound() {
                                 Bound::Included(i) => i.cmp(key_data),
-                                Bound::Excluded(i) => {
-                                    
-                                    match i.cmp(key_data) {
-                                        Ordering::Equal => Ordering::Less,
-                                        v => v,
-                                    }
-                                }
+                                Bound::Excluded(i) => match i.cmp(key_data) {
+                                    Ordering::Equal => Ordering::Less,
+                                    v => v,
+                                },
                                 Bound::Unbounded => Ordering::Less,
                             }
                         }

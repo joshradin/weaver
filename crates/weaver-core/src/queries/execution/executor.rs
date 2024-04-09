@@ -10,10 +10,10 @@ use rayon::prelude::*;
 use tracing::trace;
 use tracing::{debug, debug_span};
 
+use weaver_ast::ast;
 use weaver_ast::ast::{CreateDefinition, CreateTable, LoadData, OrderDirection};
-use weaver_ast::{ast};
 
-use crate::data::row::{Row};
+use crate::data::row::Row;
 use crate::data::values::DbVal;
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{DynamicTable, HasSchema};
@@ -23,9 +23,8 @@ use crate::queries::execution::strategies::join::{
     HashJoinTableStrategy, JoinParameters, JoinStrategy,
 };
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
-use crate::rows::{OwnedRows};
+use crate::rows::OwnedRows;
 use crate::rows::{RefRows, Rows};
-
 
 use crate::storage::tables::table_schema::TableSchemaBuilder;
 use crate::tx::Tx;
@@ -123,9 +122,7 @@ impl QueryExecutor {
                                 )?
                                 .bool_value();
                             trace!("{row:?} . {condition} = {evaluated:?}");
-                            if evaluated
-                                == Some(true)
-                            {
+                            if evaluated == Some(true) {
                                 owned.push(row);
                             }
                         }
@@ -197,8 +194,8 @@ impl QueryExecutor {
                     );
 
                     for create_def in create_definitions {
-                        match create_def {
-                            &CreateDefinition::Column(ast::ColumnDefinition {
+                        match *create_def {
+                            CreateDefinition::Column(ast::ColumnDefinition {
                                 ref id,
                                 data_type,
                                 non_null,
@@ -224,7 +221,7 @@ impl QueryExecutor {
                                     schema_builder = schema_builder.primary(&[id.as_ref()])?
                                 }
                             }
-                            &CreateDefinition::Constraint(_) => {
+                            CreateDefinition::Constraint(_) => {
                                 todo!()
                             }
                         }
@@ -385,7 +382,7 @@ impl QueryExecutor {
                                         .evaluate_one_row(expr, row, ordered.schema(), node.id())
                                         .expect("couldn't evaluate")
                                         .as_ref()
-                                        .clone()
+                                        .clone(),
                                 )
                             }),
                         }
@@ -393,9 +390,7 @@ impl QueryExecutor {
 
                     row_stack.push(Box::new(RefRows::new(node.schema.clone(), order_vec)));
                 }
-                &QueryPlanKind::GetPage {
-                    offset, limit, ..
-                } => {
+                &QueryPlanKind::GetPage { offset, limit, .. } => {
                     let mut base = row_stack.pop().expect("no rows to offset");
                     let mut done = false;
 

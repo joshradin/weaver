@@ -1,10 +1,12 @@
 //! Handshake between two connections
 
+use std::time::Duration;
+
+use rand::Rng;
+use tracing::{debug, error, info_span, trace};
+
 use crate::cnxn::{Message, MessageStream};
 use crate::error::WeaverError;
-use rand::Rng;
-use std::time::Duration;
-use tracing::{debug, error, info_span, trace};
 
 /// The client connecting to a listener should be the handshake driver
 pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), WeaverError> {
@@ -36,7 +38,7 @@ pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), WeaverEr
         return Err(WeaverError::HandshakeFailed);
     };
 
-    if &nonce != &nonce_resp[..] {
+    if nonce != nonce_resp[..] {
         error!("Handshake response nonce was not equal");
         return Err(WeaverError::HandshakeFailed);
     }

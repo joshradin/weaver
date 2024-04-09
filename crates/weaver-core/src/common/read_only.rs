@@ -1,6 +1,5 @@
 //! Read only provides read only access to a value, regardless of ownership
 
-
 use std::ops::Deref;
 
 /// Provides read-only access to some value.

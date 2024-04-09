@@ -86,7 +86,7 @@ impl WeaverStreamListener for WeaverTcpListener {
     fn accept(&self) -> Result<WeaverStream<TcpStream>, WeaverError> {
         let (stream, socket_addr) = loop {
             match self.tcp_listener.accept() {
-                Ok(stream) => {break stream }
+                Ok(stream) => break stream,
                 Err(error) => {
                     if error.kind() != ErrorKind::WouldBlock {
                         return Err(error.into());
@@ -113,11 +113,11 @@ impl WeaverStreamListener for WeaverTcpListener {
     fn try_accept(&self) -> Result<Option<WeaverStream<Self::Stream>>, WeaverError> {
         self.tcp_listener.set_nonblocking(true)?;
         let (stream, socket_addr) = match self.tcp_listener.accept() {
-            Ok(stream ) => { stream }
-            Err(e ) => {
+            Ok(stream) => stream,
+            Err(e) => {
                 return match e.kind() {
-                    ErrorKind::WouldBlock => { Ok(None)}
-                    _ => Err(e.into())
+                    ErrorKind::WouldBlock => Ok(None),
+                    _ => Err(e.into()),
                 }
             }
         };

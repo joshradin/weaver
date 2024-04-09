@@ -54,7 +54,10 @@ impl DbSocket {
     }
 
     /// Communicate with the db
-    pub fn send(&self, req: impl Into<DbReq>) -> CancellableTaskHandle<Result<DbResp, WeaverError>> {
+    pub fn send(
+        &self,
+        req: impl Into<DbReq>,
+    ) -> CancellableTaskHandle<Result<DbResp, WeaverError>> {
         let clone = self.clone();
         let span = Span::current();
 

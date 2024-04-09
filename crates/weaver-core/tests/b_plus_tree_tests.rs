@@ -1,6 +1,6 @@
 use rand::distributions::Alphanumeric;
 use rand::rngs::ThreadRng;
-use rand::{Rng};
+use rand::Rng;
 
 use tracing::level_filters::LevelFilter;
 use weaver_core::data::row::Row;
@@ -10,10 +10,7 @@ use weaver_core::storage::b_plus_tree::BPlusTree;
 use weaver_core::storage::VecPager;
 
 fn insert_rand(count: usize) {
-    insert(
-        (0..count)
-            .map(|_| rand::thread_rng().gen_range(-10_000..=10_000)),
-    )
+    insert((0..count).map(|_| rand::thread_rng().gen_range(-10_000..=10_000)))
 }
 
 fn insert_rand_with<V: Into<DbVal>, F: Fn(&mut ThreadRng) -> V>(count: usize, prod: F) {

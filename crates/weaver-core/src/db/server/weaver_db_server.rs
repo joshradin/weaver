@@ -8,11 +8,7 @@ use std::time::{Duration, Instant};
 
 use crossbeam::channel::{Sender, unbounded};
 use parking_lot::{Mutex, RwLock};
-
-
-use tracing::{
-    debug, error, error_span, info, Level, Span, span_enabled, trace, trace_span, warn,
-};
+use tracing::{debug, error, error_span, info, Level, Span, span_enabled, trace, trace_span, warn};
 
 use weaver_ast::ast::Query;
 
@@ -29,6 +25,7 @@ use crate::db::core::{bootstrap, WeaverDbCore};
 use crate::db::server::init::engines::init_engines;
 use crate::db::server::init::system::init_system_tables;
 use crate::db::server::init::weaver::init_weaver_schema;
+use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
 use crate::db::server::lifecycle::{LifecyclePhase, WeaverDbLifecycleService};
@@ -45,13 +42,10 @@ use crate::queries::execution::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
 use crate::queries::query_plan_optimizer::QueryPlanOptimizer;
-
 use crate::tx::coordinator::TxCoordinator;
 use crate::tx::Tx;
 
 use super::layers::packets::{IntoDbResponse, Packet};
-
-use crate::db::server::layers::{Layer, Layers};
 
 /// A server that allows for multiple connections.
 #[derive(Clone)]
@@ -416,7 +410,8 @@ impl WeaverDb {
         db: WeakWeaverDb,
         cont: Arc<AtomicBool>,
     ) -> Result<(), WeaverError>
-        where T::Stream : Send + Sync + 'static
+    where
+        T::Stream: Send + Sync + 'static,
     {
         while cont.load(Ordering::Relaxed) {
             let Ok(stream) = listener.try_accept() else {
@@ -495,7 +490,7 @@ impl WeaverDb {
 
     /// Gets the local address of this server, if open on a tcp connection
     pub fn local_addr(&self) -> Option<SocketAddr> {
-        self.shared.tcp_local_address.get().map(|s| *s)
+        self.shared.tcp_local_address.get().copied()
     }
 
     /// Creates a connection
@@ -527,20 +522,20 @@ impl WeaverDb {
             DbReqBody::OnServer(cb) => (cb)(self, cancel_recv),
             DbReqBody::Ping => Ok(DbResp::Pong),
             DbReqBody::TxQuery(tx, ref query) => {
-                let plan = &(match self.to_plan(&tx, query, ctx.as_ref()).map_err(|e| {
+                let plan_result = self.to_plan(&tx, query, ctx.as_ref()).map_err(|e| {
                     error!("creating plan resulted in error: {}", e);
                     e
-                }) {
-                    Ok(ok) => ok,
-                    Err(err) => return Ok(DbResp::Err(err)),
                 });
+                let plan = match plan_result {
+                    Ok(ref ok) => ok,
+                    Err(err) => return Ok(DbResp::Err(err)),
+                };
                 trace!("created plan: {plan:#?}");
                 let executor = self.query_executor();
-                let x = match executor.execute(&tx, plan) {
+                match executor.execute(&tx, plan) {
                     Ok(rows) => Ok(DbResp::TxRows(tx, rows)),
                     Err(err) => Ok(DbResp::Err(err)),
-                };
-                x
+                }
             }
             DbReqBody::StartTransaction => error_span!("core", mode = "write").in_scope(|| {
                 trace!("getting write access to core");

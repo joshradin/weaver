@@ -19,7 +19,6 @@ use crate::data::types::Type;
 use crate::data::values::DbVal;
 use crate::error::WeaverError;
 
-
 type BuiltinFn = dyn Fn(Vec<ArgValue<'_>>) -> Result<DbVal, WeaverError> + Send + Sync;
 
 /// A function that's runnable from a weaver instance.
@@ -78,9 +77,7 @@ impl DbFunction {
         args: I,
     ) -> Result<DbVal, WeaverError> {
         match &self.body {
-            FunctionBody::Builtin(builtin) => {
-                (builtin)(args.into_iter().collect())
-            }
+            FunctionBody::Builtin(builtin) => (builtin)(args.into_iter().collect()),
         }
     }
 }
@@ -185,12 +182,10 @@ impl FunctionRegistry {
             .or_default()
             .entry(function.signature())
         {
-            Entry::Occupied(_occ) => {
-                Err(WeaverError::FunctionWithSignatureAlreadyExists(
-                    name,
-                    function.signature(),
-                ))
-            }
+            Entry::Occupied(_occ) => Err(WeaverError::FunctionWithSignatureAlreadyExists(
+                name,
+                function.signature(),
+            )),
             Entry::Vacant(vac) => {
                 vac.insert(function);
                 Ok(())
@@ -215,8 +210,12 @@ impl FunctionRegistry {
 
     /// Gets the total number of functions registered
     pub fn len(&self) -> usize {
-        self.functions.values().map(|map| map.len())
-            .sum::<usize>()
+        self.functions.values().map(|map| map.len()).sum::<usize>()
+    }
+
+    /// Gets if this function registry has any functions defined
+    pub fn is_empty(&self) -> bool {
+        self.functions.is_empty()
     }
 }
 
@@ -229,7 +228,8 @@ impl IntoIterator for FunctionRegistry {
             .into_iter()
             .flat_map(|(name, functions)| {
                 let name = name.clone();
-                functions.into_values()
+                functions
+                    .into_values()
                     .map(move |func| (name.clone(), func))
             })
             .collect::<Vec<_>>()
@@ -260,7 +260,12 @@ pub struct FunctionSignature {
 
 impl Debug for FunctionSignature {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({}) -> {}", self.args.iter().map(|i| format!("{i:?}")).join(","), self.ret_type)
+        write!(
+            f,
+            "({}) -> {}",
+            self.args.iter().map(|i| format!("{i:?}")).join(","),
+            self.ret_type
+        )
     }
 }
 
@@ -303,12 +308,12 @@ impl FunctionSignature {
 
 #[cfg(test)]
 mod tests {
-    use std::cmp::Ordering;
     use crate::data::types::Type;
     use crate::data::values::DbVal;
     use crate::queries::execution::evaluation::functions::{
         ArgType, ArgValue, DbFunction, FunctionRegistry,
     };
+    use std::cmp::Ordering;
 
     #[test]
     fn overloads() {
@@ -331,30 +336,35 @@ mod tests {
             )
             .expect("couldn't add first function");
         function_r
-            .add("min", DbFunction::builtin(vec![ArgType::Many(Type::Float)], Type::Float, |args| {
-                let ArgValue::Many(values) = &args[0] else {
-                    panic!("unexpected value")
-                };
+            .add(
+                "min",
+                DbFunction::builtin(vec![ArgType::Many(Type::Float)], Type::Float, |args| {
+                    let ArgValue::Many(values) = &args[0] else {
+                        panic!("unexpected value")
+                    };
 
-                Ok(values
-                    .iter()
-                    .flat_map(|db_val| db_val.float_value())
-                    .reduce(|a, b| {
-                        match a.total_cmp(&b) {
-                            Ordering::Less => { a }
-                            Ordering::Equal => { a }
-                            Ordering::Greater => { b }
-                        }
-                    })
-                    .map(|i| DbVal::Float(i))
-                    .unwrap_or(DbVal::Null))
-            }))
+                    Ok(values
+                        .iter()
+                        .flat_map(|db_val| db_val.float_value())
+                        .reduce(|a, b| match a.total_cmp(&b) {
+                            Ordering::Less => a,
+                            Ordering::Equal => a,
+                            Ordering::Greater => b,
+                        })
+                        .map(|i| DbVal::Float(i))
+                        .unwrap_or(DbVal::Null))
+                }),
+            )
             .expect("couldn't add overload");
         assert_eq!(function_r.len(), 2, "two functions should now be present");
         println!("{function_r:#?}");
 
-        let function1 = function_r.get("min", &[ArgType::Many(Type::Integer)]).expect("should get function 1");
-        let function2 = function_r.get("min", &[ArgType::Many(Type::Float)]).expect("should get function 2");
+        let function1 = function_r
+            .get("min", &[ArgType::Many(Type::Integer)])
+            .expect("should get function 1");
+        let function2 = function_r
+            .get("min", &[ArgType::Many(Type::Float)])
+            .expect("should get function 2");
         assert_ne!(function1.signature(), function2.signature());
     }
 }

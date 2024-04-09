@@ -40,7 +40,6 @@ impl TxCoordinator {
         let tx_lock = Arc::new(Mutex::default());
         let handle = {
             let server = server.clone();
-            ();
             let committed_to = committed_to.clone();
             let active_txs = active_txs.clone();
             let committed_txs = committed_txs.clone();

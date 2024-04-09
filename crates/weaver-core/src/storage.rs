@@ -9,18 +9,18 @@ use nom::error::Error;
 
 use thiserror::Error;
 
-pub use paging::traits::{Pager, VecPager};
 use devices::StorageDevice;
+pub use paging::traits::{Pager, VecPager};
 
 use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::cells::PageId;
 
 pub mod b_plus_tree;
 pub mod cells;
+pub mod devices;
 pub mod engine;
 pub mod paging;
 pub mod tables;
-pub mod devices;
 
 /// Gets the standard page size of 4096 bytes
 pub static PAGE_SIZE: usize = 2 << 11;

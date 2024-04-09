@@ -1,12 +1,12 @@
-use std::fmt::{Debug, Formatter};
-use std::fs::{File, Metadata};
-use std::sync::OnceLock;
-use std::io;
-use std::path::Path;
-use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
-use std::sync::atomic::Ordering;
 use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::devices::{StorageDevice, StorageDeviceMonitor};
+use std::fmt::{Debug, Formatter};
+use std::fs::{File, Metadata};
+use std::io;
+use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
+use std::path::Path;
+use std::sync::atomic::Ordering;
+use std::sync::OnceLock;
 
 /// A random access file allows for accessing the contents of a file
 /// at any given point within the file.
@@ -77,7 +77,7 @@ impl StorageDevice for RandomAccessFile {
     }
     /// Write data at a given offset
     fn write(&mut self, offset: u64, data: &[u8]) -> io::Result<()> {
-        if offset > self.length || offset + data.len() as u64 > self.len(){
+        if offset > self.length || offset + data.len() as u64 > self.len() {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "can't seek past end of file",
@@ -111,7 +111,7 @@ impl StorageDevice for RandomAccessFile {
     }
     /// Read an exact amount of data, returning an error if this can't be done
     fn read_exact(&self, offset: u64, len: u64) -> io::Result<Vec<u8>> {
-        if offset > self.length  || offset + len > self.len(){
+        if offset > self.length || offset + len > self.len() {
             return Err(io::Error::new(
                 ErrorKind::Unsupported,
                 "can't seek past end of file",

@@ -1,7 +1,5 @@
 //! Strategies for the executors
 
-
-
 pub mod join;
 
 /// Base strategy trait

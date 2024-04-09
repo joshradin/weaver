@@ -137,10 +137,10 @@ impl<P: Pager> Pager for BufferedPager<P> {
         }
     }
 
-    fn new(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
+    fn new_page(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
         let (new_page, index) = self
             .buffered
-            .new()
+            .new_page()
             .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
         let slice = Box::from(new_page.as_slice());
 
@@ -171,8 +171,8 @@ impl<P: Pager> Pager for BufferedPager<P> {
         Ok(())
     }
 
-    fn len(&self) -> usize {
-        self.buffered.len()
+    fn allocated(&self) -> usize {
+        self.buffered.allocated()
     }
 
     fn reserved(&self) -> usize {

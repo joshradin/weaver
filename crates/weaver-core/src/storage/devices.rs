@@ -1,17 +1,17 @@
 //! Defines structs that implemented the [StorageDevice] trait
 
-use std::time::Instant;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::io;
-use std::fs::Metadata;
-use std::fmt::Debug;
-use static_assertions::assert_obj_safe;
 use crate::monitoring::{Monitor, Monitorable, Stats};
 use crate::storage::StorageDeviceDelegate;
+use static_assertions::assert_obj_safe;
+use std::fmt::Debug;
+use std::fs::Metadata;
+use std::io;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
 
-pub mod ram_file;
 pub mod mmap_file;
+pub mod ram_file;
 
 /// A file which allows for random access
 pub trait StorageDevice: Debug + Monitorable {
@@ -27,6 +27,9 @@ pub trait StorageDevice: Debug + Monitorable {
     fn read_exact(&self, offset: u64, len: u64) -> io::Result<Vec<u8>>;
     /// Gets the length of the random access file
     fn len(&self) -> u64;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     fn flush(&mut self) -> io::Result<()>;
     fn sync(&mut self) -> io::Result<()>;
 
@@ -137,5 +140,3 @@ impl Monitor for StorageDeviceMonitor {
         ])
     }
 }
-
-

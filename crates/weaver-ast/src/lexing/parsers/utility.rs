@@ -3,9 +3,7 @@ use nom::character::complete::multispace0;
 use nom::combinator::map;
 use nom::error::{ErrorKind, ParseError};
 use nom::sequence::tuple;
-use nom::{
-    Compare, CompareResult, IResult, InputLength, InputTake, Needed, Parser,
-};
+use nom::{Compare, CompareResult, IResult, InputLength, InputTake, Needed, Parser};
 
 pub fn ignore_whitespace<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(
     parser: F,
