@@ -7,13 +7,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::data::row::Row;
-use crate::dynamic_table_factory::DynamicTableFactory;
+
 use crate::error::WeaverError;
 use crate::monitoring::Monitorable;
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
 use crate::storage::tables::in_memory_table::IN_MEMORY_KEY;
-use crate::storage::tables::system_tables::SYSTEM_TABLE_KEY;
+
 use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 
@@ -39,12 +39,12 @@ pub trait DynamicTable: Monitorable + HasSchema + Send + Sync {
     /// Commit any data modified during a transaction
     ///
     /// Only works on supporting tables.
-    fn commit(&self, tx: &Tx) {}
+    fn commit(&self, _tx: &Tx) {}
 
     /// Rollback the current transaction.
     ///
     /// Only works on supporting tables.
-    fn rollback(&self, tx: &Tx) {}
+    fn rollback(&self, _tx: &Tx) {}
 
     /// Create a row. Fails if row's primary key is already present
     fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError>;

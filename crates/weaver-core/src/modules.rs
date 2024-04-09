@@ -1,7 +1,7 @@
 //! Plugin support
 
 use crate::db::server::WeaverDb;
-use crate::error::WeaverError;
+
 use std::borrow::Cow;
 use thiserror::Error;
 

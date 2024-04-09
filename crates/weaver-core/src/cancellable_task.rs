@@ -59,7 +59,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
         let CancellableTask {
             cancel_send,
             cancel_receiver: _,
-            mut func,
+            func,
         } = self;
         let span = Span::current();
         CancellableTaskHandle {
@@ -77,7 +77,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
         let CancellableTask {
             cancel_send,
             cancel_receiver: _,
-            mut func,
+            func,
         } = self;
         let span = Span::current();
         Ok(CancellableTaskHandle {
@@ -90,7 +90,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
             cancelled: AtomicBool::default(),
         })
     }
-    pub fn with_step<F>(mut step: F) -> Self
+    pub fn with_step<F>(step: F) -> Self
     where
         F: FnOnce(I) -> O + 'static + Send + Sync,
     {
@@ -101,7 +101,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
             func: Box::new(move |i| Ok(step(i))),
         }
     }
-    pub fn with_cancel<F>(mut step: F) -> Self
+    pub fn with_cancel<F>(step: F) -> Self
     where
         F: FnOnce(I, &Receiver<Cancel>) -> Result<O, Cancelled> + 'static + Send + Sync,
     {
@@ -113,14 +113,14 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
         }
     }
 
-    pub fn next<F, U>(mut self, mut step: F) -> CancellableTask<I, U>
+    pub fn next<F, U>(self, step: F) -> CancellableTask<I, U>
     where
         F: FnOnce(O) -> U + 'static + Send + Sync,
     {
         let CancellableTask {
             cancel_send,
             cancel_receiver,
-            mut func,
+            func,
         } = self;
         let new_func = {
             let cancel_receiver = cancel_receiver.clone();
@@ -140,14 +140,14 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
         }
     }
 
-    pub fn next_with_cancel<F, U>(mut self, mut step: F) -> CancellableTask<I, U>
+    pub fn next_with_cancel<F, U>(self, step: F) -> CancellableTask<I, U>
     where
         F: FnOnce(O, &Receiver<Cancel>) -> Result<U, Cancelled> + 'static + Send + Sync,
     {
         let CancellableTask {
             cancel_send,
             cancel_receiver,
-            mut func,
+            func,
         } = self;
         let new_func = {
             let cancel_receiver = cancel_receiver.clone();
@@ -167,7 +167,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
         }
     }
 
-    pub fn wrap<T, R, F>(self, mut wrapper: F) -> CancellableTask<T, R>
+    pub fn wrap<T, R, F>(self, wrapper: F) -> CancellableTask<T, R>
     where
         F: FnOnce(
             T,
@@ -181,7 +181,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
         let CancellableTask {
             cancel_send,
             cancel_receiver,
-            mut func,
+            func,
         } = self;
         let new_func = {
             let cancel_receiver = cancel_receiver.clone();
@@ -196,7 +196,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
 
     pub fn for_each<Item, ToIter, Iter, U, Func>(
         self,
-        mut to_iter: ToIter,
+        to_iter: ToIter,
         mut for_each: Func,
     ) -> CancellableTask<I, Vec<U>>
     where
@@ -224,7 +224,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
     }
     pub fn for_each_with_cancel<Item, ToIter, Iter, U, Func>(
         self,
-        mut to_iter: ToIter,
+        to_iter: ToIter,
         mut for_each: Func,
     ) -> CancellableTask<I, Vec<U>>
     where
@@ -307,7 +307,7 @@ impl<O> CancellableTaskHandle<O> {
             .take()
             .unwrap()
             .join()
-            .map_err(|e| WeaverError::ThreadPanicked)
+            .map_err(|_e| WeaverError::ThreadPanicked)
         {
             Ok(ok) => Ok(ok?),
             Err(err) => Err(err),
@@ -360,8 +360,8 @@ mod tests {
     /// Cancel a running task
     #[test]
     fn cancel_task() {
-        let cancellable = CancellableTask::with_cancel(|i: i32, cancel| -> Result<i32, _> {
-            if let Ok(cancel) = cancel.recv() {
+        let cancellable = CancellableTask::with_cancel(|_i: i32, cancel| -> Result<i32, _> {
+            if let Ok(_cancel) = cancel.recv() {
                 return Err(Cancelled);
             }
             unreachable!();
@@ -374,8 +374,8 @@ mod tests {
     /// Cancel a task using a spawned canceller from a separate thread
     #[test]
     fn remote_cancel_task() {
-        let cancellable = CancellableTask::with_cancel(|i: i32, cancel| -> Result<i32, _> {
-            if let Ok(cancel) = cancel.recv() {
+        let cancellable = CancellableTask::with_cancel(|_i: i32, cancel| -> Result<i32, _> {
+            if let Ok(_cancel) = cancel.recv() {
                 return Err(Cancelled);
             }
             unreachable!();

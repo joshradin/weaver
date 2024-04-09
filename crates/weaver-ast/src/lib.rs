@@ -1,9 +1,12 @@
+//! # weaver-ast
+
+
 use std::io::Write;
-use std::{io};
+use std::io;
 
 use lexing::Tokenizer;
 
-use crate::ast::{Query};
+use crate::ast::Query;
 use crate::error::ParseQueryError;
 use crate::lexing::Token;
 use crate::parsing::parse_query;

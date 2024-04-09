@@ -10,7 +10,7 @@ use crate::data::values::DbVal;
 use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{DynamicTable, EngineKey};
 use crate::error::WeaverError;
-use crate::rows::{KeyIndex, Rows};
+
 use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 

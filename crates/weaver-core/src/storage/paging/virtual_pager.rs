@@ -66,6 +66,7 @@ impl<K: Eq + Hash, P: Pager> VirtualPagerTable<K, P> {
         }
     }
 
+    #[allow(unused)] // diagnostic
     fn print_roots(&self) {
         for (index, (hash, addr, len)) in self
             .shared
@@ -116,14 +117,7 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
         self.tlb.lock().get(&(hash, page)).copied()
     }
 
-    fn put_translation<Q: ?Sized>(&self, root_key: &Q, page: usize, translated: usize)
-    where
-        K: Borrow<Q>,
-        Q: Hash,
-    {
-        let hash = self.hash_builder.hash_one(root_key);
-        self.tlb.lock().put((hash, page), translated);
-    }
+
 
     /// adds a new root
     fn add_root(&self, key: K) -> Result<(), VirtualPagerError> {
@@ -164,23 +158,6 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
     {
         let this_hashed = self.hash_builder.hash_one(key);
         Ok(self.roots()?.any(|root| root.0 == this_hashed))
-    }
-
-    fn get_root_index<Q: ?Sized>(&self, key: &Q) -> Result<Option<NonZeroU64>, VirtualPagerError>
-    where
-        K: Borrow<Q>,
-        Q: Hash,
-    {
-        let this_hashed = self.hash_builder.hash_one(key);
-        self.roots()?
-            .find_map(|(hashed, ptr, len)| {
-                if hashed == this_hashed {
-                    Some(ptr)
-                } else {
-                    None
-                }
-            })
-            .ok_or(VirtualPagerError::RootUndefined)
     }
 
     fn get_control_page(&self) -> Result<P::Page<'_>, VirtualPagerError> {
@@ -359,7 +336,7 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
         K: Borrow<Q>,
         Q: Hash,
     {
-        self.with_root_details::<_, _, Result<usize, _>>(key, |mut mad| {
+        self.with_root_details::<_, _, Result<usize, _>>(key, |mad| {
             let ptr = &mut mad.to_mut().1;
             match ptr {
                 &mut Some(address) => Ok(u64::from(address) as usize),
@@ -369,7 +346,7 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
                         .backing_pager
                         .new()
                         .map_err(VirtualPagerError::backing_error)?;
-                    none.insert(NonZeroU64::new(root_ptr as u64).unwrap());
+                    let _ = none.insert(NonZeroU64::new(root_ptr as u64).unwrap());
                     Ok(root_ptr)
                 }
             }
@@ -663,7 +640,7 @@ mod tests {
         let vp_table2 = VirtualPagerTable::<usize, _>::new(vp1).unwrap();
         vp_table2.init(0).expect("could not init inner layer");
         let vp2 = vp_table2.get(0).unwrap().unwrap();
-        let (page, index) = vp2.new().expect("create new page");
+        let (_page, index) = vp2.new().expect("create new page");
         assert_eq!(index, 0);
         vp2.free(index).unwrap();
     }

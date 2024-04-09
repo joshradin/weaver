@@ -3,8 +3,8 @@
 //! The auth context should be idempotent.
 
 use crate::access_control::auth::context::AuthContext;
-use crate::access_control::auth::error::{AuthInitError, AuthInitErrorKind};
-use openssl::asn1::{Asn1Integer, Asn1Time, Asn1TimeRef};
+use crate::access_control::auth::error::AuthInitError;
+use openssl::asn1::{Asn1Integer, Asn1Time};
 use openssl::bn;
 use openssl::hash::MessageDigest;
 use openssl::pkey::{PKey, Private, Public};
@@ -104,7 +104,7 @@ fn x509(path: &Path, keys: Option<(Rsa<Private>, Rsa<Public>)>) -> Result<X509, 
         let private = PKey::from_rsa(private)?;
 
         let mut x509_name = X509NameBuilder::new()?;
-        x509_name.append_entry_by_text("CN", &whoami::hostname())?;
+        x509_name.append_entry_by_text("CN", &whoami::fallible::hostname().expect("no hostname found"))?;
         let name = x509_name.build();
         builder.set_subject_name(name.as_ref())?;
         builder.set_issuer_name(name.as_ref())?;
@@ -128,7 +128,7 @@ fn x509(path: &Path, keys: Option<(Rsa<Private>, Rsa<Public>)>) -> Result<X509, 
 mod tests {
     use crate::access_control::auth::init::{init_auth_context, AuthConfig};
     use openssl::x509::X509;
-    use std::fs::File;
+    
     use tempfile::tempdir;
 
     #[test]
@@ -145,7 +145,7 @@ mod tests {
 
     fn init_server_auth() {
         let temp = tempdir().expect("couldn't create a temp dir");
-        let ctx = init_auth_context(&AuthConfig {
+        let _ctx = init_auth_context(&AuthConfig {
             key_store: temp.path().to_path_buf(),
             force_recreate: true,
         })
@@ -153,7 +153,7 @@ mod tests {
 
         let cert_file = temp.path().join("cert.pem");
         assert!(cert_file.exists());
-        let x509 =
+        let _x509 =
             X509::from_pem(&std::fs::read(&cert_file).unwrap()).expect("invalid X509 certificate");
     }
 }

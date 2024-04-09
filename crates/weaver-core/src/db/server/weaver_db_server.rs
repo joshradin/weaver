@@ -8,10 +8,10 @@ use std::time::{Duration, Instant};
 
 use crossbeam::channel::{Sender, unbounded};
 use parking_lot::{Mutex, RwLock};
-use rayon::{ThreadPool, ThreadPoolBuilder};
-use tempfile::TempDir;
+
+
 use tracing::{
-    debug, error, error_span, info, info_span, Level, Span, span_enabled, trace, trace_span, warn,
+    debug, error, error_span, info, Level, Span, span_enabled, trace, trace_span, warn,
 };
 
 use weaver_ast::ast::Query;
@@ -62,7 +62,7 @@ pub struct WeaverDb {
 pub(super) struct WeaverDbShared {
     core: Arc<RwLock<WeaverDbCore>>,
     message_queue: Sender<MainQueueItem>,
-    main_handle: Option<JoinHandle<()>>,
+    _main_handle: Option<JoinHandle<()>>,
     worker_continue: Arc<AtomicBool>,
     worker_handles: Mutex<Vec<JoinHandle<Result<(), WeaverError>>>>,
 
@@ -89,7 +89,7 @@ pub(super) struct WeaverDbShared {
 
 impl WeaverDb {
     #[cfg(test)]
-    pub fn in_temp_dir() -> Result<(TempDir, Self), WeaverError> {
+    pub fn in_temp_dir() -> Result<(tempfile::TempDir, Self), WeaverError> {
         let (dir, core) = WeaverDbCore::in_temp_dir()?;
         let auth_config = AuthConfig::in_path(dir.path());
         Self::new(core, auth_config).map(|this| (dir, this))
@@ -126,7 +126,7 @@ impl WeaverDb {
                                     warn!("db request processing after db dropped");
                                     return;
                                 };
-                                let mut db = WeaverDb { shared: db };
+                                let db = WeaverDb { shared: db };
 
                                 let req_id = *req.id();
                                 let req = req.unwrap();
@@ -162,7 +162,7 @@ impl WeaverDb {
                                 })
                                 .run()
                                 .join()
-                                .map_err(|e| {
+                                .map_err(|_e| {
                                     error!("panic occurred while processing a request");
                                     WeaverError::ThreadPanicked
                                 }) {
@@ -193,7 +193,7 @@ impl WeaverDb {
             WeaverDbShared {
                 core: shard,
                 message_queue: sc,
-                main_handle: Some(main_handle),
+                _main_handle: Some(main_handle),
                 worker_continue: Arc::new(AtomicBool::new(true)),
                 worker_handles: Mutex::default(),
                 tcp_bound: AtomicBool::new(false),
@@ -210,7 +210,7 @@ impl WeaverDb {
             }
         });
 
-        let mut db = WeaverDb { shared: inner };
+        let db = WeaverDb { shared: inner };
 
         let mut service = db.lifecycle_service();
 
@@ -336,7 +336,7 @@ impl WeaverDb {
             == Ok(false)
         {
             let weak = self.weak();
-            let mut listener = WeaverTcpListener::bind(addr, weak)?;
+            let listener = WeaverTcpListener::bind(addr, weak)?;
             let _ = self.shared.tcp_local_address.set(listener.local_addr()?);
 
             let self_clone = self.weak();
@@ -370,7 +370,7 @@ impl WeaverDb {
         {
             let weak = self.weak();
             let _ = self.shared.socket_file.set(path.clone());
-            let mut listener = WeaverLocalSocketListener::bind(&path, weak)?;
+            let listener = WeaverLocalSocketListener::bind(&path, weak)?;
 
             let self_clone = self.weak();
             let cont = self.shared.worker_continue.clone();
@@ -382,7 +382,7 @@ impl WeaverDb {
 
             self.shared.worker_handles.lock().push(worker);
 
-            self.lifecycle_service().on_teardown(move |db| {
+            self.lifecycle_service().on_teardown(move |_db| {
                 warn!("removing socket file...");
                 std::fs::remove_file(path)?;
                 Ok(())
@@ -421,7 +421,7 @@ impl WeaverDb {
         where T::Stream : Send + Sync + 'static
     {
         while cont.load(Ordering::Relaxed) {
-            let Ok(mut stream) = listener.try_accept() else {
+            let Ok(stream) = listener.try_accept() else {
                 warn!("Listener closed");
                 break;
             };

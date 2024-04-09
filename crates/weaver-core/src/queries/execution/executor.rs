@@ -1,32 +1,32 @@
 use std::borrow::Cow;
 use std::cmp::Reverse;
-use std::str::FromStr;
+
 use std::sync::{Arc, Weak};
 
 use indexmap::IndexMap;
-use nom::combinator::cond;
+
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use tracing::trace;
-use tracing::{debug, debug_span, error, info};
+use tracing::{debug, debug_span};
 
-use weaver_ast::ast::{CreateDefinition, CreateTable, Literal, LoadData, OrderDirection};
-use weaver_ast::{ast, parse_literal};
+use weaver_ast::ast::{CreateDefinition, CreateTable, LoadData, OrderDirection};
+use weaver_ast::{ast};
 
-use crate::data::row::{OwnedRow, Row};
+use crate::data::row::{Row};
 use crate::data::values::DbVal;
 use crate::db::core::WeaverDbCore;
-use crate::dynamic_table::{DynamicTable, EngineKey, HasSchema, Table};
+use crate::dynamic_table::{DynamicTable, HasSchema};
 use crate::error::WeaverError;
 use crate::queries::execution::evaluation::ExpressionEvaluator;
 use crate::queries::execution::strategies::join::{
     HashJoinTableStrategy, JoinParameters, JoinStrategy,
 };
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
-use crate::rows::{KeyIndex, OwnedRows};
+use crate::rows::{OwnedRows};
 use crate::rows::{RefRows, Rows};
-use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
-use crate::storage::tables::in_memory_table::InMemoryTable;
+
+
 use crate::storage::tables::table_schema::TableSchemaBuilder;
 use crate::tx::Tx;
 
@@ -252,9 +252,9 @@ impl QueryExecutor {
                         schema,
                         name,
                         terminated_by,
-                        lines_start,
-                        lines_terminated,
-                        skip,
+                        lines_start: _,
+                        lines_terminated: _,
+                        skip: _,
                         columns,
                     } = load_data;
                     debug!("reading from csv: {infile:?}");
@@ -286,8 +286,8 @@ impl QueryExecutor {
                         },
                     )?;
 
-                    let mut iter = csv_reader.records();
-                    let mut rows = iter
+                    let iter = csv_reader.records();
+                    let rows = iter
                         .into_iter()
                         .par_bridge()
                         .map(|line| {
@@ -343,7 +343,7 @@ impl QueryExecutor {
 
                     trace!("grouped rows: {:#?}", grouped_rows);
                     let mut owned = vec![];
-                    for (grouping, rows) in grouped_rows {
+                    for (_grouping, rows) in grouped_rows {
                         let mut new_row = Row::new(result_columns.len());
                         for (idx, column_expr) in result_columns.iter().enumerate() {
                             trace!("evaluating {column_expr}");

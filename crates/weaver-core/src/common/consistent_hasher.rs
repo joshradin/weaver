@@ -1,6 +1,6 @@
 //! Provides consistent hashing via a given seed value
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::hash::{BuildHasher, Hasher};
 
@@ -62,8 +62,6 @@ impl Debug for SeededHasher {
             .finish()
     }
 }
-
-const MESSAGE_SIZE: usize = 512;
 
 impl Hasher for SeededHasher {
     fn finish(&self) -> u64 {

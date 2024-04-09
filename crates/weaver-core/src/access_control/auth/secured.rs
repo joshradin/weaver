@@ -3,9 +3,9 @@
 use crate::common::stream_support::Stream;
 use crate::error::WeaverError;
 use openssl::ssl::{SslConnector, SslMethod, SslStream, SslVerifyMode};
-use openssl::x509::X509;
+
 use std::io::{Read, Write};
-use tracing::{debug, trace};
+use tracing::trace;
 
 /// Wrapper type around a secured stream
 #[derive(Debug)]
@@ -20,7 +20,7 @@ impl<T: Stream> Secured<T> {
 
     /// Secures an existing stream over tls
     pub fn new(host: &str, stream: T) -> Result<Self, WeaverError> {
-        let mut connector = Self::connector()?;
+        let connector = Self::connector()?;
         let stream = connector.connect(host, stream)?;
         Ok(Self::wrap(stream))
     }

@@ -1,7 +1,7 @@
 //! Join strategies
 
 use std::borrow::Cow;
-use std::cmp::Ordering;
+
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
@@ -14,15 +14,15 @@ use weaver_ast::ast::{BinaryOp, Expr, JoinClause, JoinConstraint, JoinOperator};
 use crate::data::row::Row;
 use crate::data::values::DbVal;
 use crate::db::server::WeakWeaverDb;
-use crate::dynamic_table::{HasSchema, Table};
+use crate::dynamic_table::{HasSchema};
 use crate::error::WeaverError;
-use crate::key::KeyData;
+
 use crate::queries::execution::strategies::Strategy;
 use crate::queries::query_cost::Cost;
 use crate::queries::query_plan::{QueryPlanKind, QueryPlanNode};
 use crate::rows::{RefRows, Rows};
 use crate::storage::tables::table_schema::TableSchema;
-use crate::storage::tables::InMemoryTable;
+
 
 /// A join strategy
 pub trait JoinStrategy: Strategy {

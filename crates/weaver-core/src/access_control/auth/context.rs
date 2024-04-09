@@ -7,7 +7,7 @@ use crate::db::server::cnxn::transport::Transport;
 use crate::error::WeaverError;
 use openssl::pkey::{PKey, Private};
 use openssl::rsa::Rsa;
-use openssl::ssl::{HandshakeError, NameType, SslAcceptor, SslMethod};
+use openssl::ssl::{SslAcceptor, SslMethod};
 use openssl::x509::X509;
 use std::fmt::{Debug, Formatter};
 use tracing::{debug, debug_span, trace};
@@ -31,7 +31,7 @@ impl AuthContext {
         transport: &mut Option<Transport<S>>,
     ) -> Result<(), WeaverError> {
         if let Some(Transport::Insecure(_)) = transport.as_ref() {
-            let mut taken = std::mem::replace(transport, Option::None);
+            let taken = std::mem::replace(transport, Option::None);
             trace!("took insecure transport");
             let Some(Transport::Insecure(to_secure)) = taken else {
                 unreachable!();

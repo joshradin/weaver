@@ -1,5 +1,4 @@
 use std::fmt::{Display, Formatter};
-use std::io::Write;
 
 use derive_more::{Display as DisplayCustom, From};
 use serde::{Deserialize, Serialize};

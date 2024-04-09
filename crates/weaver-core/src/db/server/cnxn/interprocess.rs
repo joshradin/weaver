@@ -7,7 +7,7 @@ use crate::cnxn::WeaverStreamListener;
 use crate::db::server::WeakWeaverDb;
 use crate::error::WeaverError;
 use interprocess::local_socket::LocalSocketListener;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, ToSocketAddrs};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::Path;
 use std::time::Duration;
 use tracing::debug;
@@ -21,7 +21,7 @@ impl WeaverStream<LocalSocketStream> {
     ) -> Result<Self, WeaverError> {
         let stream = LocalSocketStream::connect(path.as_ref())?;
         let socket = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0));
-        let mut socket = Self::new(
+        let socket = Self::new(
             Some(socket.clone()),
             Some(socket),
             true,
@@ -51,7 +51,7 @@ impl WeaverStreamListener for WeaverLocalSocketListener {
     type Stream = LocalSocketStream;
 
     fn accept(&self) -> Result<WeaverStream<Self::Stream>, WeaverError> {
-        let mut stream = loop {
+        let stream = loop {
             match self.listener.accept() {
                 Ok(stream) => { break stream }
                 Err(error) => {
@@ -61,7 +61,7 @@ impl WeaverStreamListener for WeaverLocalSocketListener {
                 }
             }
         };
-        let mut db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
+        let db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
 
         let mut socket = WeaverStream::new(None, None, true, Transport::Insecure(stream.into()));
 
@@ -73,7 +73,7 @@ impl WeaverStreamListener for WeaverLocalSocketListener {
 
     fn try_accept(&self) -> Result<Option<WeaverStream<Self::Stream>>, WeaverError> {
         self.listener.set_nonblocking(true)?;
-        let mut stream = match self.listener.accept() {
+        let stream = match self.listener.accept() {
             Ok(stream) => { stream }
             Err(error) => {
                 return if error.kind() == ErrorKind::WouldBlock {
@@ -84,7 +84,7 @@ impl WeaverStreamListener for WeaverLocalSocketListener {
             }
         };
         self.listener.set_nonblocking(false)?;
-        let mut db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
+        let db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
 
         let mut socket = WeaverStream::new(None, None, true, Transport::Insecure(stream.into()));
 

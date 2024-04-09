@@ -61,9 +61,8 @@ impl Display for UnresolvedColumnRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}{}{}",
-            self.schema().map(|s| format!("{s}.")).unwrap_or_default(),
-            self.table().map(|s| format!("{s}.")).unwrap_or_default(),
+            "?.{}{}",
+            self.table().map(|s| format!("{s}.")).unwrap_or("?.".to_string()),
             self.column()
         )
     }
@@ -84,6 +83,8 @@ impl UnresolvedColumnRef {
         }
     }
 
+    #[deprecated = "uses schema"]
+    #[allow(deprecated)]
     pub fn as_tuple(&self) -> (Option<&Identifier>, Option<&Identifier>, &Identifier) {
         (self.schema(), self.table(), self.column())
     }

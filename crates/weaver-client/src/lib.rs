@@ -23,7 +23,7 @@ pub mod write_rows;
 #[derive(Debug)]
 pub struct WeaverClient<T: Stream> {
     stream: WeaverStream<T>,
-    pid: WeaverPid,
+    _pid: WeaverPid,
 }
 
 impl<T: Stream> Drop for WeaverClient<T> {
@@ -51,7 +51,7 @@ impl WeaverClient<TcpStream> {
         let pid = cnxn.pid;
         Ok(Self {
             stream: client,
-            pid,
+            _pid: pid,
         })
     }
 }
@@ -68,7 +68,7 @@ impl WeaverClient<LocalSocketStream> {
         let pid = cnxn.pid;
         Ok(Self {
             stream: client,
-            pid,
+            _pid: pid,
         })
     }
 }

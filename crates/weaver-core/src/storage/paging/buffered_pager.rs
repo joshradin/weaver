@@ -81,7 +81,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
                 usage: token,
                 slice: occ.get().clone(),
             }),
-            Entry::Vacant(mut vacant) => {
+            Entry::Vacant(vacant) => {
                 let page = self
                     .buffered
                     .get(index)
@@ -120,7 +120,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
                 index,
                 slice: occ.get().clone(),
             }),
-            Entry::Vacant(mut vacant) => {
+            Entry::Vacant(vacant) => {
                 let page = self
                     .buffered
                     .get(index)

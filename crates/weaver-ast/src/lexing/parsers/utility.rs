@@ -1,5 +1,5 @@
 use nom::bytes::complete::{take_while, take_while1};
-use nom::character::complete::{multispace0};
+use nom::character::complete::multispace0;
 use nom::combinator::map;
 use nom::error::{ErrorKind, ParseError};
 use nom::sequence::tuple;
@@ -36,7 +36,7 @@ pub fn ignore_case<'a, Error: ParseError<&'a str>>(
 }
 
 /// Provides a binary parser
-pub fn binary0(input: &str) -> IResult<&str, &str> {
+pub fn _binary0(input: &str) -> IResult<&str, &str> {
     take_while(|c: char| c == '1' || c == '0')(input)
 }
 

@@ -63,7 +63,7 @@ impl<T: AsRef<[u8]>> Debug for HexDump<T> {
                 }
             })
             .enumerate()
-            .try_for_each(|(index, row)| -> fmt::Result {
+            .try_for_each(|(_index, row)| -> fmt::Result {
                 if f.alternate() {
                     write!(f, "    ")?;
                 }
@@ -86,7 +86,7 @@ struct Row<'a> {
 
 impl<'a> Debug for Row<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let (mut byte_view, sanitized): (Vec<String>, String) = self
+        let (byte_view, sanitized): (Vec<String>, String) = self
             .bytes
             .iter()
             .batches(self.bytes_per_row / self.word_size)

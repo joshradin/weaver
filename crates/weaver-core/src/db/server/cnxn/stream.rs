@@ -9,11 +9,11 @@ use crate::cnxn::{read_msg, write_msg, Message, MessageStream};
 use crate::common::stream_support::Stream;
 use crate::db::server::socket::DbSocket;
 use crate::error::WeaverError;
-use serde::{Deserialize, Serialize};
+
 use std::fmt::Debug;
 use std::io::{Read, Write};
 use std::mem::size_of;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr};
 use std::sync::OnceLock;
 use tracing::{debug_span, trace};
 
@@ -134,7 +134,7 @@ mod tests {
     fn open_listener() {
         let server = WeaverDb::default();
 
-        let listener =
+        let _listener =
             WeaverTcpListener::bind("localhost:0", server.weak()).expect("couldnt create listener");
     }
 }

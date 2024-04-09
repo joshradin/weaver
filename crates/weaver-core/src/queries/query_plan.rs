@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Formatter, Pointer};
+use std::fmt::{Debug, Formatter};
 
 use itertools::Itertools;
 use uuid::Uuid;
@@ -195,7 +195,7 @@ impl QueryPlanNode {
 
         match &self.kind {
             QueryPlanKind::TableScan {
-                schema,
+                schema: _,
                 table,
                 keys,
             } => {
@@ -232,7 +232,7 @@ impl QueryPlanNode {
                 )
             }
             QueryPlanKind::Filter {
-                filtered,
+                filtered: _,
                 condition,
             } => {
                 values.push("".into()); // table

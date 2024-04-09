@@ -83,7 +83,7 @@ pub trait PageMut<'a>: Page<'a> {
     /// # Panic
     /// Will be panic if offset + value >= len
     fn write_u64(&mut self, value: u64, offset: usize) {
-        let mut slice = self
+        let slice = self
             .get_mut(offset..(offset + size_of::<u64>()))
             .expect("will overflow off page");
         slice.copy_from_slice(&value.to_be_bytes());

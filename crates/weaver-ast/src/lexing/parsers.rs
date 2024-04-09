@@ -237,6 +237,7 @@ mod tests {
         };
     }
 
+    #[allow(unused)]
     macro_rules! assert_not_token {
         ($test:literal, $token_kind:path, $expected:expr) => {
             let query: &str = $test;

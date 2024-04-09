@@ -2,16 +2,16 @@
 //!
 //! This is persistent information that is stored between executions
 
-use std::collections::BTreeMap;
-use std::sync::Arc;
+
+
 use std::time::Instant;
 
 use crate::data::types::Type;
 use tracing::{debug, info_span};
 
 use crate::db::core::WeaverDbCore;
-use crate::db::server::layers::packets::DbReq;
-use crate::db::server::WeaverDb;
+
+
 use crate::dynamic_table::EngineKey;
 use crate::error::WeaverError;
 use crate::queries::query_cost::CostTable;
@@ -49,7 +49,7 @@ fn cost_table(db: &mut WeaverDbCore) -> Result<(), WeaverError> {
     // gets the default cost table
     let cost_table = CostTable::default();
     let table = db.get_open_table("weaver", "cost")?;
-    let mut tx = Tx::default();
+    let tx = Tx::default();
     cost_table.flush_to_table(&table, &tx)?;
     tx.commit();
 

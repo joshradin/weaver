@@ -4,11 +4,11 @@ use std::collections::BTreeSet;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
-use crossbeam::channel::{bounded, Receiver, Sender};
+use crossbeam::channel::{bounded, Sender};
 use derive_more::{Display, From, Into};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, trace};
+use tracing::{info, trace};
 
 use behavior::{TxCompletion, TxDropBehavior};
 use coordinator::TxCompletionToken;

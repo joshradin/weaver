@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::fmt::{Debug, Formatter};
-use std::process::exit;
+
 use std::sync::Arc;
 
 use parking_lot::{Mutex, RwLock};
@@ -48,7 +48,7 @@ impl Debug for WeaverDbLifecycleService {
 
 impl WeaverDbLifecycleService {
     pub(crate) fn new(db: WeakWeaverDb) -> Self {
-        let mut service = Self {
+        let service = Self {
             helper: Arc::new(Mutex::new(WeaverDbLifecycleServiceInternal {
                 weak: db,
 
@@ -134,7 +134,7 @@ impl WeaverDbLifecycleService {
     }
 
     fn startup_(&mut self) -> Result<(), WeaverError> {
-        let mut helper = &mut *self.helper.lock();
+        let helper = &mut *self.helper.lock();
         let mut weaver = helper
             .weak
             .upgrade()
@@ -189,7 +189,7 @@ impl WeaverDbLifecycleService {
         }
         warn!("Shutting down weaver...");
         drop(phase_lock);
-        let mut helper = &mut *self.helper.lock();
+        let helper = &mut *self.helper.lock();
         let mut weaver = helper
             .weak
             .upgrade()

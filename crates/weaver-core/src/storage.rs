@@ -6,7 +6,7 @@ use std::io::Write;
 use std::string::FromUtf8Error;
 
 use nom::error::Error;
-use nom::ErrorConvert;
+
 use thiserror::Error;
 
 pub use paging::traits::{Pager, VecPager};
@@ -84,16 +84,16 @@ macro_rules! integer {
             type Owned = Self;
 
             fn read(buf: &[u8]) -> ReadResult<Self> {
-                const size: usize = std::mem::size_of::<$int>();
-                let mut int_buf = [0u8; size];
-                int_buf.clone_from_slice(buf.get(..size).ok_or(ReadDataError::UnexpectedEof)?);
+                const SIZE: usize = std::mem::size_of::<$int>();
+                let mut int_buf = [0u8; SIZE];
+                int_buf.clone_from_slice(buf.get(..SIZE).ok_or(ReadDataError::UnexpectedEof)?);
                 Ok(<$int>::from_be_bytes(int_buf))
             }
 
             fn write(&self, mut buf: &mut [u8]) -> WriteResult<usize> {
                 use std::io::Write;
                 buf.write_all(&self.to_be_bytes())
-                    .map_err(|e| WriteDataError::InsufficientSpace)?;
+                    .map_err(|_e| WriteDataError::InsufficientSpace)?;
                 Ok(std::mem::size_of::<$int>())
             }
         }

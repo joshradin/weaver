@@ -18,7 +18,7 @@ use crate::data::row::Row;
 use crate::data::types::Type;
 use crate::data::values::DbVal;
 use crate::error::WeaverError;
-use crate::queries::execution::evaluation::ExpressionEvaluator;
+
 
 type BuiltinFn = dyn Fn(Vec<ArgValue<'_>>) -> Result<DbVal, WeaverError> + Send + Sync;
 

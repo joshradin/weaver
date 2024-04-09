@@ -318,8 +318,8 @@ mod tests {
     #[test]
     fn paged() {
         let temp = tempfile().expect("could not create tempfile");
-        let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
-        let mut paged = FilePager::with_file_and_page_len(ram, 4096);
+        let ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
+        let paged = FilePager::with_file_and_page_len(ram, 4096);
         let (mut page, index): (FilePageMut<_>, _) = paged.new().unwrap();
         let slice = page.get_mut(..128).unwrap();
         slice[..6].copy_from_slice(&[0, 1, 2, 3, 4, 5]);
@@ -332,8 +332,8 @@ mod tests {
     #[test]
     fn get_stats() {
         let temp = tempfile().expect("could not create tempfile");
-        let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
-        let mut paged = FilePager::with_file_and_page_len(ram, 4096);
+        let ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
+        let paged = FilePager::with_file_and_page_len(ram, 4096);
         let mut monitor = paged.monitor();
 
         for i in 0..16 {

@@ -9,7 +9,7 @@ use std::ops::{Deref, Index};
 use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, trace, warn};
+use tracing::{trace, warn};
 
 use weaver_ast::ast::{Identifier, ResolvedColumnRef};
 use weaver_ast::ToSql;
@@ -222,7 +222,7 @@ impl TableSchema {
     /// Validates and modifies a row for this schema
     pub fn validate<'a, T: DynamicTable>(
         &self,
-        mut row: Row<'a>,
+        row: Row<'a>,
         tx: &Tx,
         table: &T,
     ) -> Result<Row<'a>, WeaverError> {
@@ -384,7 +384,7 @@ impl ColumnDefinition {
         let name = name.as_ref().to_string();
         (|| -> Result<Self, WeaverError> {
             let auto_increment = auto_increment.into();
-            if let Some(ref auto_increment) = auto_increment {
+            if let Some(ref _auto_increment) = auto_increment {
                 if data_type != Type::Integer {
                     return Err(WeaverError::IllegalAutoIncrement {
                         reason: "only number types can be auto incremented".to_string(),
@@ -639,7 +639,7 @@ impl TableSchemaBuilder {
     }
 
     /// Sets the primary key
-    pub fn index(mut self, name: &str, cols: &[&str], unique: bool) -> Result<Self, WeaverError> {
+    pub fn index(mut self, name: &str, cols: &[&str], _unique: bool) -> Result<Self, WeaverError> {
         let non_null = cols.iter().try_fold(true, |accum, col| {
             if let Some(col) = self.columns.iter().find(|column| &column.name == col) {
                 Ok(col.non_null && accum)
@@ -666,12 +666,12 @@ impl TableSchemaBuilder {
     }
 
     #[inline]
-    pub fn in_memory(mut self) -> Self {
+    pub fn in_memory(self) -> Self {
         self.engine(EngineKey::new(IN_MEMORY_KEY))
     }
 
     pub fn build(self) -> Result<TableSchema, WeaverError> {
-        let mut columns = self.columns;
+        let columns = self.columns;
         let mut sys_columns = vec![];
         let mut keys = self.keys;
 

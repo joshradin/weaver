@@ -1,26 +1,26 @@
 //! Query plan optimization
 
 use std::cell::RefCell;
-use std::collections::{HashSet, VecDeque};
-use std::fmt::{Debug, Formatter};
+use std::collections::{HashSet};
+use std::fmt::{Debug};
 
-use derive_more::DebugCustom;
-use digest::typenum::op;
+
+
 use static_assertions::assert_obj_safe;
-use tracing::{debug, debug_span, instrument, trace};
+use tracing::{debug, debug_span, trace};
 use uuid::Uuid;
 
 use weaver_ast::ast::{BinaryOp, ColumnRef, Expr, Identifier, ReferencesCols, ResolvedColumnRef};
 
-use crate::db::server::layers::packets::DbResp;
+
 use crate::db::server::socket::DbSocket;
 use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::{DynamicTable, HasSchema};
 use crate::error::WeaverError;
-use crate::queries::execution::strategies::join::JoinStrategySelector;
+
 use crate::queries::query_cost::CostTable;
 use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
-use crate::rows::KeyIndex;
+
 use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 
@@ -165,7 +165,7 @@ fn push_down_filter(parent: &mut QueryPlanNode, socket: &DbSocket) -> Result<(),
     let created = match &child.kind {
         QueryPlanKind::Filter {
             filtered: grandchild,
-            condition,
+            condition: _,
         } => {
             let mut parent = parent.clone();
             let mut child = *child.clone();

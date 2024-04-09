@@ -1,7 +1,7 @@
 use crate::data::row::{OwnedRow, Row};
-use crate::data::types::Type;
+
 use crate::data::values::DbVal;
-use derive_more::From;
+
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
 use std::ops::{Bound, Deref, RangeBounds};
@@ -230,7 +230,7 @@ mod tests {
     use crate::data::values::DbVal;
     use crate::key::{KeyData, KeyDataRange};
     use std::collections::{BTreeSet, HashSet};
-    use std::ops::Bound;
+    
 
     #[test]
     fn order_keys() {

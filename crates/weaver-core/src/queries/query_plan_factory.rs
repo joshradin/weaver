@@ -1,21 +1,21 @@
 //! Creates an unoptimized [query plan](QueryPlan) from a [query](Query)
 
-use std::borrow::Cow;
-use std::cell::{OnceCell, RefCell};
+
+use std::cell::{RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::convert::From;
 use std::marker::PhantomData;
 
-use parking_lot::RwLock;
-use rand::Rng;
+
+
 use tracing::{debug, debug_span, error_span, trace};
 
 use weaver_ast::ast;
-use weaver_ast::ast::{BinaryOp, ColumnRef, Create, Expr, FromClause, FunctionArgs, Identifier, JoinClause, JoinConstraint, JoinOperator, OrderBy, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
+use weaver_ast::ast::{BinaryOp, ColumnRef, Create, Expr, FromClause, FunctionArgs, Identifier, JoinClause, JoinOperator, OrderBy, Query, ReferencesCols, ResolvedColumnRef, ResultColumn, TableOrSubQuery, UnresolvedColumnRef};
 use weaver_ast::ast::Select;
 use weaver_ast::ast::visitor::{visit_result_column_mut, visit_select_mut, visit_table_or_sub_query_mut, VisitorMut};
 
-use crate::data::types::{DbTypeOf, Type};
+use crate::data::types::{DbTypeOf};
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::socket::DbSocket;
 use crate::db::server::WeakWeaverDb;
@@ -26,9 +26,9 @@ use crate::queries::execution::evaluation::{find_function, FunctionKind};
 use crate::queries::execution::evaluation::functions::FunctionRegistry;
 use crate::queries::execution::strategies::join::JoinStrategySelector;
 use crate::queries::query_cost::{Cost, CostTable};
-use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode, QueryPlanNodeBuilder};
+use crate::queries::query_plan::{QueryPlan, QueryPlanKind, QueryPlanNode};
 use crate::rows::{KeyIndex, KeyIndexKind};
-use crate::storage::tables::{table_schema, TableRef};
+use crate::storage::tables::{TableRef};
 use crate::storage::tables::table_schema::{
     ColumnDefinition, Key, TableSchema, TableSchemaBuilder,
 };
@@ -281,7 +281,7 @@ impl QueryPlanFactory {
                     (schema.as_ref().map(|s| s.as_ref()), table_name.as_ref()),
                     plan_context,
                 )?;
-                let mut table_schema = real_tables
+                let table_schema = real_tables
                     .get(&table_ref)
                     .expect("could not get schema")
                     .clone();
@@ -314,7 +314,7 @@ impl QueryPlanFactory {
                 )?;
                 match alias {
                     None => Ok(node),
-                    Some(alias) => {
+                    Some(_alias) => {
                         unimplemented!("select query aliasing");
                     }
                 }
@@ -563,14 +563,14 @@ impl QueryPlanFactory {
                         cols.push(expr);
                     }
                 }
-                ResultColumn::TableWildcard(table) => {}
+                ResultColumn::TableWildcard(_table) => {}
                 ResultColumn::Expr { expr, alias } => {
                     let name = match alias {
                         None => expr.to_string(),
                         Some(alias) => alias.to_string(),
                     };
                     let non_null = match expr {
-                        Expr::Column { column } => true,
+                        Expr::Column { column: _ } => true,
                         _ => false,
                     };
 
@@ -622,7 +622,7 @@ impl QueryPlanFactory {
             }
         }
 
-        let source_schema = &grouped.schema;
+        let _source_schema = &grouped.schema;
         let mut schema_builder = TableSchemaBuilder::new("<query>", "<grouped_by>");
         let mut cols = vec![];
         for result_column in columns {
@@ -633,7 +633,7 @@ impl QueryPlanFactory {
                         Some(alias) => alias.to_string(),
                     };
                     let non_null = match expr {
-                        Expr::Column { column } => true,
+                        Expr::Column { column: _ } => true,
                         _ => false,
                     };
 
@@ -778,9 +778,9 @@ impl QueryPlanFactory {
         error_span!("JOIN").in_scope(|| -> Result<QueryPlanNode, WeaverError> {
             let JoinClause {
                 left,
-                op,
+                op: _,
                 right,
-                constraint,
+                constraint: _,
             } = join_clause;
 
             let left = self.table_or_sub_query_to_plan_node(
@@ -937,7 +937,7 @@ impl QueryPlanFactory {
         &self,
         column_ref: &UnresolvedColumnRef,
         involved_tables: &HashMap<TableRef, TableSchema>,
-        ctx: Option<&WeaverProcessInfo>,
+        _ctx: Option<&WeaverProcessInfo>,
     ) -> Result<ResolvedColumnRef, WeaverError> {
         match column_ref.as_tuple() {
             (None, None, col) => {
@@ -1122,7 +1122,7 @@ where
                 self.aliases
                     .insert(alias.clone(), (schema.clone(), table_name.clone()));
             }
-            TableOrSubQuery::Select { select, alias } => {
+            TableOrSubQuery::Select { select: _, alias: _ } => {
                 panic!("don't know how to handle subquery and aliases");
             }
             _ => {}
@@ -1135,7 +1135,7 @@ where
         &mut self,
         result_column: &mut ResultColumn,
     ) -> Result<(), Self::Err> {
-        if let ResultColumn::Expr { expr, alias: Some(alias) } = result_column {
+        if let ResultColumn::Expr { expr: _, alias: Some(alias) } = result_column {
             // debug!("dealing with result column {expr} alias {alias}")
             self.column_aliases
                 .entry(self.select_level)

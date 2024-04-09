@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::hint;
 use std::sync::Arc;
-use tracing::{debug, error_span, trace, trace_span, warn, Span};
+use tracing::{debug, trace, trace_span, warn, Span};
 
 pub type MainQueueItem = (Packet<DbReq>, Sender<Packet<DbResp>>);
 
@@ -59,7 +59,7 @@ impl DbSocket {
         let span = Span::current();
 
         CancellableTask::with_cancel(
-            move |req: DbReq, canceler| -> Result<Result<DbResp, WeaverError>, Cancelled> {
+            move |req: DbReq, _canceler| -> Result<Result<DbResp, WeaverError>, Cancelled> {
                 trace_span!("req-resp", pid = clone.shared.pid).in_scope(
                     || -> Result<Result<DbResp, WeaverError>, Cancelled> {
                         let mut req: DbReq = req.into();
@@ -131,7 +131,7 @@ impl DbSocket {
             .send(DbReqBody::on_core({
                 let schema = schema.clone();
                 let table = table.clone();
-                move |core, cancel| {
+                move |core, _cancel| {
                     debug!("getting table {:?}", (&schema, &table));
                     let table = match core.get_open_table(&schema, &table) {
                         Ok(table) => table,

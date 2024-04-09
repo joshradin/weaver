@@ -81,7 +81,7 @@ impl MonitorCollector {
         for monitor in monitors.iter_mut() {
             let stats = monitor.stats();
             let name = monitor.name();
-            let mut entry = hashmap.entry(name.to_string());
+            let entry = hashmap.entry(name.to_string());
             match entry {
                 Entry::Occupied(mut occ) => {
                     occ.insert(occ.get().merge(&stats));
@@ -335,13 +335,13 @@ impl Stats {
     ///
     /// Dict values are merged per key. Arrays are concatted, and sub-stats are merged
     pub fn merge(&self, other: &Self) -> Self {
-        let mut this = self.merge_self();
-        let mut other = other.merge_self();
+        let this = self.merge_self();
+        let other = other.merge_self();
         match (this, other) {
             (Self::Dict(l), Self::Dict(r)) => Self::Dict(l.iter().chain(r.iter()).fold(
                 IndexMap::with_capacity(l.len() + r.len()),
                 |mut map, (k, v)| {
-                    let mut v = v.merge_self();
+                    let v = v.merge_self();
                     match map.entry(k.to_string()) {
                         Entry::Occupied(mut occ) => {
                             *occ.get_mut() = occ.get().merge(&v);

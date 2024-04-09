@@ -32,7 +32,7 @@ impl WeaverStream<TcpStream> {
         login_context: LoginContext,
     ) -> Result<Self, WeaverError> {
         let connected = {
-            let mut iter = socket_addr.to_socket_addrs()?;
+            let iter = socket_addr.to_socket_addrs()?;
             let mut found_stream = None;
             for ref socket_addr in iter {
                 let socket_addr: &SocketAddr = socket_addr;
@@ -48,7 +48,7 @@ impl WeaverStream<TcpStream> {
         };
 
         let socket_addr = connected.peer_addr().ok();
-        let mut socket = Self::new(
+        let socket = Self::new(
             socket_addr,
             connected.peer_addr().ok(),
             false,
@@ -84,7 +84,7 @@ impl WeaverStreamListener for WeaverTcpListener {
 
     /// Accepts an incoming connection
     fn accept(&self) -> Result<WeaverStream<TcpStream>, WeaverError> {
-        let (mut stream, socket_addr) = loop {
+        let (stream, socket_addr) = loop {
             match self.tcp_listener.accept() {
                 Ok(stream) => {break stream }
                 Err(error) => {
@@ -95,7 +95,7 @@ impl WeaverStreamListener for WeaverTcpListener {
             }
         };
 
-        let mut db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
+        let db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
 
         let mut socket = WeaverStream::new(
             Some(socket_addr),
@@ -112,7 +112,7 @@ impl WeaverStreamListener for WeaverTcpListener {
 
     fn try_accept(&self) -> Result<Option<WeaverStream<Self::Stream>>, WeaverError> {
         self.tcp_listener.set_nonblocking(true)?;
-        let (mut stream, socket_addr) = match self.tcp_listener.accept() {
+        let (stream, socket_addr) = match self.tcp_listener.accept() {
             Ok(stream ) => { stream }
             Err(e ) => {
                 return match e.kind() {
@@ -122,7 +122,7 @@ impl WeaverStreamListener for WeaverTcpListener {
             }
         };
         self.tcp_listener.set_nonblocking(false)?;
-        let mut db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
+        let db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
 
         let mut socket = WeaverStream::new(
             Some(socket_addr),

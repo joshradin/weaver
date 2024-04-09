@@ -1,6 +1,6 @@
 //! Table in a file
 
-use std::collections::HashMap;
+
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -18,7 +18,7 @@ use crate::storage::devices::ram_file::RandomAccessFile;
 use crate::storage::devices::StorageDevice;
 use crate::storage::paging::caching_pager::LruCachingPager;
 use crate::storage::paging::file_pager::FilePager;
-use crate::storage::paging::virtual_pager::{VirtualPager, VirtualPagerTable};
+
 use crate::storage::tables::table_schema::TableSchema;
 use crate::storage::tables::unbuffered_table::UnbufferedTable;
 use crate::storage::{Pager, StorageDeviceDelegate};

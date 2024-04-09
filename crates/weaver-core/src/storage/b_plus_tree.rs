@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use parking_lot::{Mutex, RwLock};
 use ptree::{print_tree, write_tree, TreeBuilder};
-use tracing::{error, instrument, trace, warn};
+use tracing::{error, warn};
 
 use crate::data::row::OwnedRow;
 use crate::error::WeaverError;
@@ -57,7 +57,7 @@ where
 {
     /// Creates a new bplus tree around a pager
     pub fn new(pager: P) -> Self {
-        let mut allocator = SlottedPager::new(pager);
+        let allocator = SlottedPager::new(pager);
         let root = if allocator.len() > 0 {
             let mut ptr = Pager::get(&allocator, 0)
                 .unwrap_or_else(|_| panic!("should not fail because len > 0"));
@@ -147,7 +147,7 @@ where
     /// splits the page given by a specified ID
     fn split(&self, page_id: PageId) -> Result<(), WeaverError> {
         self.verify_integrity();
-        let mut allocator = &self.allocator;
+        let allocator = &self.allocator;
         let mut page = allocator.get_mut(page_id)?;
         let page_type = page.page_type();
         let (mut split_page, _) = allocator.new_with_type(page_type)?;
@@ -547,7 +547,7 @@ where
                             traversal.push((cells[good].0.clone(), key.page_id()));
                             ptr = key.page_id()
                         }
-                        Err(close) => {
+                        Err(_close) => {
                             return Err(WeaverError::NotFound(key_data.clone()));
                         }
                     }
@@ -578,7 +578,7 @@ where
             let old_key_data = old_cell.key_data();
             if &old_key_data < new_max {
                 let removed = parent_page.delete(&old_key_data)?;
-                if let Some(removed) = removed {
+                if let Some(_removed) = removed {
                     // removed cell successfully
                 } else {
                     panic!("should've removed an old cell")
@@ -662,7 +662,7 @@ where
 
                     if let Some(ref min) = child.min_key()? {
                         if !range.contains(min) {
-                            self.print();
+                            let _ = self.print();
                             error!("verify failed, check backtrace for details");
                             panic!("verify failed. range does not contain minimum. range = {:?}, min={:?}. page {page_id} -> {}", range, min, child.page_id())
                         }
@@ -670,7 +670,7 @@ where
 
                     if let Some(ref max) = child.max_key()? {
                         if !range.contains(max) {
-                            self.print();
+                            let _ = self.print();
                             error!("verify failed, check backtrace for details");
                             panic!(
                                 "verify failed because max ({:?}) not in range ({:?}). page {page_id} -> {}",
@@ -680,7 +680,7 @@ where
                         match range.1.as_ref() {
                             Bound::Included(i) => {
                                 if max > i {
-                                    self.print();
+                                    let _ = self.print();
                                     error!("verify failed, check backtrace for details");
                                     panic!(
                                         "upper limit in bound ({:?}) should always be at least max key ({:?}). page {page_id} -> {}",
@@ -690,7 +690,7 @@ where
                             }
                             Bound::Excluded(i) => {
                                 if max > i {
-                                    self.print();
+                                    let _ = self.print();
                                     error!("verify failed, check backtrace for details");
                                     panic!(
                                         "upper limit in bound ({:?}) should always be at least max key ({:?}). page {page_id} -> {}",
@@ -735,7 +735,7 @@ where
         &self,
         page_id: PageId,
         builder: &mut TreeBuilder,
-        prev: Option<&KeyData>,
+        _prev: Option<&KeyData>,
     ) -> Result<(), WeaverError> {
         let page = self.allocator.get(page_id)?;
         builder.begin_child(format!(
@@ -999,7 +999,7 @@ mod tests {
         btree.verify_integrity();
 
         for i in &strings {
-            let gotten = btree
+            let _gotten = btree
                 .get(&[i].into())
                 .unwrap()
                 .unwrap_or_else(|| panic!("could not get record for key {i}"));
@@ -1057,7 +1057,7 @@ mod tests {
     fn insert_into_b_plus_tree_many_rand_floats() {
         let btree = BPlusTree::new(VecPager::new(2048));
         let mut rng = rand::thread_rng();
-        for i in 1..=(1024) {
+        for _i in 1..=(1024) {
             let k = rng.gen_range(-1000.0..1000.0);
             if let Err(e) = btree.insert([k], [k]) {
                 btree.print().expect("could not print");

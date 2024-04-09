@@ -12,7 +12,7 @@ use std::num::NonZeroU32;
 
 use crate::data::row::OwnedRow;
 use crate::data::serde::{deserialize_data_typed, serialize_data_typed, serialize_data_untyped};
-use crate::key::{KeyData, KeyDataRange};
+use crate::key::{KeyData};
 use crate::storage::{ReadDataError, ReadResult, StorageBackedData, WriteDataError, WriteResult};
 
 /// A cell can either just store a key, or a key-value
@@ -103,7 +103,7 @@ impl Display for KeyCell {
 impl KeyCell {
     /// Create a key cell from a key index
     pub fn new(page_id: u32, key: KeyData) -> Self {
-        let mut buffer: Vec<u8> = serialize_data_typed(&key);
+        let buffer: Vec<u8> = serialize_data_typed(&key);
         Self {
             key_size: buffer.len() as u32,
             page_id,
@@ -152,11 +152,11 @@ impl StorageBackedData for KeyCell {
 
     fn write(&self, mut buf: &mut [u8]) -> WriteResult<usize> {
         buf.write_all(&self.key_size.to_be_bytes())
-            .map_err(|e| WriteDataError::InsufficientSpace)?;
+            .map_err(|_e| WriteDataError::InsufficientSpace)?;
         buf.write_all(&self.page_id.to_be_bytes())
-            .map_err(|e| WriteDataError::InsufficientSpace)?;
+            .map_err(|_e| WriteDataError::InsufficientSpace)?;
         buf.write_all(&self.bytes)
-            .map_err(|e| WriteDataError::InsufficientSpace)?;
+            .map_err(|_e| WriteDataError::InsufficientSpace)?;
         Ok(size_of::<u32>() * 2 + self.bytes.len())
     }
 }
@@ -255,15 +255,15 @@ impl StorageBackedData for KeyValueCell {
 
     fn write(&self, mut buf: &mut [u8]) -> WriteResult<usize> {
         buf.write_all(&[self.flags.0])
-            .map_err(|e| WriteDataError::InsufficientSpace)?;
+            .map_err(|_e| WriteDataError::InsufficientSpace)?;
         buf.write_all(&self.key_size.to_be_bytes())
-            .map_err(|e| WriteDataError::InsufficientSpace)?;
+            .map_err(|_e| WriteDataError::InsufficientSpace)?;
         buf.write_all(&self.value_size.to_be_bytes())
-            .map_err(|e| WriteDataError::InsufficientSpace)?;
+            .map_err(|_e| WriteDataError::InsufficientSpace)?;
         buf.write_all(&self.key)
-            .map_err(|e| WriteDataError::InsufficientSpace)?;
+            .map_err(|_e| WriteDataError::InsufficientSpace)?;
         buf.write_all(&self.data_record)
-            .map_err(|e| WriteDataError::InsufficientSpace)?;
+            .map_err(|_e| WriteDataError::InsufficientSpace)?;
         Ok(1 + size_of::<u32>() * 2 + self.key_size as usize + self.value_size as usize)
     }
 }

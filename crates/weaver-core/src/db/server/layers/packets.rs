@@ -2,18 +2,18 @@ use crate::cancellable_task::{Cancel, CancelRecv, Cancelled};
 use crate::db::core::WeaverDbCore;
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::WeaverDb;
-use crate::dynamic_table::Table;
+
 use crate::error::WeaverError;
 use crate::rows::{OwnedRows, Rows};
 use crate::storage::tables::shared_table::SharedTable;
-use crate::tx::{Tx, TxRef};
+use crate::tx::{Tx};
 use crossbeam::channel::Receiver;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
+
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+
 use tracing::Span;
 use weaver_ast::ast::Query;
 

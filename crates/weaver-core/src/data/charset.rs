@@ -14,7 +14,7 @@ pub struct Charset {
 
 impl Charset {
     /// Partial compare of string. Succeeds if all characters in l and r are in the charset.
-    pub fn partial_cmp(&self, l: &str, r: &str) -> Option<Ordering> {
+    pub fn partial_cmp(&self, _l: &str, _r: &str) -> Option<Ordering> {
         todo!()
     }
 }

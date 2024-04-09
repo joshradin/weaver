@@ -1,15 +1,15 @@
 //! Support for streams
 
-use crossbeam::channel::{unbounded, Receiver, RecvError, Sender, TryRecvError};
+use crossbeam::channel::{unbounded, Receiver, RecvError, Sender};
 use std::io;
-use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
+use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
 use std::time::Duration;
 
 use crate::access_control::users::User;
 use crate::db::server::cnxn::stream::WeaverStream;
 use crate::db::server::cnxn::transport::{StreamSniffer, Transport};
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// Marker trait for something that you can both read and write to
 pub trait Stream: Read + Write {}
@@ -46,7 +46,7 @@ impl Write for WriteSender {
         for x in buf {
             self.0
                 .send(*x)
-                .map_err(|e| io::Error::new(ErrorKind::WouldBlock, "couldn't send data"))?;
+                .map_err(|_e| io::Error::new(ErrorKind::WouldBlock, "couldn't send data"))?;
         }
         Ok(buf.len())
     }

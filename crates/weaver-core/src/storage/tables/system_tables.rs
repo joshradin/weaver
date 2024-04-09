@@ -9,7 +9,7 @@ use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
-use std::fmt::Debug;
+
 use std::sync::Arc;
 
 /// Provide a system table
@@ -46,7 +46,7 @@ impl Monitorable for SystemTable {
 }
 
 impl DynamicTable for SystemTable {
-    fn auto_increment(&self, col: Col) -> i64 {
+    fn auto_increment(&self, _col: Col) -> i64 {
         unimplemented!("system tables shouldn't need auto increments")
     }
 
@@ -54,7 +54,7 @@ impl DynamicTable for SystemTable {
         unimplemented!("system tables shouldn't need row_ids")
     }
 
-    fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
+    fn insert(&self, _tx: &Tx, _row: Row) -> Result<(), WeaverError> {
         unimplemented!("can not insert into a system table")
     }
 
@@ -67,15 +67,15 @@ impl DynamicTable for SystemTable {
         (self.on_read)(arc, key)
     }
 
-    fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError> {
+    fn size_estimate(&self, _key_index: &KeyIndex) -> Result<u64, WeaverError> {
         Ok(0)
     }
 
-    fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
+    fn update(&self, _tx: &Tx, _row: Row) -> Result<(), WeaverError> {
         unimplemented!("can not update information in a system table")
     }
 
-    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
+    fn delete(&self, _tx: &Tx, _key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         unimplemented!("can not delete data from a system table")
     }
 }

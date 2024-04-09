@@ -92,8 +92,8 @@ pub trait DbTypeOf {
 impl DbTypeOf for DbVal {
     fn type_of(
         &self,
-        functions: &FunctionRegistry,
-        context_schema: Option<&TableSchema>,
+        _functions: &FunctionRegistry,
+        _context_schema: Option<&TableSchema>,
     ) -> Result<Type, WeaverError> {
         self.value_type().ok_or_else(|| unreachable!())
     }

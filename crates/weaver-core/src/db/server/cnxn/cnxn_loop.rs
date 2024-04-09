@@ -1,21 +1,21 @@
 //! The connect loop provides the "main" method for newly created connections
 
 use std::io::ErrorKind;
-use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, Ordering};
+
+
 use std::thread::sleep;
 use std::time::Duration;
-use std::{io, thread};
+use std::{io};
 
-use crossbeam::channel::{unbounded, Receiver, RecvError, TryRecvError};
-use either::Either;
+use crossbeam::channel::{Receiver};
+
 use tracing::{debug, error, info, trace, warn, Span};
 
 use weaver_ast::ast::Query;
 
-use crate::cancellable_task::{Cancel, CancellableTaskHandle, Cancelled, Canceller};
+use crate::cancellable_task::{Cancel};
 use crate::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
-use crate::db::server::layers::packets::{DbReqBody, DbResp, IntoDbResponse};
+use crate::db::server::layers::packets::{DbReqBody, DbResp};
 use crate::db::server::processes::{ProcessState, WeaverProcessChild};
 use crate::db::server::socket::DbSocket;
 use crate::error::WeaverError;
@@ -36,7 +36,7 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
     loop {
         let message = stream
             .read()
-            .inspect_err(|err| warn!("failed to receive message from stream"))?;
+            .inspect_err(|_err| warn!("failed to receive message from stream"))?;
         match handle_message(
             message,
             &mut stream,
@@ -68,10 +68,10 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
 fn handle_message<S: MessageStream + Send>(
     message: Message,
     stream: &mut S,
-    mut child: &mut WeaverProcessChild,
+    child: &mut WeaverProcessChild,
     cancel: &Receiver<Cancel>,
     socket: &DbSocket,
-    mut tx: &mut Option<Tx>,
+    tx: &mut Option<Tx>,
     mut rows: &mut Option<Box<dyn Rows>>,
     span: &Span,
 ) -> Result<bool, WeaverError> {
@@ -99,7 +99,7 @@ fn handle_message<S: MessageStream + Send>(
                             *rows = Some(Box::new(ret_rows));
                             RemoteDbResp::Ok
                         }
-                        DbResp::TxTable(ret_tx, ret_table) => {
+                        DbResp::TxTable(ret_tx, _ret_table) => {
                             // rows = Some(ret_table.all(&ret_tx)?);
                             *tx = Some(ret_tx);
                             RemoteDbResp::Ok

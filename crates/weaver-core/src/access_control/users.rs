@@ -91,7 +91,7 @@ impl Monitorable for UserTable {
 }
 
 impl DynamicTable for UserTable {
-    fn auto_increment(&self, col: Col) -> i64 {
+    fn auto_increment(&self, _col: Col) -> i64 {
         todo!()
     }
 
@@ -99,7 +99,7 @@ impl DynamicTable for UserTable {
         todo!()
     }
 
-    fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
+    fn insert(&self, _tx: &Tx, _row: Row) -> Result<(), WeaverError> {
         todo!()
     }
 
@@ -115,11 +115,11 @@ impl DynamicTable for UserTable {
         self.in_memory.size_estimate(key_index)
     }
 
-    fn update(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
+    fn update(&self, _tx: &Tx, _row: Row) -> Result<(), WeaverError> {
         todo!()
     }
 
-    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
+    fn delete(&self, _tx: &Tx, _key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         todo!()
     }
 }

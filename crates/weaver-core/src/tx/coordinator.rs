@@ -1,8 +1,8 @@
 use crate::db::server::WeakWeaverDb;
 use crate::tx::behavior::{TxCompletion, TxDropBehavior};
-use crate::tx::{Tx, TxId, TxRef};
+use crate::tx::{Tx, TxId};
 use crossbeam::channel::{unbounded, Sender};
-use parking_lot::{Mutex, MutexGuard, RwLock};
+use parking_lot::{Mutex, RwLock};
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -21,7 +21,7 @@ pub struct TxCoordinator {
     tx_lock: Arc<Mutex<()>>,
     primary_msg_sender: Sender<TxCompletionToken>,
     server: WeakWeaverDb,
-    handle: JoinHandle<()>,
+    _handle: JoinHandle<()>,
     next_tx_id: Arc<AtomicU64>,
     committed_to: Arc<AtomicU64>,
     active_txs: Arc<RwLock<BTreeSet<TxId>>>,
@@ -58,7 +58,7 @@ impl TxCoordinator {
                             break;
                         }
                     };
-                    let Some(mut server) = server.upgrade() else {
+                    let Some(_server) = server.upgrade() else {
                         warn!(
                             "Could not upgrade server weak ptr but received completion token: {:?}",
                             (tx_id, completion)
@@ -165,7 +165,7 @@ impl TxCoordinator {
             tx_lock,
             primary_msg_sender: sc,
             server,
-            handle,
+            _handle: handle,
             next_tx_id,
             committed_to,
             active_txs,

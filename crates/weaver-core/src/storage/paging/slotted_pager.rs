@@ -2,10 +2,10 @@
 
 use derive_more::{Deref, DerefMut};
 use std::collections::{BTreeMap, Bound, LinkedList, VecDeque};
-use std::iter::FusedIterator;
+
 use std::mem::{size_of, size_of_val};
 use std::num::NonZeroU32;
-use std::ops::{Deref, DerefMut};
+
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 
@@ -68,7 +68,6 @@ pub struct SlottedPageShared<'a, P: Page<'a>> {
     /// A list of free space
     free_list: LinkedList<FreeCell>,
     lock: OnceLock<Arc<AtomicI32>>,
-    my_lock: bool,
 }
 
 impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
@@ -631,7 +630,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
         );
         // TODO: if free cell ptr == self.cell_ptr, then increase self.cell_ptr to free cell ptr + len and remove free cell.
         linked_list::sort_by_cached_key(&mut self.free_list, |cell| cell.offset);
-        let mut cells = self.free_list.split_off(0);
+        let cells = self.free_list.split_off(0);
         for cell in cells {
             if cell.offset == self.cell_ptr {
                 self.cell_ptr = cell.offset + cell.len;
@@ -778,6 +777,7 @@ struct SlottedPageHeader {
     size: u32,
 }
 
+#[allow(unused)]
 impl SlottedPageHeader {
     pub fn new(page_id: PageId) -> Self {
         Self {
@@ -936,7 +936,7 @@ impl<P: Pager> SlottedPager<P> {
             let mut max = PageId::new(1.try_into().unwrap());
             {
                 let mut iter = paged.iter_mut();
-                while let Some(Ok((mut page, index))) = iter.next() {
+                while let Some(Ok((page, index))) = iter.next() {
                     if !Self::has_magic(&page) {
                         empty.push(index);
                     }
@@ -1078,7 +1078,6 @@ fn make_slotted<'a, P: Page<'a>>(page: P) -> SlottedPage<'a, P> {
         cell_ptr,
         free_list: Default::default(),
         lock: Default::default(),
-        my_lock: false,
     };
     let mut cell_offsets = output.cell_offsets();
     cell_offsets.sort();
@@ -1127,7 +1126,6 @@ fn make_slotted_mut<'a, P: PageMut<'a>>(page: P) -> SlottedPageMut<'a, P> {
         cell_ptr,
         free_list: Default::default(),
         lock: Default::default(),
-        my_lock: false,
     };
     output.sync_slots();
     let mut cell_offsets = output.cell_offsets();
@@ -1197,12 +1195,12 @@ impl<P: Pager> Pager for SlottedPager<P> {
                 cell_ptr,
                 free_list: Default::default(),
                 lock: Default::default(),
-                my_lock: false,
+            
             },
         };
         let lock = self.usage.lock().entry(id).or_default().clone();
         lock.compare_exchange(0, -1, Ordering::SeqCst, Ordering::SeqCst)
-            .map_err(|v| WeaverError::ReadDataError(ReadDataError::PageLocked(id)))
+            .map_err(|_v| WeaverError::ReadDataError(ReadDataError::PageLocked(id)))
             .expect("could not secure");
         let _ = page.lock.set(lock);
         Ok((page, index))
@@ -1249,10 +1247,10 @@ mod tests {
 
     #[test]
     fn slotted_page() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(1028));
+        let slotted_pager = SlottedPager::new(VecPager::new(1028));
         {
-            let slotted_page = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
-            let slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
+            let _slotted_page = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
+            let _slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
         }
         assert!(slotted_pager.reserved() > 0);
         assert_eq!(slotted_pager.len(), 2);
@@ -1260,15 +1258,15 @@ mod tests {
 
     #[test]
     fn reuse_slotted_page_after_free() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(1028));
+        let slotted_pager = SlottedPager::new(VecPager::new(1028));
         {
-            let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
-            let slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
+            let (_slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
+            let _slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
             slotted_pager.free(index).expect("could not free");
         }
         assert_eq!(slotted_pager.reserved(), 2 * 1028);
         assert_eq!(slotted_pager.len(), 1);
-        let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
+        let (_slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
         assert_eq!(index, 0, "should re-use 0 index");
     }
 
@@ -1276,23 +1274,23 @@ mod tests {
     fn reuse_slotted_page_after_free_file() {
         let temp = tempfile().expect("could not create file");
         let file = RandomAccessFile::with_file(temp).expect("could not create RAFile");
-        let mut slotted_pager = SlottedPager::new(FilePager::with_file_and_page_len(file, 1028));
+        let slotted_pager = SlottedPager::new(FilePager::with_file_and_page_len(file, 1028));
         {
             let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
-            let slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
+            let _slotted_page2 = slotted_pager.new_with_type(PageType::Key).unwrap();
             drop(slotted_page);
             println!("freeing index: {index}");
             slotted_pager.free(index).expect("could not free");
         }
         assert_eq!(slotted_pager.reserved(), 2 * 1028);
         assert_eq!(slotted_pager.len(), 1);
-        let (slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
+        let (_slotted_page, index) = slotted_pager.new_with_type(PageType::KeyValue).unwrap();
         assert_eq!(index, 0, "should re-use 0 index");
     }
 
     #[test]
     fn insert_cell() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(1028));
+        let slotted_pager = SlottedPager::new(VecPager::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data = KeyData::from([DbVal::from(1_i64)]);
         page.insert(KeyCell::new(15, key_data.clone()).into())
@@ -1307,7 +1305,7 @@ mod tests {
 
     #[test]
     fn insert_cell_same_value() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(1028));
+        let slotted_pager = SlottedPager::new(VecPager::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data = KeyData::from([DbVal::from(1_i64)]);
         page.insert(KeyCell::new(15, key_data.clone()).into())
@@ -1324,7 +1322,7 @@ mod tests {
 
     #[test]
     fn insert_cell_into_full() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(size_of::<SlottedPageHeader>()));
+        let slotted_pager = SlottedPager::new(VecPager::new(size_of::<SlottedPageHeader>()));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data = KeyData::from([DbVal::from(1_i64)]);
         let err = page
@@ -1341,7 +1339,7 @@ mod tests {
 
     #[test]
     fn binary_search() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(1028));
+        let slotted_pager = SlottedPager::new(VecPager::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
 
         for i in 0..32 {
@@ -1359,7 +1357,7 @@ mod tests {
 
     #[test]
     fn get_range() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(1028));
+        let slotted_pager = SlottedPager::new(VecPager::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
 
         for i in 0..32 {
@@ -1387,7 +1385,7 @@ mod tests {
     }
     #[test]
     fn drain_one_page() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(12848));
+        let slotted_pager = SlottedPager::new(VecPager::new(12848));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
 
         let mut values = Vec::from_iter(0..512);
@@ -1434,7 +1432,7 @@ mod tests {
 
     #[test]
     fn reuse_cell() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(1028));
+        let slotted_pager = SlottedPager::new(VecPager::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data1 = KeyData::from([DbVal::from(1_i64)]);
         let key_data2 = KeyData::from([DbVal::from(2_i64)]);
@@ -1457,7 +1455,7 @@ mod tests {
 
     #[test]
     fn merge_free_cells() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(1028));
+        let slotted_pager = SlottedPager::new(VecPager::new(1028));
         let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
         let key_data1 = KeyData::from([DbVal::from(1_i64)]);
         let key_data2 = KeyData::from([DbVal::from(2_i64)]);
@@ -1492,7 +1490,7 @@ mod tests {
 
     #[test]
     fn rebuild_free_cells() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(1028));
+        let slotted_pager = SlottedPager::new(VecPager::new(1028));
         {
             let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
             let key_data1 = KeyData::from([DbVal::from(1_i64)]);
@@ -1514,7 +1512,7 @@ mod tests {
 
     #[test]
     fn rebuild_has_no_free_cells_if_no_deletions() {
-        let mut slotted_pager = SlottedPager::new(VecPager::new(1028));
+        let slotted_pager = SlottedPager::new(VecPager::new(1028));
         {
             let (mut page, _) = slotted_pager.new_with_type(PageType::Key).unwrap();
             let key_data1 = KeyData::from([DbVal::from(1_i64)]);

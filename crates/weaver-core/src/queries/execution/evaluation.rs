@@ -1,20 +1,20 @@
 use std::borrow::Cow;
-use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap};
-use std::hash::Hash;
-use std::sync::OnceLock;
+
+use std::collections::{BTreeMap};
+
+
 
 use itertools::Itertools;
-use once_cell::sync::Lazy;
-use rayon::Scope;
-use tracing::{debug, trace};
+
+
+use tracing::{trace};
 use uuid::Uuid;
 
 use builtins::BUILTIN_FUNCTIONS_REGISTRY;
 use weaver_ast::ast::{BinaryOp, ColumnRef, Expr, FunctionArgs, Identifier, UnaryOp};
 
 use crate::data::row::Row;
-use crate::data::types::{DbTypeOf, Type};
+use crate::data::types::{DbTypeOf};
 use crate::data::values::DbVal;
 use crate::error::WeaverError;
 use crate::queries::execution::evaluation::functions::{
@@ -50,10 +50,10 @@ impl ExpressionEvaluator {
 
     /// Compiles an expression evaluator from a query plan
     pub fn compile<T: Into<Option<FunctionRegistry>>>(
-        plan: &QueryPlan,
+        _plan: &QueryPlan,
         functions: T,
     ) -> Result<Self, WeaverError> {
-        let mut evaluator = Self::new(functions);
+        let evaluator = Self::new(functions);
         Ok(evaluator)
     }
 
@@ -224,9 +224,9 @@ fn runtime_eval_single_row<'a>(
                 stack.push(Cow::Owned(next));
             }
             Expr::Binary {
-                left: l,
+                left: _l,
                 op: bin_op,
-                right: r,
+                right: _r,
             } => {
                 let r = stack.pop().ok_or_else(|| {
                     WeaverError::EvaluationFailed(

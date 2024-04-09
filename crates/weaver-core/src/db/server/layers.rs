@@ -1,13 +1,13 @@
-use std::fmt::Debug;
 
-use serde::Deserialize;
-use tracing::{debug_span, error_span, trace_span};
+
+
+
 
 pub use layer_impl::*;
 use service::Service;
 
 use crate::cancellable_task::{CancelRecv, Cancelled};
-use crate::db::server::layers::packets::{DbReq, DbResp, IntoDbResponse};
+use crate::db::server::layers::packets::{DbReq, DbResp};
 use crate::db::server::layers::service::FromFnService;
 
 mod layer_impl;
@@ -62,7 +62,7 @@ mod tests {
 
     #[test]
     fn layered_processing() {
-        let mut layers = Layers::new(FromFnService::new(|req, cancel| Ok(DbResp::Pong)));
+        let mut layers = Layers::new(FromFnService::new(|_req, _cancel| Ok(DbResp::Pong)));
         CancellableTask::spawn(move |cancel| {
             assert!(matches!(
                 layers.process(DbReq::from(DbReqBody::Ping), cancel)?,

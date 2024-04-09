@@ -1,8 +1,8 @@
 //! Weaver process handling
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use std::cell::OnceCell;
+
 use std::collections::BTreeMap;
-use std::panic::{catch_unwind, panic_any, UnwindSafe};
+use std::panic::{panic_any};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::thread;
@@ -10,11 +10,11 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 use crate::access_control::users::User;
-use crate::cancellable_task::{CancellableTask, CancellableTaskHandle, Cancelled, Canceller};
+use crate::cancellable_task::{CancellableTask, CancellableTaskHandle};
 use crate::db::server::WeakWeaverDb;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, error_span, info, span, Level};
+use tracing::{debug, error, error_span};
 
 use crate::error::WeaverError;
 
@@ -107,7 +107,7 @@ impl WeaverProcess {
             .ok_or(WeaverError::ProcessFailed(self.shared.pid))
             .and_then(|t| match t.cancel() {
                 Ok(ok) => Ok(ok),
-                Err(e) => Err(WeaverError::ProcessFailed(self.shared.pid)),
+                Err(_e) => Err(WeaverError::ProcessFailed(self.shared.pid)),
             })
     }
 
@@ -118,7 +118,7 @@ impl WeaverProcess {
             .and_then(|t| match t.join() {
                 Ok(ok) => match ok {
                     Ok(ok) => Ok(ok),
-                    Err(err) => Err(WeaverError::TaskCancelled),
+                    Err(_err) => Err(WeaverError::TaskCancelled),
                 },
                 Err(_) => Err(WeaverError::ProcessFailed(self.shared.pid)),
             })
@@ -257,7 +257,7 @@ impl ProcessManager {
         let handle = {
             let channel = self.process_killed_channel.clone();
             error_span!("process", pid).in_scope(|| {
-                func.wrap(move |child: WeaverProcessChild, mut inner, canceller| {
+                func.wrap(move |child: WeaverProcessChild, inner, _canceller| {
                     let pid = child.shared.pid;
                     debug!("starting process...");
                     let result = inner(child);

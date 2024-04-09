@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::{Debug, Formatter, Write};
 use std::ops::{
-    Deref, DerefMut, Index, IndexMut, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo,
+    Deref, DerefMut, Index, IndexMut, RangeFrom, RangeFull, RangeInclusive, RangeTo,
     RangeToInclusive,
 };
 use std::slice::SliceIndex;

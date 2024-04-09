@@ -273,7 +273,7 @@ impl Hash for DbVal {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::values::DbVal;
+    
     use crate::key::KeyData;
     use std::collections::BTreeSet;
 

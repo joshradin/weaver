@@ -42,7 +42,7 @@ impl InMemoryTable {
         {
             schema.remove_sys_column(pos)?;
         }
-        let mut table = Self::non_transactional(schema)?;
+        let table = Self::non_transactional(schema)?;
         let ref tx = Tx::default();
         while let Some(row) = rows.next() {
             table.insert(tx, row)?;

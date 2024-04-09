@@ -4,7 +4,7 @@ use crate::cnxn::{Message, MessageStream};
 use crate::error::WeaverError;
 use rand::Rng;
 use std::time::Duration;
-use tracing::{debug, error, info_span, instrument, span, trace, Level};
+use tracing::{debug, error, info_span, trace};
 
 /// The client connecting to a listener should be the handshake driver
 pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), WeaverError> {
@@ -48,7 +48,7 @@ pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), WeaverEr
 /// The listening end of the handshake should respond to client requests
 pub fn handshake_listener<T: MessageStream>(
     client: &mut T,
-    timeout: Duration,
+    _timeout: Duration,
 ) -> Result<(), WeaverError> {
     let span = info_span!("server handshake");
     let _enter = span.enter();

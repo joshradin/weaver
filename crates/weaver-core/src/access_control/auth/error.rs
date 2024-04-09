@@ -25,7 +25,7 @@ impl AuthInitError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(in crate::access_control::auth) enum AuthInitErrorKind {
+pub enum AuthInitErrorKind {
     #[error(transparent)]
     IoError(#[from] io::Error),
     #[error(transparent)]

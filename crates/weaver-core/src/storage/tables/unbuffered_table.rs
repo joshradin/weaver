@@ -1,37 +1,37 @@
 //! An in-memory storage engine
 
-use std::cell::RefCell;
-use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashMap};
-use std::fmt::{Debug, Formatter};
-use std::ops::Bound::{Excluded, Unbounded};
-use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
-use std::sync::{Arc, OnceLock};
-use std::time::Instant;
 
-use once_cell::sync::Lazy;
-use parking_lot::{Mutex, RwLock};
-use tracing::{debug, info, trace};
+
+use std::collections::{HashMap};
+use std::fmt::{Debug, Formatter};
+
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{OnceLock};
+
+
+
+
+use tracing::{trace};
 
 use crate::data::row::{OwnedRow, Row};
 use crate::data::types::Type;
-use crate::dynamic_table::{Col, DynamicTable, HasSchema, OwnedCol, Table};
+use crate::dynamic_table::{Col, DynamicTable, HasSchema, OwnedCol};
 use crate::error::WeaverError;
-use crate::key::{KeyData, KeyDataRange};
-use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable, Stats};
+use crate::key::{KeyDataRange};
+use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable};
 use crate::rows::{KeyIndex, KeyIndexKind, OwnedRows, Rows};
 use crate::storage::b_plus_tree::BPlusTree;
 use crate::storage::paging::buffered_pager::BufferedPager;
 use crate::storage::paging::virtual_pager::{VirtualPager, VirtualPagerTable};
 use crate::storage::tables::table_schema::{ColumnDefinition, TableSchema};
-use crate::storage::{Pager, VecPager};
+use crate::storage::{Pager};
 use crate::tx::{Tx, TxId, TX_ID_COLUMN};
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
 struct RowId(u64);
 
 const MAIN_ROOT: u8 = 0;
-const SECONDARY_ROOT: u8 = 1;
+const _SECONDARY_ROOT: u8 = 1;
 
 /// An in memory table that immediately flushes to storage
 pub struct UnbufferedTable<P: Pager + Sync + Send> {
@@ -80,7 +80,7 @@ impl<P: Pager + Sync + Send> UnbufferedTable<P> {
             .all_columns()
             .iter()
             .filter_map(|f| f.auto_increment().map(|i| (f.name(), i)))
-            .map(|(col, i)| (col.to_owned(), OnceLock::new()))
+            .map(|(col, _i)| (col.to_owned(), OnceLock::new()))
             .collect();
         Ok(Self {
             schema,
@@ -208,7 +208,7 @@ where
                         .map(|rows| OwnedRows::new(self.schema.clone(), rows))?;
                     Ok(Box::new(rows))
                 }
-                KeyIndexKind::One(id) => Ok(todo!()),
+                KeyIndexKind::One(_id) => Ok(todo!()),
             }
         } else {
             let mut all = self.all_rows(tx)?;
@@ -239,11 +239,11 @@ where
         }
     }
 
-    fn update(&self, tx: &Tx, row: Row) -> Result<(), crate::error::WeaverError> {
+    fn update(&self, _tx: &Tx, _row: Row) -> Result<(), crate::error::WeaverError> {
         todo!()
     }
 
-    fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
+    fn delete(&self, _tx: &Tx, _key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         todo!()
     }
 }

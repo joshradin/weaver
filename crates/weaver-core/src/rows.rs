@@ -3,7 +3,7 @@
 use crate::data::row::{OwnedRow, Row};
 use crate::key::KeyData;
 use crate::storage::tables::table_schema::{ColumnizedRow, TableSchema};
-use serde::{Deserialize, Serialize};
+
 use std::collections::VecDeque;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;

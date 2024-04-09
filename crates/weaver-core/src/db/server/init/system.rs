@@ -27,7 +27,7 @@ pub fn init_system_tables(db: &mut WeaverDb) -> Result<(), WeaverError> {
     let connection = Arc::new(db.connect());
     let clone = connection.clone();
     connection
-        .send(DbReq::on_core(move |core, cancel| -> Result<(), WeaverError> {
+        .send(DbReq::on_core(move |core, _cancel| -> Result<(), WeaverError> {
             add_process_list(core, &clone)?;
             init_auth(core, &clone)?;
             Ok(())
@@ -52,7 +52,7 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
         .column("info", Type::String(128), true, None, None)?
         .engine(EngineKey::new(SYSTEM_TABLE_KEY))
         .build()?;
-    let table = SystemTable::new(schema.clone(), socket.clone(), move |socket, key| {
+    let table = SystemTable::new(schema.clone(), socket.clone(), move |socket, _key| {
         let schema = schema.clone();
         let resp = socket
             .send(DbReqBody::on_server(move |full, _| {
@@ -66,7 +66,7 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                          info,
                          user,
                          host,
-                         using,
+                         using: _,
                      }| {
                         Row::from([
                             DbVal::Integer(pid.into()),
@@ -92,7 +92,7 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
     Ok(())
 }
 
-fn init_auth(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(), WeaverError> {
+fn init_auth(core: &mut WeaverDbCore, _socket: &Arc<DbSocket>) -> Result<(), WeaverError> {
     let users = UserTable::default();
     core.add_table(users)?;
     Ok(())

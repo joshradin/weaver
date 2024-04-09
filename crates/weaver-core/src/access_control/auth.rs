@@ -9,7 +9,7 @@
 //!  - server: check password, and return user if correct
 
 use serde::{Deserialize, Serialize};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 pub mod context;
 pub mod error;
@@ -21,7 +21,7 @@ pub mod handshake {
     use std::fmt::Debug;
 
     use tracing::{debug, error_span, warn};
-    use weaver_ast::ast;
+    
 
     use crate::access_control::auth::context::AuthContext;
     use crate::access_control::auth::LoginContext;
@@ -29,12 +29,12 @@ pub mod handshake {
     use crate::common::stream_support::{packet_read, packet_write, Stream};
     use crate::data::values::DbVal;
     use crate::db::server::cnxn::stream::WeaverStream;
-    use crate::db::server::cnxn::RemoteDbResp;
-    use crate::db::server::layers::packets::{DbReqBody, DbResp};
+    
+    use crate::db::server::layers::packets::DbResp;
     use crate::db::server::socket::DbSocket;
     use crate::error::WeaverError;
     use crate::rows::Rows;
-    use weaver_ast::ast::{BinaryOp, Query};
+    use weaver_ast::ast::Query;
 
     /// Server side authentication. On success, provides a user struct.
     pub fn server_auth<T: Stream + Debug>(
@@ -48,7 +48,7 @@ pub mod handshake {
                 stream.peer_addr()
             );
             auth_context.secure_transport(stream.transport())?;
-            let mut login_ctx: LoginContext = packet_read(stream.transport().as_mut().unwrap())?;
+            let login_ctx: LoginContext = packet_read(stream.transport().as_mut().unwrap())?;
             debug!("received login context: {:?}", login_ctx);
             let tx = db_socket.start_tx()?;
             let query = Query::parse(&format!(
@@ -60,11 +60,11 @@ pub mod handshake {
             let resp = db_socket
                 .send((tx, query))
                 .join()
-                .map_err(|e| WeaverError::ThreadPanicked)??
+                .map_err(|_e| WeaverError::ThreadPanicked)??
                 .to_result();
             debug!("resp={resp:?}");
             let resp = resp?;
-            let DbResp::TxRows(tx, mut rows) = resp else {
+            let DbResp::TxRows(_tx, mut rows) = resp else {
                 unreachable!();
             };
             let Some(row) = rows.next() else {
@@ -78,7 +78,7 @@ pub mod handshake {
             let auth_string = &row[2];
             match auth_string.as_ref() {
                 DbVal::Null => {}
-                DbVal::String(str, _) => {
+                DbVal::String(_str, _) => {
                     todo!("password authentication")
                 }
                 _ => {
@@ -129,7 +129,7 @@ pub struct LoginContext {
 impl LoginContext {
     pub fn new() -> Self {
         let user = whoami::username();
-        let host = whoami::hostname();
+        let host = whoami::fallible::hostname().expect("no hostname found");
         Self {
             user,
             host,
