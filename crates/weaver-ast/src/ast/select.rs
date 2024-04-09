@@ -69,7 +69,7 @@ pub struct OrderBy(pub Expr, pub Option<OrderDirection>);
 
 impl Display for OrderBy {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.0, self.1.unwrap_or_else(|| OrderDirection::default()))
+        write!(f, "{} {}", self.0, self.1.unwrap_or_default())
     }
 }
 

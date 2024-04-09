@@ -1,7 +1,7 @@
 mod cli;
 
 pub use cli::App;
-use std::path::{Path, PathBuf};
+
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::thread::sleep;
@@ -15,7 +15,7 @@ use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::layers::packets::DbReqBody;
 use weaver_core::db::server::layers::packets::DbResp;
 use weaver_core::db::server::WeaverDb;
-use weaver_core::error::WeaverError;
+
 
 /// Starts the application
 pub fn run(app: App) -> eyre::Result<()> {

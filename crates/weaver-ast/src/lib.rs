@@ -1,9 +1,9 @@
 use std::io::Write;
-use std::{fmt, io};
+use std::{io};
 
 use lexing::Tokenizer;
 
-use crate::ast::{Literal, Query};
+use crate::ast::{Query};
 use crate::error::ParseQueryError;
 use crate::lexing::Token;
 use crate::parsing::parse_query;
@@ -18,6 +18,12 @@ pub use parsing::parse_literal;
 
 #[derive(Debug)]
 pub struct QueryParser();
+
+impl Default for QueryParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl QueryParser {
     /// Creates a new query parser

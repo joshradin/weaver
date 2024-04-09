@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use eyre::eyre;
 use interprocess::local_socket::LocalSocketStream;
-use log::{debug, trace, warn};
+use log::{debug, trace};
 
 use weaver_ast::ast::Query;
 use weaver_core::access_control::auth::LoginContext;
@@ -13,7 +13,7 @@ use weaver_core::cnxn::{MessageStream, RemoteDbReq, RemoteDbResp};
 use weaver_core::common::stream_support::Stream;
 use weaver_core::data::row::Row;
 use weaver_core::db::server::processes::WeaverPid;
-use weaver_core::error::WeaverError;
+
 use weaver_core::rows::Rows;
 use weaver_core::storage::tables::table_schema::TableSchema;
 
@@ -109,7 +109,7 @@ impl<'a, T: Stream> Rows<'a> for RemoteRows<'a, T> {
 
     fn next(&mut self) -> Option<Row<'a>> {
         match self.stream.send(&RemoteDbReq::GetRow) {
-            Ok(RemoteDbResp::Row(row)) => row.map(|row| Row::from(row)),
+            Ok(RemoteDbResp::Row(row)) => row.map(Row::from),
             _ => None,
         }
     }

@@ -5,7 +5,7 @@ use crate::error::ParseQueryError;
 use crate::lexing::{Spanned, Token, TokenError, Tokenizer};
 
 use lalrpop_util::{lalrpop_mod, ParseError};
-use nom::combinator::all_consuming;
+
 
 lalrpop_mod!(weaver_query);
 
@@ -23,7 +23,7 @@ impl<'a, I: Iterator<Item = Spanned<Token<'a>, usize, TokenError>>> LR1Parser<'a
         }
     }
 
-    fn parse(mut self) -> Result<Query, ParseQueryError> {
+    fn parse(self) -> Result<Query, ParseQueryError> {
         let mut buffer = vec![];
         let result: Result<Query, lalrpop_util::ParseError<usize, Token<'a>, TokenError>> =
             weaver_query::QueryParser::new().parse(
@@ -69,16 +69,16 @@ pub fn parse_query<'a, I: IntoIterator<Item = Spanned<Token<'a>, usize, TokenErr
 where
     <I as IntoIterator>::IntoIter: 'a,
 {
-    let mut parser = LR1Parser::new(src, tokens.into_iter());
-    let s = parser.parse();
-    s
+    let parser = LR1Parser::new(src, tokens.into_iter());
+    
+    parser.parse()
 }
 
 pub fn parse_literal(string: &str) -> Result<Literal, ParseQueryError> {
     let tokenizer = Tokenizer::new(string);
     let result = weaver_query::LiteralParser::new().parse(
         string,
-        tokenizer.into_iter(),
+        tokenizer,
     );
     result.map_err(|e| match e {
         ParseError::InvalidToken { .. } => {

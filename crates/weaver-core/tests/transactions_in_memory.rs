@@ -23,7 +23,7 @@ fn transactions_in_memory() -> Result<(), WeaverError> {
 
     let dir = TempDir::new()?;
     let core = WeaverDbCore::with_path(dir.path())?;
-    let mut db = WeaverDb::new(core, AuthConfig::in_path(dir.path()))?;
+    let db = WeaverDb::new(core, AuthConfig::in_path(dir.path()))?;
     let mut service = db.lifecycle_service();
     service.startup()?;
 
@@ -31,10 +31,10 @@ fn transactions_in_memory() -> Result<(), WeaverError> {
     socket
         .send(DbReqBody::on_core_write(|db, _| {
             Ok((|| -> Result<_, WeaverError> {
-                let ref schema = TableSchema::builder("default", "in_mem")
+                let schema = &(TableSchema::builder("default", "in_mem")
                     .column("id", Type::Integer, true, None, 0)?
                     .column("name", Type::String(u16::MAX), true, None, None)?
-                    .build()?;
+                    .build()?);
                 db.open_table(schema)?;
                 let table = db.get_open_table("default", "in_mem").unwrap();
                 {

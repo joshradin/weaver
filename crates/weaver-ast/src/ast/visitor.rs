@@ -117,8 +117,8 @@ visit_mut! {
             condition,
             group_by,
             order_by,
-            limit,
-            offset,
+            
+            
             ..
         } = select;
 
@@ -190,7 +190,7 @@ visit_mut! {
     pub visit (visitor, join_clause: &mut JoinClause) -> Result<()> {
         let JoinClause {
             left,
-            op,
+            op: _,
             right,
             constraint } = join_clause;
 

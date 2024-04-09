@@ -8,7 +8,7 @@ use rand::{thread_rng, Rng};
 use weaver_core::data::row::Row;
 use weaver_core::data::values::DbVal;
 use weaver_core::key::KeyData;
-use weaver_core::monitoring::{MonitorCollector, Monitorable};
+use weaver_core::monitoring::{MonitorCollector};
 use weaver_core::storage::b_plus_tree::BPlusTree;
 use weaver_core::storage::VecPager;
 
@@ -19,7 +19,6 @@ fn insert_rand<'a>(
 ) -> BPlusTree<VecPager> {
     insert(
         (0..count)
-            .into_iter()
             .map(|_| rand::thread_rng().gen_range(0..count as i64)),
         page_len,
         monitor_collector,
@@ -34,7 +33,7 @@ fn insert_rand_with<'a, V: Into<DbVal>, F: Fn(&mut ThreadRng) -> V>(
 ) -> BPlusTree<VecPager> {
     let mut rng = rand::thread_rng();
     insert(
-        (0..count).into_iter().map(|_| prod(&mut rng)),
+        (0..count).map(|_| prod(&mut rng)),
         page_len,
         monitor_collector,
     )
@@ -45,7 +44,7 @@ fn insert<'a, V: Into<DbVal>, I: IntoIterator<Item = V>>(
     page_len: usize,
     monitor_collector: impl Into<Option<&'a mut MonitorCollector>>,
 ) -> BPlusTree<VecPager> {
-    let mut btree = BPlusTree::new(VecPager::new(page_len));
+    let btree = BPlusTree::new(VecPager::new(page_len));
     if let Some(monitor_collector) = monitor_collector.into() {
         monitor_collector.push_monitorable(&btree);
     }
@@ -124,12 +123,12 @@ fn btree_insert_dec(c: &mut Criterion) {
 }
 
 fn btree_read(c: &mut Criterion) {
-    let mut btree = insert_rand(10000, 4096 * 4, None);
+    let btree = insert_rand(10000, 4096 * 4, None);
     let mut group = c.benchmark_group("read");
     group.throughput(Throughput::Elements(1));
     group.bench_function("random access", |b| {
         b.iter(|| {
-            let ref id = KeyData::from([rand::thread_rng().gen_range(0..10000)]);
+            let id = &KeyData::from([rand::thread_rng().gen_range(0..10000)]);
             let _ = btree.get(id);
         });
     });

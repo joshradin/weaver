@@ -45,7 +45,7 @@ impl Hash for Literal {
             Literal::Binary(b) => b.hash(state),
             Literal::String(s) => s.hash(state),
             Literal::Integer(i) => i.hash(state),
-            Literal::Float(f) => {
+            Literal::Float(_f) => {
                 unimplemented!("float hashing?")
             }
             Literal::Boolean(bool) => bool.hash(state),

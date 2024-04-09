@@ -1,10 +1,10 @@
 use nom::bytes::complete::{take_while, take_while1};
-use nom::character::complete::{multispace0, one_of};
+use nom::character::complete::{multispace0};
 use nom::combinator::map;
 use nom::error::{ErrorKind, ParseError};
 use nom::sequence::tuple;
 use nom::{
-    Compare, CompareResult, IResult, InputLength, InputTake, InputTakeAtPosition, Needed, Parser,
+    Compare, CompareResult, IResult, InputLength, InputTake, Needed, Parser,
 };
 
 pub fn ignore_whitespace<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(
@@ -18,7 +18,7 @@ pub fn ignore_case<'a, Error: ParseError<&'a str>>(
 ) -> impl FnMut(&'a str) -> IResult<&'a str, &'a str, Error> + '_ {
     move |i: &'a str| {
         let tag_len = tag.input_len();
-        let t = tag.clone();
+        let t = tag;
 
         let res: IResult<_, _, Error> =
             match (i.to_lowercase().as_str()).compare(t.to_lowercase().as_str()) {

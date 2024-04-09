@@ -123,7 +123,7 @@ impl Expr {
         }
 
         match self {
-            Expr::Unary { op: op, expr: expr } => {
+            Expr::Unary { op, expr } => {
                 expr.reduce();
                 let expr = expr.literal().expect("is literal");
                 match op {
@@ -159,7 +159,7 @@ impl Expr {
             }
             Expr::Binary {
                 left: l,
-                op: op,
+                op,
                 right: r,
             } => {
                 l.reduce();
@@ -258,8 +258,7 @@ impl ReferencesCols for Expr {
                 HashSet::from_iter(
                     exprs.iter()
                         .chain(ordered_by.iter().flatten())
-                        .map(|expr| expr.columns())
-                        .flatten()
+                        .flat_map(|expr| expr.columns())
                 )
             }
             _ => HashSet::new(),

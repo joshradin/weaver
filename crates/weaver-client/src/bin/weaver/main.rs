@@ -6,11 +6,11 @@ use log::{error, info, LevelFilter};
 use simplelog::{ColorChoice, CombinedLogger, Config, TerminalMode, TermLogger, WriteLogger};
 
 use weaver_ast::ast::Query;
-use weaver_ast::ast::Select;
+
 use weaver_client::write_rows::write_rows;
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::LoginContext;
-use weaver_core::cnxn::MessageStream;
+
 
 use crate::cli::App;
 
@@ -40,7 +40,7 @@ fn main() -> eyre::Result<()> {
         Ok(cnxn) => cnxn,
         Err(e) => {
             error!("Failed to connect to weaver instance at {:?} ({e})", addr);
-            return Err(e.into());
+            return Err(e);
         }
     };
 

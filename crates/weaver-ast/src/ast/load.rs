@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::{ColumnRef, Identifier};
+use crate::ast::{Identifier};
 
 /// The load data statements reads rows from a text file into a table at a high speed
 #[derive(Debug, Clone, Deserialize, Serialize)]

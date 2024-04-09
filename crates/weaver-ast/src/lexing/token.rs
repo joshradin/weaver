@@ -2,7 +2,7 @@ use derive_more::Display;
 use std::borrow::Cow;
 use std::fmt::Formatter;
 
-use nom::{Finish, Parser};
+
 use thiserror::Error;
 
 /// The token kind is the lexical meaning of a [Token], and defines how it may be used

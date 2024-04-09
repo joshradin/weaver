@@ -1,11 +1,11 @@
 use std::error::Error;
-use std::net::TcpStream;
+
 use std::path::Path;
 use std::thread;
 use std::thread::JoinHandle;
 
 use crossbeam::channel::{bounded, Sender};
-use eyre::{eyre, Report};
+use eyre::{eyre};
 use tracing::{debug, error, error_span, warn};
 use tracing::level_filters::LevelFilter;
 
@@ -16,7 +16,7 @@ use weaver_core::cnxn::interprocess::LocalSocketStream;
 use weaver_core::common::dual_result::DualResult;
 use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::WeaverDb;
-use weaver_core::error::WeaverError;
+
 use weaver_core::monitoring::{Monitor, Monitorable};
 
 pub fn init_tracing(
@@ -34,7 +34,7 @@ pub fn init_tracing(
 pub fn start_server(
     port: u16,
     in_path: &Path,
-    num_workers: impl Into<Option<usize>>,
+    _num_workers: impl Into<Option<usize>>,
 ) -> eyre::Result<WeaverDbInstance> {
     let (send, recv) = bounded(0);
     let socket_path = in_path.join("weaverdb.socket");
@@ -102,11 +102,11 @@ where
     ) -> Result<(), eyre::Error>,
 {
     let server = start_server(0, path, None)?;
-    DualResult::zip_with(Ok(server), |server| {
+    DualResult::zip_with(Ok(server), |server: Result<_, &eyre::Error>| {
         let mut context = LoginContext::new();
         context.set_user("root");
         match server {
-            Ok(_) => WeaverClient::connect_localhost(path.join("weaverdb.socket"), context),
+            Ok(_) => Ok(WeaverClient::connect_localhost(path.join("weaverdb.socket"), context)?),
             Err(err) => Err(eyre!("can not start client without server: {}", err)),
         }
     })
@@ -122,7 +122,7 @@ where
         |(e1, e2)| match (e1, e2) {
             (Some(e1), Some(e2)) => {
                 error!("both server and client failed");
-                Err(eyre::Error::from(e1).wrap_err(e2))
+                Err(e1.wrap_err(e2))
             }
             (Some(e1), None) => {
                 error!("only server failed");

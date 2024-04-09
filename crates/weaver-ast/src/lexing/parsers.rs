@@ -1,12 +1,12 @@
 use std::borrow::Cow;
 use std::str::FromStr;
 
-use nom::{Compare, Finish, InputLength, InputTake, IResult, Parser};
+use nom::{IResult, Parser};
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_until};
 use nom::character::complete::{alpha1, alphanumeric1, char, digit1, one_of};
 use nom::combinator::{all_consuming, consumed, eof, map, map_parser, recognize, rest, value};
-use nom::error::{Error, ErrorKind, FromExternalError, ParseError};
+use nom::error::{Error, ErrorKind};
 use nom::multi::many0_count;
 use nom::number::complete::recognize_float;
 use nom::sequence::{delimited, pair, preceded, tuple};
@@ -138,7 +138,7 @@ fn keyword(input: &str) -> IResult<&str, Token> {
 fn literal<'a>(input: &'a str) -> IResult<&str, Token> {
     let string_parser = |input: &'a str, c: char| {
         let token = map(strings::string_literal(c), |inner: Cow<'a, str>| {
-            let len = inner.len();
+            let _len = inner.len();
             Token::String(inner)
         })(input);
         token

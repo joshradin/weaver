@@ -11,7 +11,7 @@ use weaver_tests::{init_tracing, run_full_stack};
 fn explain_create_table() -> eyre::Result<()> {
     let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
-    run_full_stack(temp_dir.path(), |server, client| {
+    run_full_stack(temp_dir.path(), |_server, client| {
         info!("explain create table");
         let (rows, elapsed) = client.query(&Query::parse(r#"
             explain create table `schema`.`table` ( id INT auto_increment primary key, value FLOAT NOT NULL )
@@ -28,7 +28,7 @@ fn explain_create_table() -> eyre::Result<()> {
 fn create_simple_table() -> eyre::Result<()> {
     let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
-    run_full_stack(temp_dir.path(), |server, client| {
+    run_full_stack(temp_dir.path(), |_server, client| {
         info!("explain create table");
         let (rows, elapsed) = client.query(&Query::parse(r#"
             create table `schema`.`table` ( id INT auto_increment primary key, value float not null )

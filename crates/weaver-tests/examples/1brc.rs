@@ -1,9 +1,9 @@
 use std::io::stdout;
 use std::path::Path;
 
-use tempfile::{tempdir, TempDir};
+use tempfile::{tempdir};
 use tracing::info;
-use tracing::metadata::LevelFilter;
+
 
 use weaver_client::write_rows::write_rows;
 use weaver_core::ast::Query;
@@ -17,7 +17,7 @@ const DDL: &str = r#"
     );
     "#;
 
-const MAIN_QUERY: &'static str = r#"
+const MAIN_QUERY: &str = r#"
         SELECT
             name,
             count(temperature)                  as count,
@@ -38,17 +38,17 @@ fn main() -> eyre::Result<()> {
         .join("data")
         .join("48krc.csv");
 
-    run_full_stack(&data_dir.path(), |server, client| {
+    run_full_stack(data_dir.path(), |_server, client| {
         info!("trying to get tables");
         client.query(&Query::parse(DDL)?)?;
-        let (rows, elapsed) = client.query(&Query::parse(&*format!(
+        let (rows, elapsed) = client.query(&Query::parse(&format!(
             r#"
                 LOAD DATA INFILE {data_file:?} INTO TABLE `default`.`1brc` (name, temperature)
                 FIELDS TERMINATED BY ';'
                 "#,
         ))?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
-        let (rows, elapsed) = client.query(&Query::parse(&*format!("EXPLAIN {MAIN_QUERY}"))?)?;
+        let (rows, elapsed) = client.query(&Query::parse(&format!("EXPLAIN {MAIN_QUERY}"))?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
         let (rows, elapsed) = client.query(&Query::parse(MAIN_QUERY)?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");

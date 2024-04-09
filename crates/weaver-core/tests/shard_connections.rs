@@ -4,7 +4,7 @@ use weaver_core::db::server::WeaverDb;
 
 #[test]
 fn connect() {
-    let mut shard = WeaverDb::default();
+    let shard = WeaverDb::default();
 
     let handle1 = {
         let socket = shard.connect();

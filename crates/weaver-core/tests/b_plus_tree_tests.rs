@@ -1,7 +1,7 @@
 use rand::distributions::Alphanumeric;
 use rand::rngs::ThreadRng;
-use rand::{Rng, RngCore};
-use tempfile::tempfile;
+use rand::{Rng};
+
 use tracing::level_filters::LevelFilter;
 use weaver_core::data::row::Row;
 use weaver_core::data::values::DbVal;
@@ -12,14 +12,13 @@ use weaver_core::storage::VecPager;
 fn insert_rand(count: usize) {
     insert(
         (0..count)
-            .into_iter()
             .map(|_| rand::thread_rng().gen_range(-10_000..=10_000)),
     )
 }
 
 fn insert_rand_with<V: Into<DbVal>, F: Fn(&mut ThreadRng) -> V>(count: usize, prod: F) {
     let mut rng = rand::thread_rng();
-    insert((0..count).into_iter().map(|_| prod(&mut rng)))
+    insert((0..count).map(|_| prod(&mut rng)))
 }
 
 fn insert<V: Into<DbVal>, I: IntoIterator<Item = V>>(iter: I) {
@@ -30,7 +29,7 @@ fn insert<V: Into<DbVal>, I: IntoIterator<Item = V>>(iter: I) {
         .try_init();
 
     let temp = VecPager::new(4096);
-    let mut btree = BPlusTree::new(temp);
+    let btree = BPlusTree::new(temp);
 
     let mut keys = vec![];
     let result = iter.into_iter().try_for_each(|id: V| {
@@ -43,10 +42,10 @@ fn insert<V: Into<DbVal>, I: IntoIterator<Item = V>>(iter: I) {
     });
 
     btree.print().expect("could not print");
-    let _ = result.expect("failed");
+    result.expect("failed");
     for key in keys {
         println!("checking for existence of {}", key);
-        if !btree.get(&KeyData::from([key.clone()])).is_ok() {
+        if btree.get(&KeyData::from([key.clone()])).is_err() {
             panic!("does not contain inserted value will key {}", key);
         }
     }
@@ -113,5 +112,5 @@ fn insert_0_to_10000() {
 
 #[test]
 fn insert_10000_to_0() {
-    insert((0..=10000).into_iter().rev());
+    insert((0..=10000).rev());
 }

@@ -3,7 +3,7 @@ use tracing::level_filters::LevelFilter;
 use weaver_core::access_control::auth::LoginContext;
 use weaver_core::cnxn::stream::WeaverStream;
 use weaver_core::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
-use weaver_core::db::server::layers::packets::{DbReqBody, DbResp};
+
 use weaver_core::db::server::WeaverDb;
 use weaver_core::error::WeaverError;
 
@@ -20,13 +20,13 @@ fn bind_to_tcp() -> Result<(), WeaverError> {
 
     let mut stream =
         WeaverStream::connect_timeout(socket, Duration::from_secs(1), LoginContext::new())?;
-    stream.write(&Message::Req(RemoteDbReq::Ping.into()))?;
+    stream.write(&Message::Req(RemoteDbReq::Ping))?;
     let Message::Resp(RemoteDbResp::Pong) = stream.read()? else {
         panic!("must return pong")
     };
     let mut stream =
         WeaverStream::connect_timeout(socket, Duration::from_secs(1), LoginContext::new())?;
-    stream.write(&Message::Req(RemoteDbReq::Ping.into()))?;
+    stream.write(&Message::Req(RemoteDbReq::Ping))?;
     let Message::Resp(RemoteDbResp::Pong) = stream.read()? else {
         panic!("must return pong")
     };

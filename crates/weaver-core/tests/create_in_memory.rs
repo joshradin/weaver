@@ -6,7 +6,7 @@ use weaver_core::data::values::DbVal;
 
 use weaver_core::db::core::WeaverDbCore;
 use weaver_core::dynamic_table::DynamicTable;
-use weaver_core::error::WeaverError;
+
 use weaver_core::rows::Rows;
 use weaver_core::storage::tables::table_schema::TableSchema;
 
@@ -17,8 +17,8 @@ fn create_in_memory() {
         .with_thread_ids(true)
         .with_thread_names(true)
         .try_init();
-    let mut db = WeaverDbCore::new().unwrap();
-    let ref schema = TableSchema::builder("default", "in_mem")
+    let db = WeaverDbCore::new().unwrap();
+    let schema = &TableSchema::builder("default", "in_mem")
         .column("id", Type::Integer, true, None, 0)
         .unwrap()
         .column("name", Type::String(u16::MAX), true, None, None)
