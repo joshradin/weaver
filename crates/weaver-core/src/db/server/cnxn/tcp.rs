@@ -54,7 +54,7 @@ impl WeaverStream<TcpStream> {
             false,
             Transport::Insecure(connected.into()),
         );
-        Ok(socket.login(login_context)?)
+        socket.login(login_context)
     }
 }
 

@@ -58,7 +58,7 @@ pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
                         Ordering::Equal => a,
                         Ordering::Greater => b,
                     })
-                    .map(|i| DbVal::Float(i))
+                    .map(DbVal::Float)
                     .unwrap_or(DbVal::Null))
             }),
         ),
@@ -92,7 +92,7 @@ pub static BUILTIN_FUNCTIONS_REGISTRY: Lazy<FunctionRegistry> = Lazy::new(|| {
                         Ordering::Equal => a,
                         Ordering::Greater => a,
                     })
-                    .map(|i| DbVal::Float(i))
+                    .map(DbVal::Float)
                     .unwrap_or(DbVal::Null))
             }),
         ),

@@ -165,7 +165,7 @@ impl StorageBackedData for str {
 
     fn read(buf: &[u8]) -> ReadResult<String> {
         let read: Box<[u8]> = <[u8]>::read(buf)?;
-        let bytes = String::from_utf8_lossy(&*read);
+        let bytes = String::from_utf8_lossy(&read);
         Ok(bytes.to_string())
     }
 

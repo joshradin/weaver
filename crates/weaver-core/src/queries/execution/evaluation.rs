@@ -41,11 +41,11 @@ impl ExpressionEvaluator {
                 registry
             }
         };
-        let evaluator = Self {
+        
+        Self {
             compiled_evaluators: Default::default(),
             functions: registry,
-        };
-        evaluator
+        }
     }
 
     /// Compiles an expression evaluator from a query plan
@@ -176,7 +176,7 @@ fn runtime_eval_many_rows<'a>(
                         todo!("ordered by {:?}", ordered_by)
                     }
 
-                    args.into_iter().map(|v| ArgValue::Many(v)).collect()
+                    args.into_iter().map(ArgValue::Many).collect()
                 }
                 FunctionArgs::Wildcard { distinct } => {
                     let mut rows = rows.to_vec();

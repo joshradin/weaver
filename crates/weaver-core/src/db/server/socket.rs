@@ -62,9 +62,9 @@ impl DbSocket {
             move |req: DbReq, _canceler| -> Result<Result<DbResp, WeaverError>, Cancelled> {
                 trace_span!("req-resp", pid = clone.shared.pid).in_scope(
                     || -> Result<Result<DbResp, WeaverError>, Cancelled> {
-                        let mut req: DbReq = req.into();
+                        let mut req: DbReq = req;
                         req.span_mut().get_or_insert(span);
-                        let packet = Packet::new(req.into());
+                        let packet = Packet::new(req);
                         trace!("packet={:#?}", packet);
                         let &id = packet.id();
                         match clone

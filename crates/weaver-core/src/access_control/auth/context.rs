@@ -31,7 +31,7 @@ impl AuthContext {
         transport: &mut Option<Transport<S>>,
     ) -> Result<(), WeaverError> {
         if let Some(Transport::Insecure(_)) = transport.as_ref() {
-            let taken = std::mem::replace(transport, Option::None);
+            let taken = transport.take();
             trace!("took insecure transport");
             let Some(Transport::Insecure(to_secure)) = taken else {
                 unreachable!();

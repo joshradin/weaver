@@ -228,7 +228,7 @@ bitfield! {
 impl StorageBackedData for KeyValueCell {
     type Owned = Self;
     fn read(buf: &[u8]) -> ReadResult<Self> {
-        let flags = Flags(*buf.get(0).ok_or(ReadDataError::UnexpectedEof)?);
+        let flags = Flags(*buf.first().ok_or(ReadDataError::UnexpectedEof)?);
         let mut u32_buf = [0u8; 4];
         u32_buf.clone_from_slice(buf.get(1..5).ok_or(ReadDataError::UnexpectedEof)?);
         let key_size = u32::from_be_bytes(u32_buf);

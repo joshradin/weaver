@@ -127,7 +127,7 @@ struct FnMonitor {
 
 impl Monitor for FnMonitor {
     fn name(&self) -> &str {
-        &*self.name
+        &self.name
     }
 
     fn stats(&mut self) -> Stats {

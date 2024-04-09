@@ -74,7 +74,7 @@ fn add_process_list(core: &mut WeaverDbCore, socket: &Arc<DbSocket>) -> Result<(
                             DbVal::String(host, 128),
                             DbVal::Integer(age as i64),
                             DbVal::String(format!("{state:?}"), 128),
-                            DbVal::String(format!("{info}"), 128),
+                            DbVal::String(info.to_string(), 128),
                         ])
                         .to_owned()
                     },

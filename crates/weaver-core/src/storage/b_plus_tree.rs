@@ -139,7 +139,7 @@ where
                 Ok(true)
             }
             Err(e) => {
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -300,18 +300,18 @@ where
         match cell {
             None => Ok(None),
             Some(Cell::Key(_)) => {
-                return Err(WeaverError::CellTypeMismatch {
+                Err(WeaverError::CellTypeMismatch {
                     page_id: leaf.page_id(),
                     expected: PageType::KeyValue,
                     actual: PageType::Key,
-                });
+                })
             }
             Some(Cell::KeyValue(value)) => Ok(Some(Box::from(value.record()))),
         }
     }
     pub fn count<T: Into<KeyDataRange>>(&self, key_data_range: T) -> Result<u64, WeaverError> {
         let range = key_data_range.into();
-        let Some(root) = self.root.read().clone() else {
+        let Some(root) = *self.root.read() else {
             return Ok(0);
         };
         let start_node = match range.start_bound() {
@@ -342,8 +342,7 @@ where
                 let page_range = page.key_range()?;
                 if let Some(on_page) = page_range.intersection(&range) {
                     let page_cells = page
-                        .get_range(on_page)?
-                        .into_iter().count();
+                        .get_range(on_page)?.len();
                     Ok(accum + page_cells as u64)
                 } else {
                     Ok(accum)
@@ -354,7 +353,7 @@ where
     /// Gets the set of rows from a given range
     pub fn range<T: Into<KeyDataRange>>(&self, key_data_range: T) -> Result<Vec<Box<[u8]>>, WeaverError> {
         let range = key_data_range.into();
-        let Some(root) = self.root.read().clone() else {
+        let Some(root) = *self.root.read() else {
             return Ok(vec![]);
         };
         let start_node = match range.start_bound() {
@@ -432,7 +431,7 @@ where
 
     /// Finds the leaf node that can contain the given key
     fn find_leaf(&self, key_data: &KeyData, expand: bool) -> Result<PageId, WeaverError> {
-        let Some(mut ptr) = self.root.read().clone() else {
+        let Some(mut ptr) = *self.root.read() else {
             return Err(WeaverError::NotFound(key_data.clone()));
         };
         let mut traversal = vec![];
@@ -448,11 +447,11 @@ where
                             match kdr.end_bound() {
                                 Bound::Included(i) => i.cmp(key_data),
                                 Bound::Excluded(i) => {
-                                    let r = match i.cmp(key_data) {
+                                    
+                                    match i.cmp(key_data) {
                                         Ordering::Equal => Ordering::Less,
                                         v => v,
-                                    };
-                                    r
+                                    }
                                 }
                                 Bound::Unbounded => Ordering::Less,
                             }
@@ -500,7 +499,7 @@ where
 
     /// Finds the leaf node that can contain the given key
     fn find_internal(&self, key_data: &KeyData) -> Result<PageId, WeaverError> {
-        let Some(mut ptr) = self.root.read().clone() else {
+        let Some(mut ptr) = *self.root.read() else {
             return Err(WeaverError::NotFound(key_data.clone()));
         };
         let mut traversal = vec![];
@@ -528,11 +527,11 @@ where
                             match kdr.end_bound() {
                                 Bound::Included(i) => i.cmp(key_data),
                                 Bound::Excluded(i) => {
-                                    let r = match i.cmp(key_data) {
+                                    
+                                    match i.cmp(key_data) {
                                         Ordering::Equal => Ordering::Less,
                                         v => v,
-                                    };
-                                    r
+                                    }
                                 }
                                 Bound::Unbounded => Ordering::Less,
                             }
@@ -607,7 +606,7 @@ where
                         .page_id();
                     self.right_most(max)
                 } else {
-                    return Ok(node);
+                    Ok(node)
                 }
             }
             PageType::KeyValue => Ok(node),
@@ -628,7 +627,7 @@ where
                         .page_id();
                     self.left_most(max)
                 } else {
-                    return Ok(node);
+                    Ok(node)
                 }
             }
             PageType::KeyValue => Ok(node),
@@ -642,7 +641,7 @@ where
     pub fn verify_integrity(&self) {
         #[cfg(debug_assertions)]
         {
-            let root = self.root.read().clone();
+            let root = *self.root.read();
             match root {
                 None => {}
                 Some(root) => self.verify_integrity_(root).unwrap(),
@@ -712,7 +711,7 @@ where
 
     pub fn print(&self) -> Result<(), WeaverError> {
         let mut builder = TreeBuilder::new("btree".to_string());
-        if let Some(root) = self.root.read().clone() {
+        if let Some(root) = *self.root.read() {
             self.print_(root, &mut builder, None)?;
         }
         let built = builder.build();
@@ -723,7 +722,7 @@ where
 
     pub fn write<W: Write>(&self, writer: W) -> Result<(), WeaverError> {
         let mut builder = TreeBuilder::new("btree".to_string());
-        if let Some(root) = self.root.read().clone() {
+        if let Some(root) = *self.root.read() {
             self.print_(root, &mut builder, None)?;
         }
         let built = builder.build();
@@ -801,7 +800,7 @@ where
     }
 
     pub fn nodes(&self) -> Result<usize, WeaverError> {
-        let root = self.root.read().clone();
+        let root = *self.root.read();
         if let Some(root) = root {
             self.nodes_from_page(root)
         } else {

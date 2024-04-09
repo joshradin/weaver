@@ -57,7 +57,7 @@ impl<F: StorageDevice> FilePager<F> {
     pub fn with_file_and_page_len(file: F, page_len: usize) -> Self {
         let current_file_len = file.len() as usize;
         let pages = current_file_len.div_ceil(page_len);
-        let usage_map = HashMap::from_iter((0..pages).into_iter().map(|i| (i, Default::default())));
+        let usage_map = HashMap::from_iter((0..pages).map(|i| (i, Default::default())));
 
         Self {
             raf: Arc::new(RwLock::new(file)),
@@ -255,7 +255,7 @@ impl<'a> Page<'a> for FilePage {
         self.buf.len()
     }
     fn as_slice(&self) -> &[u8] {
-        &*self.buf
+        &self.buf
     }
 }
 
@@ -287,7 +287,7 @@ impl<'a, F: StorageDevice> Page<'a> for FilePageMut<F> {
         self.len as usize
     }
     fn as_slice(&self) -> &[u8] {
-        &*self.buffer
+        &self.buffer
     }
 }
 

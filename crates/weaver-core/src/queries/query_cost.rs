@@ -69,7 +69,7 @@ impl Ord for Cost {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self.row_factor, self.row_log).cmp(&(other.row_factor, other.row_log)) {
             Ordering::Equal => self.base.total_cmp(&self.base),
-            other => return other,
+            other => other,
         }
     }
 }

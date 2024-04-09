@@ -48,7 +48,10 @@ impl Debug for WeaverDbLifecycleService {
 
 impl WeaverDbLifecycleService {
     pub(crate) fn new(db: WeakWeaverDb) -> Self {
-        let service = Self {
+        
+
+
+        Self {
             helper: Arc::new(Mutex::new(WeaverDbLifecycleServiceInternal {
                 weak: db,
 
@@ -57,10 +60,7 @@ impl WeaverDbLifecycleService {
                 teardown_functions: vec![],
             })),
             phase: Arc::new(RwLock::new(LifecyclePhase::Uninitialized)),
-        };
-
-
-        service
+        }
     }
 
     /// Runs on init

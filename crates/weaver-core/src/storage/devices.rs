@@ -93,6 +93,12 @@ pub struct StorageDeviceMonitor {
     pub flushes: Arc<AtomicUsize>,
 }
 
+impl Default for StorageDeviceMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StorageDeviceMonitor {
     pub fn new() -> Self {
         Self {

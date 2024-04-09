@@ -126,6 +126,12 @@ pub struct LoginContext {
     password_hash: Option<Zeroizing<Vec<u8>>>,
 }
 
+impl Default for LoginContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LoginContext {
     pub fn new() -> Self {
         let user = whoami::username();

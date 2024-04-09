@@ -41,11 +41,11 @@ impl RandomAccessFile {
     }
 
     pub fn create<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        File::create(path).and_then(|file| Self::with_file(file))
+        File::create(path).and_then(Self::with_file)
     }
 
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        File::open(path).and_then(|file| Self::with_file(file))
+        File::open(path).and_then(Self::with_file)
     }
 
     pub fn open_or_create<P: AsRef<Path>>(path: P) -> io::Result<Self> {
@@ -55,7 +55,7 @@ impl RandomAccessFile {
             .read(true)
             .truncate(false)
             .open(path)
-            .and_then(|file| Self::with_file(file))
+            .and_then(Self::with_file)
     }
 }
 
@@ -84,7 +84,7 @@ impl StorageDevice for RandomAccessFile {
             ));
         }
         self.file.seek(SeekFrom::Start(offset))?;
-        self.file.write_all(&data)?;
+        self.file.write_all(data)?;
         if let Some(stats) = self.monitor.get() {
             stats.flushes.fetch_add(1, Ordering::Relaxed);
             stats.writes.fetch_add(1, Ordering::Relaxed);

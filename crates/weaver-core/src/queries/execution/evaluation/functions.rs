@@ -68,7 +68,7 @@ impl DbFunction {
     fn signature(&self) -> FunctionSignature {
         FunctionSignature {
             args: self.parameters.clone(),
-            ret_type: self.return_type.clone(),
+            ret_type: self.return_type,
         }
     }
 
@@ -186,7 +186,7 @@ impl FunctionRegistry {
             .entry(function.signature())
         {
             Entry::Occupied(_occ) => {
-                return Err(WeaverError::FunctionWithSignatureAlreadyExists(
+                Err(WeaverError::FunctionWithSignatureAlreadyExists(
                     name,
                     function.signature(),
                 ))
@@ -215,9 +215,7 @@ impl FunctionRegistry {
 
     /// Gets the total number of functions registered
     pub fn len(&self) -> usize {
-        self.functions
-            .iter()
-            .map(|(_, map)| map.len())
+        self.functions.values().map(|map| map.len())
             .sum::<usize>()
     }
 }
@@ -249,7 +247,7 @@ impl<S: AsRef<str>> FromIterator<(S, DbFunction)> for FunctionRegistry {
 impl<S: AsRef<str>> Extend<(S, DbFunction)> for FunctionRegistry {
     fn extend<T: IntoIterator<Item = (S, DbFunction)>>(&mut self, iter: T) {
         for (name, func) in iter {
-            let _ = self.add(name.as_ref().to_string(), func);
+            let _ = self.add(name.as_ref(), func);
         }
     }
 }

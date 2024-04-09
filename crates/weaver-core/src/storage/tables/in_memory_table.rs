@@ -43,7 +43,7 @@ impl InMemoryTable {
             schema.remove_sys_column(pos)?;
         }
         let table = Self::non_transactional(schema)?;
-        let ref tx = Tx::default();
+        let tx = &Tx::default();
         while let Some(row) = rows.next() {
             table.insert(tx, row)?;
         }
@@ -97,7 +97,7 @@ impl HasSchema for InMemoryTable {
     }
 }
 
-pub const IN_MEMORY_KEY: &'static str = "IN_MEMORY";
+pub const IN_MEMORY_KEY: &str = "IN_MEMORY";
 
 #[derive(Debug)]
 pub struct InMemoryTableFactory;

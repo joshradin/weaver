@@ -82,8 +82,7 @@ impl<P: Pager> Pager for LruCachingPager<P> {
                     monitor.misses.fetch_add(1, Ordering::Relaxed);
                 }
                 Ok(CachedPage::from_page(orig))
-            })
-            .map(|page| page.clone())
+            }).cloned()
         }
     }
 

@@ -62,13 +62,11 @@ pub trait Pager: Monitorable {
 
     fn iter(&self) -> impl Iterator<Item = Result<(Self::Page<'_>, usize), Self::Err>> + '_ {
         (0..self.len())
-            .into_iter()
             .map(|index| self.get(index).map(|page| (page, index)))
     }
 
     fn iter_mut(&self) -> impl Iterator<Item = Result<(Self::PageMut<'_>, usize), Self::Err>> + '_ {
         (0..self.len())
-            .into_iter()
             .map(|index| self.get_mut(index).map(|page| (page, index)))
     }
 }
@@ -397,7 +395,7 @@ impl<'a> Page<'a> for SharedPage<'a> {
         self.as_ref().len()
     }
     fn as_slice(&self) -> &[u8] {
-        &*self.buffer
+        &self.buffer
     }
 }
 
@@ -418,7 +416,7 @@ pub struct SharedPageMut<'a> {
 
 impl AsRef<[u8]> for SharedPageMut<'_> {
     fn as_ref(&self) -> &[u8] {
-        &*self.buffer
+        &self.buffer
     }
 }
 
@@ -447,7 +445,7 @@ impl<'a> Drop for SharedPageMut<'a> {
     fn drop(&mut self) {
         let mut guard = self.lock.write();
         if self.buffer.is_dirty() {
-            guard.copy_from_slice(&*self.buffer);
+            guard.copy_from_slice(&self.buffer);
         }
         self.usage
             .compare_exchange(-1, 0, Ordering::SeqCst, Ordering::Relaxed)

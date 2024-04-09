@@ -124,7 +124,7 @@ impl WeaverDbCore {
             .read()
             .contains_key(&(schema.clone(), name.clone()))
         {
-            return Ok(());
+            Ok(())
         } else {
             let mut open_tables = self.open_tables.write();
             let table: Table = Box::new(table);
@@ -210,7 +210,7 @@ impl Drop for WeaverDbCore {
     fn drop(&mut self) {
         if let Some(lock_file) = self.lock_file.take() {
             drop(lock_file.unlock());
-            let re = std::fs::remove_file(&self.path.join("weaver.lock"));
+            let re = std::fs::remove_file(self.path.join("weaver.lock"));
             info!("lock file deleted: {}", re.is_ok());
         }
         info!("Shut down distro db core");

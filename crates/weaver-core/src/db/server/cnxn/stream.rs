@@ -46,7 +46,7 @@ impl<T: Stream> WeaverStream<T> {
     /// Login using a given login context
     pub(crate) fn login(mut self, context: LoginContext) -> Result<WeaverStream<T>, WeaverError> {
         handshake_client(&mut self)?;
-        Ok(client_auth(self, context)?)
+        client_auth(self, context)
     }
 
     pub fn user(&self) -> &User {
@@ -69,12 +69,12 @@ impl<T: Stream> WeaverStream<T> {
 
     /// Gets the local socket address of the stream
     pub fn local_addr(&self) -> Option<SocketAddr> {
-        self.local_addr.clone()
+        self.local_addr
     }
 
     /// Gets the peer socket address of the stream
     pub fn peer_addr(&self) -> Option<SocketAddr> {
-        self.peer_addr.clone()
+        self.peer_addr
     }
 
     pub fn localhost(&self) -> bool {

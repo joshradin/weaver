@@ -58,16 +58,16 @@ impl QueryExecutor {
 
         let core = self.core.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
         trace!("executing query plan {plan:#?}");
-        let ref expression_evaluator = ExpressionEvaluator::compile(plan, None)?;
+        let expression_evaluator = &(ExpressionEvaluator::compile(plan, None)?);
         self.execute_node_non_recursive(tx, plan.root(), expression_evaluator, &core)
     }
 
     /// executes the nodes in DFS post order traversal.
     ///
     /// Probably easiest to create the pre order list stack first, then just pop from the stack
-    fn execute_node_non_recursive<'tx>(
+    fn execute_node_non_recursive(
         &self,
-        tx: &'tx Tx,
+        tx: &Tx,
         root: &QueryPlanNode,
         expression_evaluator: &ExpressionEvaluator,
         core: &Arc<RwLock<WeaverDbCore>>,
@@ -90,7 +90,7 @@ impl QueryExecutor {
                         };
                         let key_index = keys
                             .as_ref()
-                            .and_then(|keys| keys.get(0).cloned())
+                            .and_then(|keys| keys.first().cloned())
                             .unwrap_or_else(|| {
                                 table
                                     .schema()
@@ -267,7 +267,7 @@ impl QueryExecutor {
 
                     let mut csv_reader = csv_builder_reader
                         .from_path(infile)
-                        .map_err(|e| WeaverError::custom(e))?;
+                        .map_err(WeaverError::custom)?;
 
                     let table = core
                         .read()
@@ -400,7 +400,7 @@ impl QueryExecutor {
                     let mut done = false;
 
                     for _ in 0..offset {
-                        if let Some(_) = base.next() {
+                        if base.next().is_some() {
                         } else {
                             done = true;
                             break;

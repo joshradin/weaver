@@ -195,7 +195,6 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
         let key_hash = self.hash_builder.hash_one(key);
         Ok(self
             .roots()?
-            .into_iter()
             .find(|(hash, _, _)| *hash == key_hash))
     }
 
@@ -306,7 +305,7 @@ impl<K: Hash, P: Pager> VirtualPagerShared<K, P> {
             (page >> 27) & 0x1FF,
             (page >> 18) & 0x1FF,
             (page >> 9) & 0x1FF,
-            (page >> 0) & 0x1FF,
+            page & 0x1FF,
         );
         let root = self.get_or_init_root_index_page_map_directory(root_key)?;
         trace!("root: {root}, pml4_index: {pml4_index}");

@@ -181,7 +181,7 @@ impl QueryPlanFactory {
 
             let in_use = plan_context
                 .and_then(|info| info.using.as_ref())
-                .map(|s| Identifier::new(s));
+                .map(Identifier::new);
 
             let mut resolved = IdentifierResolver::new(in_use, |column_ref| {
                 self.resolve_column_ref(column_ref, &tables, plan_context)
@@ -400,7 +400,7 @@ impl QueryPlanFactory {
                                 .cost(self.get_cost("PROJECT")?)
                                 .rows(filtered.rows)
                                 .kind(QueryPlanKind::Project {
-                                    columns: columns,
+                                    columns,
                                     projected: Box::new(filtered),
                                 })
                                 .schema(projected_schema)
@@ -521,7 +521,7 @@ impl QueryPlanFactory {
         });
         Ok(applicable_keys
             .into_iter()
-            .map(|key| self.to_key_index(key, condition.as_ref(), &real_tables, plan_context))
+            .map(|key| self.to_key_index(key, condition.as_ref(), real_tables, plan_context))
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .flatten()
@@ -655,7 +655,7 @@ impl QueryPlanFactory {
 
         let schema = schema_builder.build()?;
 
-        Ok(QueryPlanNode::builder()
+        QueryPlanNode::builder()
             .cost(self.get_cost("GROUP_BY")?)
             .rows(grouped.rows)
             .kind(QueryPlanKind::GroupBy {
@@ -664,7 +664,7 @@ impl QueryPlanFactory {
                 result_columns: cols,
             })
             .schema(schema)
-            .build()?)
+            .build()
     }
 
     /// checks if a given expressions is functionally dependent on another.
@@ -693,13 +693,8 @@ impl QueryPlanFactory {
         ) -> Result<bool, WeaverError> {
             Ok(match dependent {
                 Expr::Column { column } => {
-                    if !source_columns
-                        .contains(column.resolved().expect("all columns must be resolved"))
-                    {
-                        false
-                    } else {
-                        true
-                    }
+                    !(!source_columns
+                        .contains(column.resolved().expect("all columns must be resolved")))
                 }
                 Expr::Literal { .. } => true,
                 Expr::BindParameter { .. } => {
@@ -881,9 +876,9 @@ impl QueryPlanFactory {
                         Ok(vec![])
                     }
                     BinaryOp::And | BinaryOp::Or => self
-                        .to_key_index(key, Some(&*left), involved_tables, ctx)
+                        .to_key_index(key, Some(left), involved_tables, ctx)
                         .and_then(|mut left| {
-                            self.to_key_index(key, Some(&*right), involved_tables, ctx)
+                            self.to_key_index(key, Some(right), involved_tables, ctx)
                                 .map(|right| {
                                     left.extend(right);
                                     left
@@ -917,7 +912,7 @@ impl QueryPlanFactory {
     }
 
     pub fn parse_column_ref(&self, col: &str) -> ColumnRef {
-        let split = col.split(".").collect::<Vec<_>>();
+        let split = col.split('.').collect::<Vec<_>>();
         match &split[..] {
             &[col] => UnresolvedColumnRef::with_column(Identifier::new(col)).into(),
             &[table, col] => {
@@ -958,7 +953,7 @@ impl QueryPlanFactory {
                     slice => Err(WeaverError::AmbiguousColumn {
                         col: col.to_string(),
                         positives: slice
-                            .into_iter()
+                            .iter()
                             .map(|&(schema, table)| {
                                 ResolvedColumnRef::new(
                                     Identifier::new(schema),
@@ -989,7 +984,7 @@ impl QueryPlanFactory {
                     slice => Err(WeaverError::AmbiguousColumn {
                         col: col.to_string(),
                         positives: slice
-                            .into_iter()
+                            .iter()
                             .map(|&(schema, table)| {
                                 ResolvedColumnRef::new(
                                     Identifier::new(schema),

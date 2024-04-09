@@ -39,7 +39,7 @@ impl DataSerializer {
                     self.bytes.push(0);
                 }
                 Some(r#type) => {
-                    self.bytes.extend(serialize_type(r#type).into_iter());
+                    self.bytes.extend(serialize_type(r#type).iter());
                 }
             }
         } else {
@@ -70,7 +70,7 @@ impl DataSerializer {
     pub fn serialize_row<'a, R: AsRef<Row<'a>>>(&mut self, row: R) {
         let row = row.as_ref();
         for value in row.iter() {
-            self.serialize(&value)
+            self.serialize(value)
         }
     }
 }
@@ -235,15 +235,15 @@ fn parse_byte_string(bytes: &[u8]) -> IResult<&[u8], &[u8]> {
 fn u16_parser<'a, E: ParseError<&'a [u8]>>(
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], u16, E> + Sized {
     map(take(2_usize), |b: &[u8]| {
-        let be = u16::from_be_bytes(b.try_into().expect("infallible"));
-        be
+        
+        u16::from_be_bytes(b.try_into().expect("infallible"))
     })
 }
 fn u32_parser<'a, E: ParseError<&'a [u8]>>(
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], u32, E> + Sized {
     map(take(4_usize), |b: &[u8]| {
-        let be = u32::from_be_bytes(b.try_into().expect("infallible"));
-        be
+        
+        u32::from_be_bytes(b.try_into().expect("infallible"))
     })
 }
 

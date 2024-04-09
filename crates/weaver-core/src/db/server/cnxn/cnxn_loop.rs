@@ -181,8 +181,7 @@ fn handle_message<S: MessageStream + Send>(
             return Err(WeaverError::IoError(io::Error::new(
                 ErrorKind::Unsupported,
                 "unexpected message kind",
-            ))
-            .into());
+            )));
         }
     }
     Ok(true)

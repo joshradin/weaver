@@ -186,7 +186,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
                 .buffered
                 .get_mut(page_offset)
                 .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
-            page.as_mut_slice().copy_from_slice(&*bytes);
+            page.as_mut_slice().copy_from_slice(&bytes);
         }
         Ok(())
     }
@@ -210,7 +210,7 @@ impl Page<'_> for BufferedPage {
     }
 
     fn as_slice(&self) -> &[u8] {
-        &*self.slice
+        &self.slice
     }
 }
 
@@ -241,12 +241,12 @@ impl Page<'_> for BufferedPageMut {
     }
 
     fn as_slice(&self) -> &[u8] {
-        &*self.slice
+        &self.slice
     }
 }
 
 impl PageMut<'_> for BufferedPageMut {
     fn as_mut_slice(&mut self) -> &mut [u8] {
-        &mut *self.slice
+        &mut self.slice
     }
 }

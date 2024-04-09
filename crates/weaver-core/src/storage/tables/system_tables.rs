@@ -86,4 +86,4 @@ impl HasSchema for SystemTable {
     }
 }
 
-pub const SYSTEM_TABLE_KEY: &'static str = "SYSTEM_TABLE";
+pub const SYSTEM_TABLE_KEY: &str = "SYSTEM_TABLE";

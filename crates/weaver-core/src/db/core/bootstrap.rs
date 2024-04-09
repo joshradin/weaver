@@ -30,18 +30,18 @@ use crate::tx::Tx;
 pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<(), WeaverError> {
     let span = error_span!("bootstrap");
     let _enter = span.enter();
-    let ref tx = Tx::default(); // base transaction
+    let tx = &Tx::default(); // base transaction
 
     std::fs::create_dir_all(weaver_schema_dir)?;
 
     // STEP 1: Load weaver.schemata
-    let ref weaver_schemata_schema = weaver_schemata_schema()?;
+    let weaver_schemata_schema = &(weaver_schemata_schema()?);
     core.open_table(weaver_schemata_schema)?;
     let weaver_schemata = core.get_open_table("weaver", "schemata")?;
     weaver_schemata.insert(tx, Row::from([DbVal::from(1), "weaver".into()]))?;
 
     // STEP 2: Load weaver.tables
-    let ref weaver_tables_schema = weaver_tables_schema()?;
+    let weaver_tables_schema = &(weaver_tables_schema()?);
     core.open_table(weaver_tables_schema)?;
     let weaver_tables = core.get_open_table("weaver", "tables")?;
 

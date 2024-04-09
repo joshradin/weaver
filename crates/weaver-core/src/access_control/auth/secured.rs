@@ -47,7 +47,7 @@ impl<T: Stream> Secured<T> {
             });
             Ok(builder.build())
         })()
-        .map_err(|e| WeaverError::SslConnectorBuilderError(e))
+        .map_err(WeaverError::SslConnectorBuilderError)
     }
 }
 

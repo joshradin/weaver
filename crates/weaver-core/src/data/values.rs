@@ -111,7 +111,7 @@ impl From<&[u8]> for DbVal {
 
 impl From<Vec<u8>> for DbVal {
     fn from(value: Vec<u8>) -> Self {
-        DbVal::binary(&value, None)
+        DbVal::binary(value, None)
     }
 }
 
@@ -235,7 +235,7 @@ impl PartialOrd for DbVal {
         use crate::data::DbVal::Null;
         use DbVal::*;
         let emit = Some(match (self, other) {
-            (String(l, _), String(r, _)) => l.cmp(&r),
+            (String(l, _), String(r, _)) => l.cmp(r),
             (Binary(l, _), Binary(r, _)) => l.cmp(r),
             (Integer(l), Integer(r)) => l.cmp(r),
             (Integer(l), Float(r)) => (*l as f64).total_cmp(r),

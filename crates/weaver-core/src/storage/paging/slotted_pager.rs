@@ -77,7 +77,7 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     /// is where the key data could be inserted to maintain sort order.
     pub fn binary_search(&self, key_data: &KeyData) -> Result<Result<usize, usize>, WeaverError> {
         let mut l: usize = 0;
-        let mut r: usize = self.count().checked_sub(1).unwrap_or(0);
+        let mut r: usize = self.count().saturating_sub(1);
 
         while l <= r {
             let m = (l + r) / 2;
@@ -148,7 +148,6 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
             Bound::Unbounded => self.count() - 1,
         };
         (l..=r)
-            .into_iter()
             .map(|index| self.get_cell(index))
             .collect()
     }
@@ -169,7 +168,6 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     }
     fn slots_offsets(&self) -> Vec<usize> {
         (0..self.count())
-            .into_iter()
             .map(|i| self.get_slot_offset(i).expect("could not get slot"))
             .fuse()
             .collect()
@@ -177,7 +175,6 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
 
     fn cell_offsets(&self) -> Vec<usize> {
         (0..self.count())
-            .into_iter()
             .map(|i| self.get_cell_offset(i).expect("could not get slot"))
             .fuse()
             .collect()
@@ -233,18 +230,18 @@ impl<'a, P: Page<'a>> SlottedPageShared<'a, P> {
     fn assert_cell_type(&self, cell: &Cell) -> Result<(), WeaverError> {
         match (cell, self.page_type()) {
             (Cell::Key(_), PageType::KeyValue) => {
-                return Err(WeaverError::CellTypeMismatch {
+                Err(WeaverError::CellTypeMismatch {
                     page_id: self.page_id(),
                     expected: PageType::KeyValue,
                     actual: PageType::Key,
-                });
+                })
             }
             (Cell::KeyValue(_), PageType::Key) => {
-                return Err(WeaverError::CellTypeMismatch {
+                Err(WeaverError::CellTypeMismatch {
                     page_id: self.page_id(),
                     expected: PageType::Key,
                     actual: PageType::KeyValue,
-                });
+                })
             }
             _ => Ok(()),
         }
@@ -325,7 +322,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     pub fn insert(&mut self, cell: Cell) -> Result<(), WeaverError> {
         self.assert_cell_type(&cell)?;
         self.lock()?;
-        let ref key_data = cell.key_data();
+        let key_data = &cell.key_data();
         let cell_len = cell.len();
         if self.contains(key_data) {
             self.delete(key_data)?;
@@ -346,10 +343,10 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
 
         match cell {
             Cell::Key(key) => {
-                key.write(&mut data)?;
+                key.write(data)?;
             }
             Cell::KeyValue(key_value) => {
-                key_value.write(&mut data)?;
+                key_value.write(data)?;
             }
         }
 
@@ -414,7 +411,6 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
         };
         // remove min..=max
         let cells = (min..=max)
-            .into_iter()
             .map(|slot| self.get_cell(slot))
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -427,7 +423,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
     pub fn used(&self) -> usize {
         self.all()
             .into_iter()
-            .flat_map(|cells| cells)
+            .flatten()
             .map(|cell| cell.len())
             .sum::<usize>()
             + self.count() * size_of::<u64>()
@@ -474,8 +470,8 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
             offset
         } else if self.cell_ptr - self.slot_ptr >= total_len {
             self.cell_ptr -= size;
-            let ptr = self.cell_ptr;
-            ptr
+            
+            self.cell_ptr
         } else {
             return None;
         };
@@ -582,7 +578,6 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
 
     fn sync_slots(&mut self) {
         let key_to_cell_offset = (0..self.count())
-            .into_iter()
             .map(|i| {
                 (
                     self.get_cell(i).expect("could not get slot").key_data(),
@@ -592,8 +587,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
             .collect::<BTreeMap<_, _>>();
 
         let in_order = key_to_cell_offset
-            .values()
-            .map(|&index| index)
+            .values().copied()
             .collect::<Vec<_>>();
 
         in_order
@@ -844,7 +838,7 @@ impl StorageBackedData for SlottedPageHeader {
         let buf = &buf[8..];
         let page_id = u32::read(buf)
             .and_then(|id| NonZeroU32::new(id).ok_or_else(|| ReadDataError::BadMagicNumber))
-            .map(|u| PageId::new(u))?;
+            .map(PageId::new)?;
         let buf = buf.get(U32_SIZE..).ok_or(ReadDataError::UnexpectedEof)?;
         let left_page_id = <Option<PageId>>::read(buf)?;
         let buf = buf.get(U32_SIZE..).ok_or(ReadDataError::UnexpectedEof)?;
@@ -897,7 +891,7 @@ pub enum PageType {
 impl StorageBackedData for PageType {
     type Owned = Self;
     fn read(buf: &[u8]) -> ReadResult<Self> {
-        match buf.get(0) {
+        match buf.first() {
             Some(1) => Ok(PageType::Key),
             Some(2) => Ok(PageType::KeyValue),
             Some(_) => Err(ReadDataError::BadMagicNumber),
@@ -955,7 +949,6 @@ impl<P: Pager> SlottedPager<P> {
             }
         };
         if let Some(max) = (0..paged.len())
-            .into_iter()
             .filter_map(|p| Pager::get(&paged, p).ok())
             .map(|p| p.page_id())
             .max()
@@ -964,7 +957,6 @@ impl<P: Pager> SlottedPager<P> {
         }
 
         for (page, index) in (0..paged.len())
-            .into_iter()
             .filter_map(|p| Pager::get(&paged, p).ok().map(|page| (page.page_id(), p)))
             .collect::<Vec<_>>()
         {

@@ -22,12 +22,12 @@ impl WeaverStream<LocalSocketStream> {
         let stream = LocalSocketStream::connect(path.as_ref())?;
         let socket = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0));
         let socket = Self::new(
-            Some(socket.clone()),
+            Some(socket),
             Some(socket),
             true,
             Transport::Insecure(StreamSniffer::from(stream)),
         );
-        Ok(socket.login(login_context)?)
+        socket.login(login_context)
     }
 }
 

@@ -11,6 +11,12 @@ pub struct InMemoryEngine {
     key: EngineKey,
 }
 
+impl Default for InMemoryEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryEngine {
     pub fn new() -> Self {
         Self {

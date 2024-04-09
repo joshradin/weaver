@@ -89,7 +89,7 @@ impl<'a> Serialize for Row<'a> {
     {
         let mut seq = serializer.serialize_seq(None)?;
         for val in self.iter() {
-            seq.serialize_element(&*val)?;
+            seq.serialize_element(val)?;
         }
         seq.end()
     }
@@ -149,7 +149,7 @@ impl From<Vec<DbVal>> for Row<'_> {
         Self(
             value
                 .into_iter()
-                .map(|v| Cow::Owned(v))
+                .map(Cow::Owned)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         )
@@ -184,7 +184,7 @@ impl<'a> From<&'a [DbVal]> for Row<'a> {
         Self(
             value
                 .iter()
-                .map(|v| Cow::Borrowed(v))
+                .map(Cow::Borrowed)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         )
@@ -195,8 +195,7 @@ impl<'a> From<&'a [Cow<'a, DbVal>]> for Row<'a> {
     fn from(value: &'a [Cow<'a, DbVal>]) -> Self {
         Self(
             value
-                .iter()
-                .map(|v| v.clone())
+                .iter().cloned()
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         )

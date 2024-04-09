@@ -64,7 +64,7 @@ pub fn handshake_listener<T: MessageStream>(
         return Err(WeaverError::HandshakeFailed);
     };
 
-    let ref resp = Message::Handshake { ack: true, nonce };
+    let resp = &Message::Handshake { ack: true, nonce };
 
     debug!("Sending ack back to client...");
     client.write(resp)?;

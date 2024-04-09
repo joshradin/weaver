@@ -45,7 +45,7 @@ use crate::queries::execution::QueryExecutor;
 use crate::queries::query_plan::QueryPlan;
 use crate::queries::query_plan_factory::QueryPlanFactory;
 use crate::queries::query_plan_optimizer::QueryPlanOptimizer;
-use crate::rows::OwnedRows;
+
 use crate::tx::coordinator::TxCoordinator;
 use crate::tx::Tx;
 
@@ -140,12 +140,10 @@ impl WeaverDb {
                                             } else {
                                                 trace_span!("packet", id = req_id)
                                             }
+                                        } else if let Some(parent) = req.span() {
+                                            parent.clone()
                                         } else {
-                                            if let Some(parent) = req.span() {
-                                                parent.clone()
-                                            } else {
-                                                Span::current()
-                                            }
+                                            Span::current()
                                         };
 
                                         span.in_scope(|| {
@@ -497,7 +495,7 @@ impl WeaverDb {
 
     /// Gets the local address of this server, if open on a tcp connection
     pub fn local_addr(&self) -> Option<SocketAddr> {
-        self.shared.tcp_local_address.get().map(|s| s.clone())
+        self.shared.tcp_local_address.get().map(|s| *s)
     }
 
     /// Creates a connection
@@ -519,27 +517,27 @@ impl WeaverDb {
             DbReqBody::OnCoreWrite(cb) => trace_span!("core", mode = "write").in_scope(|| {
                 trace!("getting write access to core");
                 let mut writable = self.shared.core.write();
-                Ok((cb)(&mut *writable, cancel_recv)?.into_db_resp())
+                Ok((cb)(&mut writable, cancel_recv)?.into_db_resp())
             }),
             DbReqBody::OnCore(cb) => trace_span!("core", mode = "read").in_scope(|| {
                 trace!("getting read access to core");
                 let readable = self.shared.core.read();
-                Ok((cb)(&*readable, cancel_recv)?.into_db_resp())
+                Ok((cb)(&readable, cancel_recv)?.into_db_resp())
             }),
             DbReqBody::OnServer(cb) => (cb)(self, cancel_recv),
             DbReqBody::Ping => Ok(DbResp::Pong),
             DbReqBody::TxQuery(tx, ref query) => {
-                let ref plan = match self.to_plan(&tx, query, ctx.as_ref()).map_err(|e| {
+                let plan = &(match self.to_plan(&tx, query, ctx.as_ref()).map_err(|e| {
                     error!("creating plan resulted in error: {}", e);
                     e
                 }) {
                     Ok(ok) => ok,
                     Err(err) => return Ok(DbResp::Err(err)),
-                };
+                });
                 trace!("created plan: {plan:#?}");
                 let executor = self.query_executor();
                 let x = match executor.execute(&tx, plan) {
-                    Ok(rows) => Ok(DbResp::TxRows(tx, OwnedRows::from(rows))),
+                    Ok(rows) => Ok(DbResp::TxRows(tx, rows)),
                     Err(err) => Ok(DbResp::Err(err)),
                 };
                 x

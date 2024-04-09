@@ -126,7 +126,7 @@ impl DynamicTable for UserTable {
 
 impl HasSchema for UserTable {
     fn schema(&self) -> &TableSchema {
-        &self.in_memory.schema()
+        self.in_memory.schema()
     }
 }
 

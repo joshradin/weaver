@@ -87,7 +87,8 @@ impl TableSchema {
         &mut self,
         column_definition: ColumnDefinition,
     ) -> Result<(), WeaverError> {
-        Ok(self.sys_columns.push(column_definition))
+        self.sys_columns.push(column_definition);
+        Ok(())
     }
 
     /// Removes a system column by index
@@ -443,8 +444,8 @@ impl ColumnDefinition {
     pub fn validate(&self, value: &mut Cow<DbVal>) -> Result<(), WeaverError> {
         if !self.data_type().validate(value) {
             return Err(WeaverError::TypeError {
-                expected: self.data_type.clone(),
-                actual: (&**value).clone(),
+                expected: self.data_type,
+                actual: (**value).clone(),
             });
         }
         Ok(())
@@ -629,7 +630,7 @@ impl TableSchemaBuilder {
     pub fn primary(mut self, cols: &[&str]) -> Result<Self, WeaverError> {
         self.keys.push(Key::new(
             "PRIMARY",
-            cols.into_iter().map(ToString::to_string).collect(),
+            cols.iter().map(ToString::to_string).collect(),
             true,
             true,
             true,
@@ -649,8 +650,8 @@ impl TableSchemaBuilder {
         })?;
 
         self.keys.push(Key::new(
-            name.to_string(),
-            cols.into_iter().map(ToString::to_string).collect(),
+            name,
+            cols.iter().map(ToString::to_string).collect(),
             non_null,
             false,
             false,
@@ -683,7 +684,7 @@ impl TableSchemaBuilder {
             0,
         )?);
 
-        if keys.iter().find(|key| key.primary_eligible()).is_none() {
+        if !keys.iter().any(|key| key.primary_eligible()) {
             keys.push(Key::new(
                 "PRIMARY",
                 vec![ROW_ID_COLUMN.to_string()],
@@ -691,7 +692,7 @@ impl TableSchemaBuilder {
                 true,
                 true,
             )?);
-        } else if keys.iter().find(|key| key.primary()).is_none() {
+        } else if !keys.iter().any(|key| key.primary()) {
             // there may exist some primary key eligible. Find the shortest and first available
             let mut ele_keys = keys
                 .iter_mut()

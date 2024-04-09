@@ -186,7 +186,7 @@ impl JoinStrategy for HashJoinTableStrategy {
             ..
         } = join_clause;
         let target_schema = left.schema().join(right.schema());
-        Ok(QueryPlanNode::builder()
+        QueryPlanNode::builder()
             .cost(self.join_cost(join_clause).unwrap())
             .rows(rows)
             .kind(QueryPlanKind::HashJoin {
@@ -196,7 +196,7 @@ impl JoinStrategy for HashJoinTableStrategy {
                 on: constraint.clone(),
             })
             .schema(target_schema)
-            .build()?)
+            .build()
     }
 
     fn try_join<'r>(
@@ -279,7 +279,6 @@ impl JoinStrategy for HashJoinTableStrategy {
 
         let rows = hash_map
             .into_values()
-            .into_iter()
             .filter_map(|(used, rows)| if used { Some(rows) } else { None })
             .flatten();
 

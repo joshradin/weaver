@@ -162,9 +162,7 @@ impl QueryPlanNode {
         {
             return Some(self);
         }
-        match &self.kind {
-            _ => None,
-        }
+        None
     }
 
     /// Gets the actual cost of the query plan node
@@ -254,7 +252,7 @@ impl QueryPlanNode {
                 values.push("".into()); // possible keys
                 values.push(
                     columns
-                        .into_iter()
+                        .iter()
                         .flat_map(|i| i.columns())
                         .map(|i| i.to_string())
                         .unique()
@@ -373,20 +371,20 @@ impl QueryPlanNode {
     /// Gets references to the children of this query plan node
     pub fn children(&self) -> Vec<&QueryPlanNode> {
         match &self.kind {
-            QueryPlanKind::Filter { filtered, .. } => vec![&*filtered],
+            QueryPlanKind::Filter { filtered, .. } => vec![filtered],
             QueryPlanKind::Project {
                 projected: node, ..
-            } => vec![&*node],
+            } => vec![node],
             QueryPlanKind::Filter { filtered, .. } => {
-                vec![&*filtered]
+                vec![filtered]
             }
             QueryPlanKind::HashJoin { left, right, .. } => {
-                vec![&*left, &*right]
+                vec![left, right]
             }
-            QueryPlanKind::Explain { explained } => vec![&*explained],
-            QueryPlanKind::GroupBy { grouped, .. } => vec![&*grouped],
-            QueryPlanKind::GetPage { base, .. } => vec![&*base],
-            QueryPlanKind::OrderedBy { ordered, .. } => vec![&*ordered],
+            QueryPlanKind::Explain { explained } => vec![explained],
+            QueryPlanKind::GroupBy { grouped, .. } => vec![grouped],
+            QueryPlanKind::GetPage { base, .. } => vec![base],
+            QueryPlanKind::OrderedBy { ordered, .. } => vec![ordered],
             _ => {
                 vec![]
             }

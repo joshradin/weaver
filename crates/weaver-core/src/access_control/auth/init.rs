@@ -72,7 +72,7 @@ fn private_key(path: &Path) -> Result<(Rsa<Private>, bool), AuthInitError> {
         std::fs::write(&key_path, buffer)?;
         (rsa, true)
     };
-    return Ok(key);
+    Ok(key)
 }
 
 fn public_key(path: &Path, key: &Rsa<Private>) -> Result<Rsa<Public>, AuthInitError> {

@@ -64,11 +64,11 @@ pub enum Message {
 }
 
 pub fn write_msg<W: Write>(writer: W, msg: &Message) -> Result<(), WeaverError> {
-    Ok(serde_json::to_writer(writer, msg).map_err(|e| WeaverError::SerializationError(Box::new(e)))?)
+    serde_json::to_writer(writer, msg).map_err(|e| WeaverError::SerializationError(Box::new(e)))
 }
 
 pub fn read_msg<R: Read>(reader: R) -> Result<Message, WeaverError> {
-    Ok(serde_json::from_reader(reader).map_err(|e| WeaverError::DeserializationError(Box::new(e)))?)
+    serde_json::from_reader(reader).map_err(|e| WeaverError::DeserializationError(Box::new(e)))
 }
 
 /// A message stream

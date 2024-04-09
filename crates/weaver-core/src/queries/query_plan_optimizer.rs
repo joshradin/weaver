@@ -127,7 +127,7 @@ fn sigma_cascade(query: &mut QueryPlanNode) -> Result<(), WeaverError> {
     query
         .children_mut()
         .into_iter()
-        .try_for_each(|child| sigma_cascade(child))?;
+        .try_for_each(sigma_cascade)?;
 
     Ok(())
 }
@@ -172,7 +172,7 @@ fn push_down_filter(parent: &mut QueryPlanNode, socket: &DbSocket) -> Result<(),
             let grandchild = *grandchild.clone();
             *parent.children_mut()[0] = grandchild;
             *child.children_mut()[0] = parent;
-            push_down_filter(&mut child.children_mut()[0], socket)?;
+            push_down_filter(child.children_mut()[0], socket)?;
             Some(child)
         }
         QueryPlanKind::Project {
@@ -188,7 +188,7 @@ fn push_down_filter(parent: &mut QueryPlanNode, socket: &DbSocket) -> Result<(),
                 let grandchild = *grandchild.clone();
                 *parent.children_mut()[0] = grandchild;
                 *child.children_mut()[0] = parent;
-                push_down_filter(&mut child.children_mut()[0], socket)?;
+                push_down_filter(child.children_mut()[0], socket)?;
                 Some(child)
             } else {
                 None
@@ -209,7 +209,7 @@ fn push_down_filter(parent: &mut QueryPlanNode, socket: &DbSocket) -> Result<(),
 
                 child.rows = parent.rows;
                 *child.children_mut()[0] = parent;
-                push_down_filter(&mut child.children_mut()[0], socket)?;
+                push_down_filter(child.children_mut()[0], socket)?;
                 Some(child)
             } else if expr_exclusively_in_schema(condition, right.schema()) {
                 let mut parent = parent.clone();
@@ -221,7 +221,7 @@ fn push_down_filter(parent: &mut QueryPlanNode, socket: &DbSocket) -> Result<(),
                 child.rows = parent.rows;
                 *child.children_mut()[1] = parent;
 
-                push_down_filter(&mut child.children_mut()[1], socket)?;
+                push_down_filter(child.children_mut()[1], socket)?;
                 Some(child)
             } else {
                 None
@@ -280,7 +280,7 @@ fn push_down_filter(parent: &mut QueryPlanNode, socket: &DbSocket) -> Result<(),
                     .unwrap_or(u64::MAX)
             });
             trace!("applicable keys: {applicable_keys:?}");
-            if applicable_keys.len() > 0 {
+            if !applicable_keys.is_empty() {
                 let mut child = *child.clone();
                 let QueryPlanKind::TableScan { keys, .. } = &mut child.kind else {
                     unreachable!()

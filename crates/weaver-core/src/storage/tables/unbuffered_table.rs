@@ -107,7 +107,7 @@ impl<P: Pager + Sync + Send> UnbufferedTable<P> {
                         .column_index(TX_ID_COLUMN)
                         .and_then(|tx_col| row.get(tx_col))
                         .and_then(|tx| tx.int_value())
-                        .map(|tx| TxId::from(tx));
+                        .map(TxId::from);
                     let can_see = tx_id.map(|ref i| tx.can_see(i)).unwrap_or(true);
                     trace!(
                         "checking if row {:?} (tx_id: {tx_id:?}) can be seen by tx {} -> {can_see}",
@@ -192,7 +192,7 @@ where
                                     .column_index(TX_ID_COLUMN)
                                     .and_then(|tx_col| row.get(tx_col))
                                     .and_then(|tx| tx.int_value())
-                                    .map(|tx| TxId::from(tx));
+                                    .map(TxId::from);
                                 let can_see = tx_id.map(|ref i| tx.can_see(i)).unwrap_or(true);
                                 trace!(
                             "checking if row {:?} (tx_id: {tx_id:?}) can be seen by tx {} -> {can_see}",
@@ -213,7 +213,7 @@ where
         } else {
             let mut all = self.all_rows(tx)?;
             all.retain(|row| {
-                let ref row_key_data = self.schema.key_data(key_def, row);
+                let row_key_data = &self.schema.key_data(key_def, row);
                 match key.kind() {
                     KeyIndexKind::All => true,
                     KeyIndexKind::Range { low, high } => {

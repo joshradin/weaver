@@ -28,6 +28,12 @@ impl<I, O> Debug for CancellableTask<I, O> {
     }
 }
 
+impl Default for CancellableTask<(), ()> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CancellableTask<(), ()> {
     /// Creates a no-op cancellable task
     pub fn new() -> Self {
@@ -208,14 +214,14 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
     {
         self.next_with_cancel(move |ref input, cancel| {
             let iter = to_iter(input);
-            if let Ok(_) = cancel.try_recv() {
+            if cancel.try_recv().is_ok() {
                 return Err(Cancelled);
             }
             let mut vec = vec![];
             for item in iter {
                 let next = (for_each)(item, input);
                 vec.push(next);
-                if let Ok(_) = cancel.try_recv() {
+                if cancel.try_recv().is_ok() {
                     return Err(Cancelled);
                 }
             }
@@ -236,7 +242,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
     {
         self.next_with_cancel(move |ref input, cancel| {
             let iter = to_iter(input, cancel)?;
-            if let Ok(_) = cancel.try_recv() {
+            if cancel.try_recv().is_ok() {
                 return Err(Cancelled);
             }
             let mut vec = vec![];
@@ -244,7 +250,7 @@ impl<I: Send + 'static, O: Send + 'static> CancellableTask<I, O> {
                 let item = item?;
                 let next = for_each(item, input, cancel)?;
                 vec.push(next);
-                if let Ok(_) = cancel.try_recv() {
+                if cancel.try_recv().is_ok() {
                     return Err(Cancelled);
                 }
             }

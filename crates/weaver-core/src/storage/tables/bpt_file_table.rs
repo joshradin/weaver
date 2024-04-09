@@ -24,7 +24,7 @@ use crate::storage::tables::unbuffered_table::UnbufferedTable;
 use crate::storage::{Pager, StorageDeviceDelegate};
 use crate::tx::Tx;
 
-pub const B_PLUS_TREE_FILE_KEY: &'static str = "weaveBPTF";
+pub const B_PLUS_TREE_FILE_KEY: &str = "weaveBPTF";
 
 /// A table stored in a [FilePager]
 #[derive(Debug)]

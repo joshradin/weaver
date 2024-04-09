@@ -102,7 +102,7 @@ impl TxCoordinator {
                                         if max > prev {
                                             let res = committed_to.compare_exchange(
                                                 prev,
-                                                max.into(),
+                                                max,
                                                 Ordering::SeqCst,
                                                 Ordering::Relaxed,
                                             );
@@ -129,7 +129,7 @@ impl TxCoordinator {
                                         if max > prev {
                                             let res = committed_to.compare_exchange(
                                                 prev,
-                                                max.into(),
+                                                max,
                                                 Ordering::SeqCst,
                                                 Ordering::Relaxed,
                                             );
@@ -185,7 +185,7 @@ impl TxCoordinator {
                 look_behind: TxId(self.committed_to.load(Ordering::SeqCst)),
                 visible: self.committed_txs.read().clone(),
                 completed: false,
-                drop_behavior: self.on_drop.clone(),
+                drop_behavior: self.on_drop,
                 msg_sender: Some(self.primary_msg_sender.clone()),
                 _server_ref: Some(self.server.upgrade().expect("no server").into()),
                 lock,

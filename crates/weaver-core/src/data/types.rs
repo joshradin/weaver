@@ -59,7 +59,7 @@ impl Type {
         };
         if !self.validate(&db_val) {
             return Err(WeaverError::TypeError {
-                expected: self.clone(),
+                expected: *self,
                 actual: db_val,
             });
         };
@@ -142,7 +142,7 @@ impl DbTypeOf for Expr {
 
                 normal.or(aggregate)
                     .map(|func| {
-                        func.return_type().clone()
+                        *func.return_type()
                     })
                     .ok_or_else(|| {
                         let arg_types = match args {
