@@ -208,7 +208,7 @@ where
                         .map(|rows| OwnedRows::new(self.schema.clone(), rows))?;
                     Ok(Box::new(rows))
                 }
-                KeyIndexKind::One(_id) => Ok(todo!()),
+                KeyIndexKind::One(_id) => todo!(),
             }
         } else {
             let mut all = self.all_rows(tx)?;

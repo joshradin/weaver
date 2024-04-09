@@ -43,7 +43,7 @@ impl StorageBackedData for Option<PageId> {
 
 struct CellPtr {
     /// ptr to the slot
-    slot: usize,
+    _slot: usize,
     /// ptr to the cell
     cell: usize,
 }
@@ -328,7 +328,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
             self.delete(key_data)?;
         }
         let Some(CellPtr {
-            slot: _,
+            _slot: _,
             cell: cell_ptr,
         }) = self.alloc(cell_len)
         else {
@@ -339,7 +339,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
             .into());
         };
 
-        let mut data = &mut self.page.as_mut_slice()[cell_ptr..][..cell_len];
+        let data = &mut self.page.as_mut_slice()[cell_ptr..][..cell_len];
 
         match cell {
             Cell::Key(key) => {
@@ -483,7 +483,7 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
             .copy_from_slice(&(cell_ptr as u64).to_be_bytes());
 
         Some(CellPtr {
-            slot: slot_ptr,
+            _slot: slot_ptr,
             cell: cell_ptr,
         })
     }
@@ -874,8 +874,7 @@ impl StorageBackedData for SlottedPageHeader {
         buf = &mut buf[len..];
         let len = self.page_type.unwrap().write(buf)?;
         buf = &mut buf[len..];
-        let len = self.size.write(buf)?;
-        buf = &mut buf[len..];
+        self.size.write(buf)?;
 
         Ok(size_of::<Self>())
     }

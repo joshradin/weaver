@@ -498,7 +498,7 @@ where
     }
 
     /// Finds the leaf node that can contain the given key
-    fn find_internal(&self, key_data: &KeyData) -> Result<PageId, WeaverError> {
+    fn _find_internal(&self, key_data: &KeyData) -> Result<PageId, WeaverError> {
         let Some(mut ptr) = *self.root.read() else {
             return Err(WeaverError::NotFound(key_data.clone()));
         };
@@ -517,7 +517,7 @@ where
                         }
                         Cell::KeyValue(_) => true,
                     }) {
-                        /// breaks when at the lowest level before key values
+                        // breaks when at the lowest level before key values
                         break;
                     }
                     let found = cells.binary_search_by(|(kdr, _)| {

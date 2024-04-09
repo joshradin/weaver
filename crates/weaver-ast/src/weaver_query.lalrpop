@@ -39,9 +39,8 @@ LoadDataStmt: ast::LoadData = {
 
 LoadDataFieldOptions: (Option<Cow<'input, str>>, Option<Cow<'input,str>>, Option<Cow<'input,str>>) = {
     "fields"
-    <terminated_by: ("terminated" "by" <"string">)?> => {
-        (terminated_by, None, None)
-    }
+    <terminated_by: ("terminated" "by" <"string">)?> => (terminated_by, None, None)
+
 }
 
 CreateStmt: ast::Create = {
@@ -84,15 +83,15 @@ ColumnDefinition: ast::ColumnDefinition = {
 }
 
 ConstraintDefintion: ast::ConstraintDefinition = {
-   "primary" "key" => { todo!() }
+   "primary" "key" => todo!()
 }
 
 DataType: ast::DataType = {
-    "int_t" => { ast::IntType(8).into() },
-    "varchar_t" "(" <width: "int"> ")" => { ast::VarCharType(width.try_into().unwrap_or_else(|e| panic!("must be at most 255: {e}"))).into()},
-    "varbinary_t" "(" <width: "int"> ")" => { ast::VarBinaryType(width.try_into().unwrap_or_else(|e| panic!("must be at most 255: {e}"))).into()},
-    "float_t" => { ast::FloatType(8).into() },
-    "boolean_t" => { ast::BooleanType.into() }
+    "int_t" => ast::IntType(8).into(),
+    "varchar_t" "(" <width: "int"> ")" => ast::VarCharType(width.try_into().unwrap_or_else(|e| panic!("must be at most 255: {e}"))).into(),
+    "varbinary_t" "(" <width: "int"> ")" => ast::VarBinaryType(width.try_into().unwrap_or_else(|e| panic!("must be at most 255: {e}"))).into(),
+    "float_t" => ast::FloatType(8).into(),
+    "boolean_t" => ast::BooleanType.into()
 }
 
 
@@ -208,7 +207,6 @@ Expr: ast::Expr = {
             None => {
                 ast::UnresolvedColumnRef::with_column(column_name).into()
             }
-            _ => unreachable!()
         };
         ast::Expr::Column {
             column: column_ref

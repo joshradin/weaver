@@ -74,7 +74,7 @@ pub struct JoinParameters<'a> {
 /// Responsible for selecting a join strategy
 #[derive(Debug)]
 pub struct JoinStrategySelector {
-    db: WeakWeaverDb,
+    _db: WeakWeaverDb,
     strategies: Vec<Arc<dyn JoinStrategy>>,
 }
 
@@ -82,7 +82,7 @@ impl JoinStrategySelector {
     /// Creates a new join strategy selector
     pub fn new(db: WeakWeaverDb) -> Self {
         Self {
-            db,
+            _db: db,
             strategies: vec![],
         }
         .with_strategy(HashJoinTableStrategy)

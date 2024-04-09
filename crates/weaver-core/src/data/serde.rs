@@ -3,7 +3,6 @@ use nom::bytes::complete::take;
 use nom::combinator::map;
 use nom::error::ParseError;
 use nom::{Finish, IResult};
-use serde::{Serialize};
 use tracing::{trace};
 
 use crate::data::row::Row;

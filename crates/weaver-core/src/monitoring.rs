@@ -1,7 +1,7 @@
 //! Useful data structures and functions for monitoring parts of weaver
 
 use std::borrow::Borrow;
-use std::fmt::{Debug, Display, Formatter, Pointer};
+use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::ops::Index;
 use std::sync::Arc;

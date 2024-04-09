@@ -4,7 +4,7 @@ use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::WeaverDb;
 
 use crate::error::WeaverError;
-use crate::rows::{OwnedRows, Rows};
+use crate::rows::OwnedRows;
 use crate::storage::tables::shared_table::SharedTable;
 use crate::tx::{Tx};
 use crossbeam::channel::Receiver;
@@ -193,6 +193,7 @@ impl Debug for DbReqBody {
             DbReqBody::OnCore(_) => f.debug_struct("OnCore").finish_non_exhaustive(),
             DbReqBody::OnCoreWrite(_) => f.debug_struct("OnCoreWrite").finish_non_exhaustive(),
             DbReqBody::OnServer(_) => f.debug_struct("OnServer").finish_non_exhaustive(),
+            #[allow(unreachable_patterns)]
             _ => f.debug_struct("DbReqBody").finish_non_exhaustive(),
         }
     }

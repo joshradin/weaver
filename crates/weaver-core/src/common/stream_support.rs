@@ -3,7 +3,7 @@
 use crossbeam::channel::{unbounded, Receiver, RecvError, Sender};
 use std::io;
 use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
-use std::time::Duration;
+
 
 use crate::access_control::users::User;
 use crate::db::server::cnxn::stream::WeaverStream;
@@ -115,17 +115,6 @@ pub fn internal_wstream() -> (WeaverStream<InternalStream>, WeaverStream<Interna
     (stream1, stream2)
 }
 
-pub struct Timeout<S> {
-    stream: S,
-    timeout: Duration,
-}
-
-impl<S> Timeout<S> {
-    /// Creates a new stream that can timeout
-    pub fn new(stream: S, timeout: Duration) -> Self {
-        Self { stream, timeout }
-    }
-}
 
 /// to send a discrete packet of information to a stream
 pub fn packet_write<T: Serialize, W: Write>(writer: &mut W, data: &T) -> Result<usize, io::Error> {

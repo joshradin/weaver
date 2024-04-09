@@ -375,9 +375,6 @@ impl QueryPlanNode {
             QueryPlanKind::Project {
                 projected: node, ..
             } => vec![node],
-            QueryPlanKind::Filter { filtered, .. } => {
-                vec![filtered]
-            }
             QueryPlanKind::HashJoin { left, right, .. } => {
                 vec![left, right]
             }
@@ -397,9 +394,6 @@ impl QueryPlanNode {
             QueryPlanKind::Project {
                 projected: node, ..
             } => vec![&mut *node],
-            QueryPlanKind::Filter { filtered, .. } => {
-                vec![&mut *filtered]
-            }
             QueryPlanKind::HashJoin { left, right, .. } => {
                 vec![&mut *left, &mut *right]
             }

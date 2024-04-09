@@ -35,7 +35,7 @@ pub struct WeaverProcess {
     shared: Arc<WeaverProcessShared>,
     state: Arc<RwLock<ProcessState>>,
     info: Arc<RwLock<String>>,
-    kill_channel: Sender<Kill>,
+    _kill_channel: Sender<Kill>,
     handle: OnceLock<CancellableTaskHandle<Result<(), WeaverError>>>,
 }
 
@@ -71,12 +71,12 @@ impl WeaverProcess {
                 shared: shared.clone(),
                 state: state.clone(),
                 info: info.clone(),
-                kill_channel: rx,
+                _kill_channel: rx,
                 handle: OnceLock::new(),
             },
             WeaverProcessChild {
                 shared: shared.clone(),
-                kill_channel: tx,
+                _kill_channel: tx,
                 state,
                 info,
                 db: weak.clone(),
@@ -142,7 +142,7 @@ impl Drop for WeaverProcess {
 #[derive(Debug)]
 pub struct WeaverProcessChild {
     shared: Arc<WeaverProcessShared>,
-    kill_channel: Receiver<Kill>,
+    _kill_channel: Receiver<Kill>,
     state: Arc<RwLock<ProcessState>>,
     info: Arc<RwLock<String>>,
     db: WeakWeaverDb,
@@ -208,7 +208,7 @@ pub struct ProcessManager {
     next_pid: AtomicU32,
     processes: Arc<RwLock<BTreeMap<WeaverPid, WeaverProcess>>>,
     process_killed_channel: Sender<WeaverPid>,
-    process_killed_handle: JoinHandle<()>,
+    _process_killed_handle: JoinHandle<()>,
 }
 
 impl ProcessManager {
@@ -232,7 +232,7 @@ impl ProcessManager {
             next_pid: AtomicU32::new(1),
             processes,
             process_killed_channel: send,
-            process_killed_handle: handle,
+            _process_killed_handle: handle,
         }
     }
 

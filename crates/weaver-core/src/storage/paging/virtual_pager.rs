@@ -10,7 +10,6 @@ use std::sync::Arc;
 
 use bitfield::bitfield;
 use lru::LruCache;
-use nom::Parser;
 use parking_lot::Mutex;
 use thiserror::Error;
 use tracing::trace;

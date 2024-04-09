@@ -111,7 +111,6 @@ integer!(i64);
 
 macro_rules! optional_integer {
     ($int:ty) => {
-        #[doc("treats 0 value as None")]
         impl StorageBackedData for Option<$int> {
             type Owned = Self;
 

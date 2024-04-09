@@ -6,7 +6,6 @@ use crate::lexing::{Spanned, Token, TokenError, Tokenizer};
 
 use lalrpop_util::{lalrpop_mod, ParseError};
 
-
 lalrpop_mod!(weaver_query);
 
 #[derive(Debug)]

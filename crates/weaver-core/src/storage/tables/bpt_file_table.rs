@@ -21,7 +21,7 @@ use crate::storage::paging::file_pager::FilePager;
 
 use crate::storage::tables::table_schema::TableSchema;
 use crate::storage::tables::unbuffered_table::UnbufferedTable;
-use crate::storage::{Pager, StorageDeviceDelegate};
+use crate::storage::StorageDeviceDelegate;
 use crate::tx::Tx;
 
 pub const B_PLUS_TREE_FILE_KEY: &str = "weaveBPTF";

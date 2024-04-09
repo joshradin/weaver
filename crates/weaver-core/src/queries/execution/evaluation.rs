@@ -272,6 +272,7 @@ fn runtime_eval_single_row<'a>(
                 let result = function.execute(args)?;
                 stack.push(Cow::Owned(result));
             }
+            #[allow(unreachable_patterns)]
             _expr => {
                 todo!("evaluate {_expr}")
             }

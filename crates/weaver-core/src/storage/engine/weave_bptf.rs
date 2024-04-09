@@ -14,7 +14,7 @@ use crate::storage::tables::bpt_file_table::{BptfTableFactory, B_PLUS_TREE_FILE_
 pub struct WeaveBPTFEngine {
     engine_key: EngineKey,
     root: PathBuf,
-    alts: HashSet<PathBuf>,
+    _alts: HashSet<PathBuf>,
 }
 
 impl WeaveBPTFEngine {
@@ -29,7 +29,7 @@ impl WeaveBPTFEngine {
         Self {
             engine_key: EngineKey::new(B_PLUS_TREE_FILE_KEY),
             root: root.as_ref().to_path_buf(),
-            alts: alts.into_iter().collect(),
+            _alts: alts.into_iter().collect(),
         }
     }
 }

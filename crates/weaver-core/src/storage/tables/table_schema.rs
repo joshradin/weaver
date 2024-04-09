@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::ops::{Deref, Index};
 use std::rc::Rc;
 

@@ -212,7 +212,6 @@ impl Debug for DbVal {
 
 impl PartialEq for DbVal {
     fn eq(&self, other: &Self) -> bool {
-        use crate::data::DbVal::Null;
         use DbVal::*;
         match (self, other) {
             (String(l, _), String(r, _)) => l == r,
@@ -232,7 +231,6 @@ impl Eq for DbVal {}
 
 impl PartialOrd for DbVal {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use crate::data::DbVal::Null;
         use DbVal::*;
         let emit = Some(match (self, other) {
             (String(l, _), String(r, _)) => l.cmp(r),

@@ -2,7 +2,7 @@
 
 
 use std::cell::{RefCell};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::convert::From;
 use std::marker::PhantomData;
 
@@ -244,6 +244,7 @@ impl QueryPlanFactory {
                     .schema(QueryPlan::ddl_result_schema())
                     .build()
             }
+            #[allow(unreachable_patterns)]
             _other => {
                 unimplemented!("{_other:?}")
             }
@@ -449,83 +450,6 @@ impl QueryPlanFactory {
                 }
             }
         })
-    }
-
-    fn get_keys_from_condition(
-        &self,
-        plan_context: Option<&WeaverProcessInfo>,
-        real_tables: &&HashMap<TableRef, TableSchema>,
-        condition: &Option<Expr>,
-        from_node: &QueryPlanNode,
-    ) -> Result<Vec<KeyIndex>, WeaverError> {
-        let mut applicable_keys =
-            match condition
-                .as_ref()
-                .map(|condition| -> Result<VecDeque<&Key>, WeaverError> {
-                    let condition: HashSet<ResolvedColumnRef> = condition
-                        .columns()
-                        .iter()
-                        .map(|c| {
-                            c.resolved()
-                                .expect("all columns should be resolved at this point")
-                                .clone()
-                        })
-                        .collect();
-                    debug!("columns used in condition: {condition:?}");
-                    Ok(from_node
-                        .schema()
-                        .keys()
-                        .iter()
-                        .filter_map(|key| {
-                            debug!(
-                                "checking if all of {:?} in condition columns {:?}",
-                                key.columns(),
-                                condition
-                            );
-                            if key.columns().iter().all(|column| {
-                                let column_ref = self.parse_column_ref(column);
-
-                                let resolved = match column_ref {
-                                    ColumnRef::Unresolved(column_ref) => self
-                                        .resolve_column_ref(&column_ref, real_tables, plan_context)
-                                        .expect("could not resolve"),
-                                    ColumnRef::Resolved(resolved) => resolved,
-                                };
-
-                                debug!("resolved key column: {resolved:?}");
-                                debug!("does {condition:?} contain {resolved:?}?");
-                                condition.contains(&resolved)
-                            }) {
-                                Some(key)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<VecDeque<_>>())
-                }) {
-                None => VecDeque::default(),
-                Some(res) => res?,
-            };
-
-        if applicable_keys.is_empty() {
-            applicable_keys.push_front(from_node.schema().primary_key()?);
-        }
-        let mut applicable_keys = Vec::from(applicable_keys);
-        debug!("applicable keys: {applicable_keys:?}");
-        applicable_keys.sort_by_cached_key(|key| {
-            if key.primary() {
-                -1_isize
-            } else {
-                key.columns().len() as isize
-            }
-        });
-        Ok(applicable_keys
-            .into_iter()
-            .map(|key| self.to_key_index(key, condition.as_ref(), real_tables, plan_context))
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>())
     }
 
     fn table_schema_for_projection(
@@ -934,8 +858,8 @@ impl QueryPlanFactory {
         involved_tables: &HashMap<TableRef, TableSchema>,
         _ctx: Option<&WeaverProcessInfo>,
     ) -> Result<ResolvedColumnRef, WeaverError> {
-        match column_ref.as_tuple() {
-            (None, None, col) => {
+        match (column_ref.table(), column_ref.column()) {
+            (None, col) => {
                 debug!("finding column ?.?.{col}");
                 let mut positives = vec![];
                 for (table, schema) in involved_tables {
@@ -965,7 +889,7 @@ impl QueryPlanFactory {
                     }),
                 }
             }
-            (None, Some(table), col) => {
+            (Some(table), col) => {
                 debug!("finding column ?.{table}.{col}");
                 let mut positives = vec![];
                 for (table_ref, schema) in involved_tables {
@@ -996,12 +920,6 @@ impl QueryPlanFactory {
                     }),
                 }
             }
-            (Some(schema), Some(table), col) => Ok(ResolvedColumnRef::new(
-                schema.clone(),
-                table.clone(),
-                col.clone(),
-            )),
-            _ => unreachable!("<name>.?.<name> should not be possible"),
         }
     }
 }
@@ -1025,7 +943,7 @@ struct IdentifierResolver<'a, F>
 where
     F: Fn(&UnresolvedColumnRef) -> Result<ResolvedColumnRef, WeaverError> + 'a,
 {
-    in_use_schema: Option<Identifier>,
+    _in_use_schema: Option<Identifier>,
     select_level: usize,
     column_aliases: BTreeMap<usize, Vec<Identifier>>,
     aliases: HashMap<Identifier, (Identifier, Identifier)>,
@@ -1039,7 +957,7 @@ where
 {
     fn new(in_use_schema: Option<Identifier>, resolver: F) -> Self {
         Self {
-            in_use_schema,
+            _in_use_schema: in_use_schema,
             select_level: 0,
             column_aliases: Default::default(),
             aliases: Default::default(),

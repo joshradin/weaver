@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::{Debug, Formatter};
-use std::io::Write;
 use std::marker::PhantomData;
 use std::mem::size_of;
 use std::slice::SliceIndex;
@@ -225,7 +224,7 @@ where
 {
     fn set_header(&mut self, header: Self::Header) -> WriteResult<()> {
         let reference = &mut self.page.as_mut_slice()[..self.header_len];
-        let result = header.write::<'_>(reference).map(move |_| ());
+        let result = header.write(reference).map(move |_| ());
         drop(header);
         result
     }
