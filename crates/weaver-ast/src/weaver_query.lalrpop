@@ -17,7 +17,8 @@ Query_: ast::Query = {
     "explain" <Query_> => ast::Query::Explain(Box::new(<>)),
     <SelectStmt> ";" => ast::Query::Select(<>),
     <CreateStmt> ";" => ast::Query::Create(<>),
-    <LoadDataStmt> ";" => ast::Query::LoadData(<>)
+    <LoadDataStmt> ";" => ast::Query::LoadData(<>),
+    "kill" <pid: "int"> ";" => ast::Query::KillProcess(pid)
 }
 
 LoadDataStmt: ast::LoadData = {
@@ -386,5 +387,8 @@ extern {
 
         "and" => Token::And,
         "or" => Token::Or,
+
+        "kill" => Token::MetaKill,
+        "show" => Token::MetaShow,
     }
 }

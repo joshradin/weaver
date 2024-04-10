@@ -1,21 +1,19 @@
 //! The connect loop provides the "main" method for newly created connections
 
-use std::io::ErrorKind;
-
 use std::io;
+use std::io::ErrorKind;
 use std::thread::sleep;
 use std::time::Duration;
 
 use crossbeam::channel::Receiver;
-
-use tracing::{debug, error, info, trace, warn, Span};
+use tracing::{debug, error, info, Span, trace, warn};
 
 use weaver_ast::ast::Query;
 
 use crate::cancellable_task::Cancel;
 use crate::cnxn::{Message, MessageStream, RemoteDbReq, RemoteDbResp};
 use crate::db::server::layers::packets::{DbReqBody, DbResp};
-use crate::db::server::processes::{ProcessState, WeaverProcessChild};
+use crate::db::server::processes::{ProcessState, RemoteWeaverProcess};
 use crate::db::server::socket::DbSocket;
 use crate::error::WeaverError;
 use crate::rows::Rows;
@@ -24,7 +22,7 @@ use crate::tx::Tx;
 /// The main method to use when connecting to a client
 pub fn remote_stream_loop<S: MessageStream + Send>(
     mut stream: S,
-    mut child: WeaverProcessChild,
+    mut child: RemoteWeaverProcess,
     cancel: &Receiver<Cancel>,
     span: &Span,
 ) -> Result<(), WeaverError> {
@@ -39,9 +37,7 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
         match handle_message(
             message,
             &mut stream,
-            (&mut child,
-            cancel,
-            &socket),
+            (&mut child, cancel, &socket),
             &mut tx,
             &mut rows,
             span,
@@ -64,7 +60,11 @@ pub fn remote_stream_loop<S: MessageStream + Send>(
     Ok(())
 }
 
-pub type Control<'a> = (&'a mut WeaverProcessChild, &'a Receiver<Cancel>, &'a DbSocket);
+pub type Control<'a> = (
+    &'a mut RemoteWeaverProcess,
+    &'a Receiver<Cancel>,
+    &'a DbSocket,
+);
 
 fn handle_message<S: MessageStream + Send>(
     message: Message,
@@ -81,6 +81,9 @@ fn handle_message<S: MessageStream + Send>(
 
             let mut send_request =
                 |body: DbReqBody, tx: &mut Option<Tx>| -> Result<RemoteDbResp, WeaverError> {
+                    if let DbReqBody::TxQuery(_, query) = &body {
+
+                    }
                     let mut resp = socket.send((body, span.clone()));
                     resp.on_cancel(cancel.clone());
                     let resp = resp.join()?;
@@ -122,6 +125,7 @@ fn handle_message<S: MessageStream + Send>(
                 }
                 RemoteDbReq::Query(query) => {
                     trace!("received query = {query:#?}");
+                    child.set_info(&query);
                     match tx.take() {
                         None => send_request(DbReqBody::TxQuery(Tx::default(), query), tx),
                         Some(existing_tx) => {

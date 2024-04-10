@@ -14,8 +14,8 @@ rust-version = "1.75"
 log = ["tracing/log"]
 # Vendor ssl instead of dynamically linking
 vendor-openssl = ["openssl/vendored"]
+weaveBPTF-caching = []
 transport-sniffing = []
-
 
 [dependencies]
 chrono = "0.4.31"

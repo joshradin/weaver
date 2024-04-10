@@ -6,7 +6,7 @@ use tracing::info;
 
 use weaver_client::write_rows::write_rows;
 use weaver_core::ast::Query;
-use weaver_tests::{init_tracing, run_full_stack};
+use weaver_tests::{init_tracing, run_full_stack_local_socket};
 
 const DDL: &str = r#"
     CREATE TABLE `default`.`1brc` (
@@ -37,7 +37,7 @@ fn main() -> eyre::Result<()> {
         .join("data")
         .join("48krc.csv");
 
-    run_full_stack(data_dir.path(), |_server, client| {
+    run_full_stack_local_socket(data_dir.path(), |_server, client| {
         info!("trying to get tables");
         client.query(&Query::parse(DDL)?)?;
         let (rows, elapsed) = client.query(&Query::parse(&format!(

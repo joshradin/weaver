@@ -85,6 +85,8 @@ fn keyword(input: &str) -> IResult<&str, Token> {
         alt((
             value(Token::Limit, ignore_case("limit")),
             value(Token::Offset, ignore_case("offset")),
+            value(Token::MetaKill, ignore_case("kill")),
+            value(Token::MetaShow, ignore_case("show")),
         )),
         alt((
             value(Token::Values, ignore_case("values")),

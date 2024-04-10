@@ -16,6 +16,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::data::types::Type;
 use crate::data::values::DbVal;
+use crate::storage::tables::table_schema::TableSchema;
 
 /// A row of data
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -31,6 +32,10 @@ impl<'a> Row<'a> {
 
     pub fn get(&self, index: usize) -> Option<&Cow<'a, DbVal>> {
         self.0.get(index)
+    }
+    pub fn get_named(&self, schema: &TableSchema, name: &str) -> Option<&Cow<'a, DbVal>> {
+        schema.column_index(name)
+            .and_then(|idx| self.get(idx))
     }
 
     /// Gets a slice of the data
@@ -55,7 +60,7 @@ impl<'a> Row<'a> {
     }
 
     /// Iterator over a row
-    pub fn iter(&self) -> RowRefIter<'a, '_> {
+    pub fn iter(&self) -> DbValRefIter<'a, '_> {
         self.0.iter()
     }
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Cow<'a, DbVal>> {
@@ -74,6 +79,14 @@ impl<'a> Row<'a> {
     /// Gets the types of the values
     pub fn types(&self) -> Vec<Option<Type>> {
         self.iter().map(|val| val.value_type()).collect()
+    }
+}
+
+impl<'a> Index<(&TableSchema, &str)> for Row<'a> {
+    type Output = Cow<'a, DbVal>;
+
+    fn index(&self, (schema, name): (&TableSchema, &str)) -> &Self::Output {
+        self.get_named(schema, name).unwrap()
     }
 }
 
@@ -283,11 +296,11 @@ impl<'a> PartialEq<OwnedRow> for Row<'a> {
 }
 
 #[derive(Debug)]
-pub struct RowIter {
+pub struct DbValIter {
     values: VecDeque<DbVal>,
 }
 
-impl Iterator for RowIter {
+impl Iterator for DbValIter {
     type Item = DbVal;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -297,20 +310,20 @@ impl Iterator for RowIter {
 
 impl<'a> IntoIterator for Row<'a> {
     type Item = DbVal;
-    type IntoIter = RowIter;
+    type IntoIter = DbValIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        RowIter {
+        DbValIter {
             values: self.0.iter().map(|t| (**t).clone()).collect(),
         }
     }
 }
 
-pub type RowRefIter<'a, 'b> = <&'b [Cow<'a, DbVal>] as IntoIterator>::IntoIter;
+pub type DbValRefIter<'a, 'b> = <&'b [Cow<'a, DbVal>] as IntoIterator>::IntoIter;
 
 impl<'a, 'b: 'a> IntoIterator for &'b Row<'a> {
     type Item = &'b Cow<'a, DbVal>;
-    type IntoIter = RowRefIter<'a, 'b>;
+    type IntoIter = DbValRefIter<'a, 'b>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()

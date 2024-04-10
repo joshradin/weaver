@@ -5,13 +5,13 @@ use tracing::info;
 
 use weaver_client::write_rows::write_rows;
 use weaver_core::ast::Query;
-use weaver_tests::{init_tracing, run_full_stack};
+use weaver_tests::{init_tracing, run_full_stack_local_socket};
 
 #[test]
 fn can_connect() -> eyre::Result<()> {
     let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
-    run_full_stack(temp_dir.path(), |_server, _client| Ok(()))?;
+    run_full_stack_local_socket(temp_dir.path(), |_server, _client| Ok(()))?;
 
     Ok(())
 }
@@ -20,7 +20,7 @@ fn can_connect() -> eyre::Result<()> {
 fn get_processes() -> eyre::Result<()> {
     let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
-    run_full_stack(temp_dir.path(), |_server, client| {
+    run_full_stack_local_socket(temp_dir.path(), |_server, client| {
         info!("trying to get system processes");
         let (rows, elapsed) = client.query(&Query::parse("select * from weaver.processes")?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
@@ -35,7 +35,7 @@ fn get_processes() -> eyre::Result<()> {
 fn get_tables() -> eyre::Result<()> {
     let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
-    run_full_stack(temp_dir.path(), |_server, client| {
+    run_full_stack_local_socket(temp_dir.path(), |_server, client| {
         info!("trying to get tables");
         let (rows, elapsed) = client.query(&Query::parse("select * from weaver.tables")?)?;
         write_rows(stdout(), rows, elapsed).expect("could not write rows");
@@ -50,7 +50,7 @@ fn get_tables() -> eyre::Result<()> {
 fn get_tables_with_schema() -> eyre::Result<()> {
     let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
-    run_full_stack(temp_dir.path(), |_server, client| {
+    run_full_stack_local_socket(temp_dir.path(), |_server, client| {
         info!("trying to get tables");
         let (rows, elapsed) = client.query(&Query::parse(
             r"
@@ -75,7 +75,7 @@ fn get_tables_with_schema() -> eyre::Result<()> {
 fn explain_get_tables_with_schema() -> eyre::Result<()> {
     let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
-    run_full_stack(temp_dir.path(), |_server, client| {
+    run_full_stack_local_socket(temp_dir.path(), |_server, client| {
         info!("trying to get tables");
         let (rows, elapsed) = client.query(&Query::parse(
             r"

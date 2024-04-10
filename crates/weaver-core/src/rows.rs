@@ -93,13 +93,6 @@ pub trait Rows<'t> {
         }
     }
 
-    fn into_iter(self) -> OwnedRows
-    where
-        Self: Sized,
-    {
-        self.to_owned()
-    }
-
     fn to_owned(mut self) -> OwnedRows
     where
         Self: Sized,
@@ -113,6 +106,15 @@ pub trait Rows<'t> {
             schema: self.schema().clone(),
             rows,
         }
+    }
+}
+
+impl<'a> IntoIterator for Box<dyn Rows<'a>  +'a + Send> {
+    type Item = Row<'a>;
+    type IntoIter = RowIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        RowIter(self)
     }
 }
 
@@ -178,6 +180,18 @@ impl OwnedRows {
         F: Fn(&Row) -> bool,
     {
         self.rows.retain(|row| predicate(row.as_ref()))
+    }
+}
+
+/// An iterator over rows
+
+pub struct RowIter<'a>(Box<dyn Rows<'a> + 'a>);
+
+impl<'a> Iterator for RowIter<'a> {
+    type Item = Row<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
     }
 }
 

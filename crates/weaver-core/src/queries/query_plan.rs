@@ -10,6 +10,7 @@ use weaver_ast::ast::{
 use crate::data::row::Row;
 use crate::data::types::Type;
 use crate::data::values::DbVal;
+use crate::db::server::processes::WeaverPid;
 use crate::dynamic_table::HasSchema;
 use crate::error::WeaverError;
 use crate::queries::query_cost::Cost;
@@ -338,6 +339,13 @@ impl QueryPlanNode {
                 values.push("".into()); // possible keys
                 values.push("".into()); // columns
             }
+
+            QueryPlanKind::KillProcess { .. } => {
+                values.push("weaver.processes".into()); // table
+                values.push("kill-process".into()); // join kind
+                values.push("".into()); // possible keys
+                values.push("".into()); // columns
+            }
         }
 
         values.push((self.rows as i64).into());
@@ -534,4 +542,9 @@ pub enum QueryPlanKind {
     CreateTable { table_def: CreateTable },
     /// Load data
     LoadData { load_data: LoadData },
+
+    /// Kill a process
+    KillProcess {
+        pid: WeaverPid
+    }
 }

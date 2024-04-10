@@ -247,6 +247,15 @@ impl QueryPlanFactory {
                     .schema(QueryPlan::ddl_result_schema())
                     .build()
             }
+            Query::KillProcess(pid) => {
+
+                QueryPlanNode::builder()
+                    .rows(0)
+                    .cost(Cost::new(0.0, 0, None))
+                    .kind(QueryPlanKind::KillProcess { pid: *pid as u32})
+                    .schema(QueryPlan::ddl_result_schema())
+                    .build()
+            }
             #[allow(unreachable_patterns)]
             _other => {
                 unimplemented!("{_other:?}")

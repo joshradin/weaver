@@ -153,7 +153,6 @@ pub enum WeaverError {
     UnknownFunction(String, Vec<ArgType>),
     #[error("Column not resolved")]
     ColumnNotResolved(UnresolvedColumnRef),
-
     #[error("{0} builder incomplete, need {1:?}")]
     BuilderIncomplete(String, Vec<String>),
     #[error("Failed to evaluate {0}: {1}")]
@@ -172,6 +171,10 @@ pub enum WeaverError {
     WildcardIsNeverFunctionallyDependent,
     #[error("{0} is not functionally dependent on {}", _1.iter().map(ToString::to_string).collect::<Vec<_>>().join(","))]
     ExpressionNotFunctionallyDependentOnGroupBy(Expr, Vec<Expr>),
+    #[error("No process with id {0:?} found")]
+    WeaverPidNotFound(WeaverPid),
+    #[error("Could not cancel task")]
+    CancelTaskFailed,
 
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {
@@ -181,6 +184,7 @@ pub enum WeaverError {
     },
     #[error("{0}")]
     Custom(String),
+
 }
 
 impl WeaverError {

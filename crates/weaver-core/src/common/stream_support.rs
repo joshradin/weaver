@@ -1,5 +1,6 @@
 //! Support for streams
 
+use std::fmt::Debug;
 use crossbeam::channel::{unbounded, Receiver, RecvError, Sender};
 use std::io;
 use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
@@ -11,9 +12,9 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 /// Marker trait for something that you can both read and write to
-pub trait Stream: Read + Write {}
+pub trait Stream: Read + Write + Debug {}
 
-impl<S: Read + Write> Stream for S {}
+impl<S: Read + Write + Debug> Stream for S {}
 
 #[derive(Debug)]
 pub struct InternalStream {

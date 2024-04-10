@@ -174,21 +174,19 @@ mod tests {
     fn write_to_ram_file() {
         let temp = tempfile().expect("could not create tempfile");
         let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
+        ram.set_len(128).unwrap();
         let test = [1, 2, 3, 4, 5, 6];
         ram.write(0, &test).expect("could not write");
         let mut buffer = [0; 16];
         let read = ram.read(0, &mut buffer).expect("could not read");
-        assert_eq!(&buffer[..read as usize], &test);
+        assert_eq!(&buffer[..test.len()], &test);
     }
 
     #[test]
     fn debug_file() {
         let temp = tempfile().expect("could not create tempfile");
         let mut ram = RandomAccessFile::with_file(temp).expect("could not create ram file");
-
-        ram.write(
-            0,
-            br#"
+        const TEXT: &'static [u8; 1208] = br#"
 Lorem ipsum dolor sit amet,
 consectetur adipiscing elit. Integer
 efficitur purus non orci pellentesque,
@@ -223,9 +221,13 @@ ultrices id quam sed maximus. Etiam
 pellentesque, mi et malesuada bibendum,
 orci tellus elementum nisi, tempus
 aliquet magna lorem ac dolor.
-        "#,
+        "#;
+        ram.set_len((TEXT.len() + 16).try_into().unwrap()).expect("could not set len");
+        ram.write(
+            0,
+            TEXT,
         )
-        .expect("could not write");
+           .expect("could not write");
 
         println!("ram: {ram:#?}");
     }

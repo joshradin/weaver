@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use rand::Rng;
-use tracing::{debug, error, info_span, trace};
+use tracing::{debug, error, info_span, trace, warn};
 
 use crate::cnxn::{Message, MessageStream};
 use crate::error::WeaverError;
@@ -21,6 +21,8 @@ pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), WeaverEr
     server.write(&Message::Handshake {
         ack: false,
         nonce: Vec::from(nonce),
+    }).inspect_err(|e| {
+        warn!("sending handshake start resulted in err {e}")
     })?;
     debug!("Handshake sent, waiting for acknowledgement from server...");
     let Message::Handshake {
@@ -30,7 +32,7 @@ pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), WeaverEr
         Ok(msg) => msg,
         Err(e) => {
             error!("No message received from server received because of error: {e}");
-            return Err(e);
+            return Err(WeaverError::caused_by("no messaged received from server", e));
         }
     })
     else {
@@ -59,7 +61,7 @@ pub fn handshake_listener<T: MessageStream>(
         Ok(msg) => msg,
         Err(e) => {
             error!("No message received from client received because of error: {e}");
-            return Err(e);
+            return Err(WeaverError::caused_by("no message received from client", e));
         }
     }) else {
         error!("Response from client didn't match expected handshake form");

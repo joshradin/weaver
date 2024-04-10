@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::net::TcpStream;
 
 use std::path::Path;
 use std::thread;
@@ -85,6 +86,13 @@ impl WeaverDbInstance {
             Err(_err) => Err(eyre!("thread panicked")),
         })
     }
+
+    pub fn new_port_client(&self, context: LoginContext) -> eyre::Result<WeaverClient<TcpStream>> {
+        WeaverClient::connect(
+            ("localhost", self.port()),
+            context,
+        )
+    }
 }
 
 impl Drop for WeaverDbInstance {
@@ -94,7 +102,7 @@ impl Drop for WeaverDbInstance {
     }
 }
 
-pub fn run_full_stack<F>(path: &Path, cb: F) -> Result<(), eyre::Error>
+pub fn run_full_stack_local_socket<F>(path: &Path, cb: F) -> Result<(), eyre::Error>
 where
     F: FnOnce(
         &mut WeaverDbInstance,
@@ -143,3 +151,59 @@ where
         server
     })
 }
+
+pub fn run_full_stack_port<F>(path: &Path, cb: F) -> Result<(), eyre::Error>
+    where
+        F: FnOnce(
+            &mut WeaverDbInstance,
+            &mut WeaverClient<TcpStream>,
+        ) -> Result<(), eyre::Error>,
+{
+    let server = start_server(0, path, None)?;
+    DualResult::zip_with(Ok(server), |server: Result<_, &eyre::Error>| {
+        let mut context = LoginContext::new();
+        context.set_user("root");
+
+        match server {
+            Ok(server) => {
+                let port = server.port();
+                Ok(WeaverClient::connect(
+                    ("localhost", port),
+                    context,
+                )?)
+            },
+            Err(err) => Err(eyre!("can not start client without server: {}", err)),
+        }
+    })
+        .then(
+            |(mut server, mut client)| {
+                debug!("running full stack");
+                assert!(client.connected());
+                let output = error_span!("client").in_scope(|| cb(&mut server, &mut client));
+                drop(client);
+                let monitor = server.monitor.take().unwrap();
+                drop(server);
+                output.map(|output| (output, monitor))
+            },
+            |(e1, e2)| match (e1, e2) {
+                (Some(e1), Some(e2)) => {
+                    error!("both server and client failed");
+                    Err(e1.wrap_err(e2))
+                }
+                (Some(e1), None) => {
+                    error!("only server failed");
+                    Err(e1)
+                }
+                (None, Some(e2)) => {
+                    error!("only client failed");
+                    Err(e2)
+                }
+                _ => unreachable!(),
+            },
+        )
+        .map(|(server, mut monitor)| {
+            debug!("monitor: {:#?}", monitor.stats());
+            server
+        })
+}
+

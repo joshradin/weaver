@@ -1,4 +1,5 @@
 use std::iter;
+use std::time::Instant;
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use rand::distributions::Alphanumeric;
@@ -10,6 +11,7 @@ use weaver_core::key::KeyData;
 use weaver_core::monitoring::MonitorCollector;
 use weaver_core::storage::b_plus_tree::BPlusTree;
 use weaver_core::storage::VecPager;
+
 
 fn insert_rand<'a>(
     count: usize,
@@ -114,6 +116,17 @@ fn btree_read(c: &mut Criterion) {
         b.iter(|| {
             let id = &KeyData::from([rand::thread_rng().gen_range(0..10000)]);
             let _ = btree.get(id);
+        });
+    });
+    group.bench_function("sequential access", |b| {
+        b.iter_custom(|iters| {
+            let start = Instant::now();
+            for i in 0..iters {
+                let id = &KeyData::from([i as i64]);
+                let _ = btree.get(id);
+            }
+
+            start.elapsed()
         });
     });
 }

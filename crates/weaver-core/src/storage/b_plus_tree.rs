@@ -888,31 +888,15 @@ mod tests {
     use crate::data::serde::deserialize_data_untyped;
     use crate::data::types::Type;
     use crate::data::values::DbVal;
+    #[cfg(feature = "weaveBPTF-caching")]
+    use crate::storage::paging::caching_pager::LruCachingPager;
     use crate::storage::paging::file_pager::FilePager;
     use crate::storage::paging::traits::VecPager;
 
     use super::*;
 
     #[test]
-    fn create_b_plus_tree() {
-        let _ = BPlusTree::new(VecPager::new(1028));
-    }
-
-    #[test]
-    fn insert_into_b_plus_tree() {
-        let btree = BPlusTree::new(VecPager::new(128));
-        btree.insert([1], [1, 2, 3]).expect("could not insert");
-        let raw = btree.get(&[1].into()).unwrap().unwrap();
-        /* trace!("raw: {:x?}", raw); */
-        let read =
-            deserialize_data_untyped(raw, vec![Type::Integer; 3]).expect("could not deserialize");
-        assert_eq!(&read[0], &1.into());
-        assert_eq!(&read[1], &2.into());
-        assert_eq!(&read[2], &3.into());
-    }
-
-    #[test]
-    fn recover_state_from_file() {
+    fn test_data_persists() {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("btree");
         {
@@ -935,6 +919,55 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    #[cfg(feature = "weaveBPTF-caching")]
+    fn test_data_persists_with_cache() {
+        let temp_dir =  tempfile::TempDir::new().unwrap();
+        let temp_file_path = temp_dir.path().join("__file__");
+        {
+            let tree = BPlusTree::new(LruCachingPager::new(
+                FilePager::open_or_create(&temp_file_path).expect("could not open"),
+                512,
+            ));
+            tree.insert::<_, [DbVal; 2]>([1_i64], [1_i64.into(), "hello, world".into()])
+                .unwrap();
+        }
+        assert!(std::fs::metadata(&temp_file_path).unwrap().len() > 0);
+        {
+            let tree = BPlusTree::new(LruCachingPager::new(
+                FilePager::open(&temp_file_path).expect("could not open"),
+                512,
+            ));
+            let get = tree
+                .get(&KeyData::from([1_i64]))
+                .expect("could not read tree")
+                .expect("no data available at key");
+            let data = deserialize_data_untyped(get, [Type::Integer, Type::String(16)])
+                .expect("could not deserialize");
+            assert_eq!(data, [1.into(), "hello, world".into()]);
+        }
+    }
+
+    #[test]
+    fn create_b_plus_tree() {
+        let _ = BPlusTree::new(VecPager::new(1028));
+    }
+
+    #[test]
+    fn insert_into_b_plus_tree() {
+        let btree = BPlusTree::new(VecPager::new(128));
+        btree.insert([1], [1, 2, 3]).expect("could not insert");
+        let raw = btree.get(&[1].into()).unwrap().unwrap();
+        /* trace!("raw: {:x?}", raw); */
+        let read =
+            deserialize_data_untyped(raw, vec![Type::Integer; 3]).expect("could not deserialize");
+        assert_eq!(&read[0], &1.into());
+        assert_eq!(&read[1], &2.into());
+        assert_eq!(&read[2], &3.into());
+    }
+
+
 
     #[test]
     fn insert_into_b_plus_tree_many() {

@@ -23,8 +23,9 @@ pub mod write_rows;
 #[derive(Debug)]
 pub struct WeaverClient<T: Stream> {
     stream: WeaverStream<T>,
-    _pid: WeaverPid,
+    pid: WeaverPid,
 }
+
 
 impl<T: Stream> Drop for WeaverClient<T> {
     fn drop(&mut self) {
@@ -51,7 +52,7 @@ impl WeaverClient<TcpStream> {
         let pid = cnxn.pid;
         Ok(Self {
             stream: client,
-            _pid: pid,
+            pid,
         })
     }
 }
@@ -68,7 +69,7 @@ impl WeaverClient<LocalSocketStream> {
         let pid = cnxn.pid;
         Ok(Self {
             stream: client,
-            _pid: pid,
+            pid: pid,
         })
     }
 }
@@ -93,6 +94,19 @@ impl<T: Stream> WeaverClient<T> {
             },
             start.elapsed(),
         ))
+    }
+
+    /// Gets the *reported* pid of this client.
+    pub fn pid(&self) -> WeaverPid {
+        self.pid
+    }
+
+    /// Check if this client is still connected
+    pub fn connected(&mut self) -> bool {
+        match self.stream.send(&RemoteDbReq::Ping) {
+            Ok(RemoteDbResp::Pong) => { true }
+            _ => false
+        }
     }
 }
 

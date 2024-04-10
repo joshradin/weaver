@@ -47,6 +47,9 @@ visit_mut! {
                 Query::LoadData(load) => {
                     visitor.visit_load_data_mut(load)
                 }
+                Query::KillProcess(_) => {
+                    Ok(())
+                }
         }
 
     }

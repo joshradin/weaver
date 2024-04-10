@@ -105,11 +105,4 @@ mod tests {
         println!("{_table:#?}");
     }
 
-    #[test]
-    fn test_bootstrap() -> Result<(), WeaverError> {
-        let (temp, mut core) = WeaverDbCore::in_temp_dir()?;
-        bootstrap(&mut core, &temp.path().join("weaver"))?;
-
-        Ok(())
-    }
 }

@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::fmt::Formatter;
+use std::str::FromStr;
 
 use derive_more::{Display, From as FromDerive};
 use serde::{Deserialize, Serialize};
@@ -38,8 +39,10 @@ pub enum Query {
     Select(Select),
     Create(Create),
     LoadData(LoadData),
+    KillProcess(i64),
     #[serde(untagged)]
     QueryList(Vec<Query>),
+
 }
 
 impl Query {
@@ -47,6 +50,14 @@ impl Query {
     pub fn parse(query: &str) -> Result<Query, ParseQueryError> {
         let mut query_parser = QueryParser::new();
         query_parser.parse(query)
+    }
+}
+
+impl FromStr for Query {
+    type Err = ParseQueryError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
     }
 }
 
@@ -74,6 +85,9 @@ impl Display for Query {
             }
             Query::LoadData(load) => {
                 write!(f, "{load}")
+            }
+            Query::KillProcess(pid) => {
+                write!(f, "kill {pid}")
             }
         }
     }

@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::mem::size_of;
 use std::net::SocketAddr;
 use std::sync::OnceLock;
-use tracing::{debug_span, trace};
+use tracing::{debug, debug_span, error, instrument, trace};
 
 /// A tcp stream that connects to a
 #[derive(Debug)]
@@ -34,6 +34,7 @@ impl<T: Stream> WeaverStream<T> {
         localhost: bool,
         socket: Transport<T>,
     ) -> Self {
+        debug!("created new stream using transport: {socket:?}");
         Self {
             peer_addr,
             local_addr,
@@ -88,20 +89,29 @@ impl<T: Stream> WeaverStream<T> {
 }
 
 impl<T: Stream> MessageStream for WeaverStream<T> {
+
+    #[instrument(skip(self), fields(T=std::any::type_name::<T>()), ret, err)]
     fn read(&mut self) -> Result<Message, WeaverError> {
         trace!("waiting for message");
         let mut len = [0_u8; size_of::<u32>()];
         self.socket.as_mut().unwrap().read_exact(&mut len)?;
         let len = u32::from_be_bytes(len);
         let mut message_buffer = vec![0u8; len as usize];
-        self.socket
-            .as_mut()
-            .unwrap()
-            .read_exact(&mut message_buffer)?;
+        match self.socket
+                  .as_mut()
+                  .unwrap()
+                  .read_exact(&mut message_buffer) {
+            Ok(()) => {}
+            Err(e) => {
+                error!("got error {e} when trying to read {} bytes", len);
+                return Err(e.into());
+            }
+        }
         trace!("got message of length {}", len);
         read_msg(&message_buffer[..])
     }
 
+    #[instrument(skip(self, message), fields(T=std::any::type_name::<T>()), ret, err)]
     fn write(&mut self, message: &Message) -> Result<(), WeaverError> {
         trace!("sending {message:?}");
         let mut msg_buffer = vec![];
@@ -132,8 +142,7 @@ mod tests {
 
     #[test]
     fn open_listener() {
-        let server = WeaverDb::default();
-
+        let (dir, server) = WeaverDb::in_temp_dir().expect("could not create");
         let _listener =
             WeaverTcpListener::bind("localhost:0", server.weak()).expect("couldnt create listener");
     }

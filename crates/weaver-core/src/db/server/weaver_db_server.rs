@@ -30,7 +30,7 @@ use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
 use crate::db::server::lifecycle::{LifecyclePhase, WeaverDbLifecycleService};
 use crate::db::server::processes::{
-    ProcessManager, WeaverPid, WeaverProcessChild, WeaverProcessInfo,
+    ProcessManager, WeaverPid, RemoteWeaverProcess, WeaverProcessInfo,
 };
 use crate::db::server::socket::{DbSocket, MainQueueItem};
 use crate::error::WeaverError;
@@ -88,6 +88,15 @@ impl WeaverDb {
         let auth_config = AuthConfig::in_path(dir.path());
         Self::new(core, auth_config).map(|this| (dir, this))
     }
+
+    /// Creates a new weaverdb instance at the given path
+    pub fn at_path<P : AsRef<Path>>(path: P) -> Result<Self, WeaverError> {
+        let path = path.as_ref();
+        let core = WeaverDbCore::with_path(path)?;
+        let auth_config = AuthConfig::in_path(path);
+        Self::new(core, auth_config)
+    }
+
     pub fn new(shard: WeaverDbCore, auth_config: AuthConfig) -> Result<Self, WeaverError> {
         let path = shard.path().to_path_buf();
         let auth_context = init_auth_context(&auth_config)?;
@@ -260,6 +269,7 @@ impl WeaverDb {
             std::fs::remove_file(lock_file)?;
             Ok(())
         });
+
 
         Ok(db)
     }
@@ -443,7 +453,7 @@ impl WeaverDb {
 
         process_manager.start(
             &user,
-            CancellableTask::with_cancel(move |child: WeaverProcessChild, recv| {
+            CancellableTask::with_cancel(move |child: RemoteWeaverProcess, recv| {
                 if let Some(monitor) = monitor.get() {
                     monitor.connections.fetch_add(1, Ordering::SeqCst);
                 }
@@ -485,7 +495,7 @@ impl WeaverDb {
     }
 
     pub fn query_executor(&self) -> QueryExecutor {
-        QueryExecutor::new(Arc::downgrade(&self.shared.core))
+        QueryExecutor::new(Arc::downgrade(&self.shared.core), self.weak())
     }
 
     /// Gets the local address of this server, if open on a tcp connection
@@ -583,7 +593,14 @@ impl Drop for WeaverDbShared {
 #[derive(Debug, Clone)]
 pub struct WeakWeaverDb(Weak<WeaverDbShared>);
 
+
+
 impl WeakWeaverDb {
+
+    /// Creates a new weak weaver db that can never be upgraded.
+    pub fn empty() -> Self {
+        Self(Weak::new())
+    }
     pub fn upgrade(&self) -> Option<WeaverDb> {
         self.0.upgrade().map(|db| WeaverDb { shared: db })
     }

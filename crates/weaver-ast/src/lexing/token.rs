@@ -92,6 +92,9 @@ pub enum Token<'a> {
     Eof,
     Asc,
     Desc,
+
+    MetaKill,
+    MetaShow,
 }
 
 impl Display for Token<'_> {

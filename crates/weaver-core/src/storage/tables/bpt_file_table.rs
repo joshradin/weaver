@@ -3,6 +3,7 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
+use cfg_if::cfg_if;
 use tracing::debug;
 
 use crate::data::row::Row;
@@ -15,9 +16,9 @@ use crate::rows::{KeyIndex, Rows};
 use crate::storage::devices::mmap_file::MMapFile;
 use crate::storage::devices::ram_file::RandomAccessFile;
 use crate::storage::devices::StorageDevice;
+#[cfg(feature = "weaveBPTF-caching")]
 use crate::storage::paging::caching_pager::LruCachingPager;
 use crate::storage::paging::file_pager::FilePager;
-
 use crate::storage::tables::table_schema::TableSchema;
 use crate::storage::tables::unbuffered_table::UnbufferedTable;
 use crate::storage::StorageDeviceDelegate;
@@ -25,10 +26,18 @@ use crate::tx::Tx;
 
 pub const B_PLUS_TREE_FILE_KEY: &str = "weaveBPTF";
 
+cfg_if! {
+    if #[cfg(feature = "weaveBPTF-caching")] {
+        type BptfPager = LruCachingPager<FilePager<StorageDeviceDelegate>>;
+    } else {
+        type BptfPager = FilePager<StorageDeviceDelegate>;
+    }
+}
+
 /// A table stored in a [FilePager]
 #[derive(Debug)]
 pub struct BptfTable {
-    main_table: UnbufferedTable<LruCachingPager<FilePager<StorageDeviceDelegate>>>,
+    main_table: UnbufferedTable<BptfPager>,
 }
 impl DynamicTable for BptfTable {
     fn auto_increment(&self, col: Col) -> i64 {
@@ -112,11 +121,12 @@ impl BptfTableFactory {
         };
 
         let file_pager = FilePager::with_file(file);
-        let caching_pager = LruCachingPager::new(file_pager, 512);
+        #[cfg(feature = "weaveBPTF-caching")]
+        let table =  UnbufferedTable::new(schema.clone(), LruCachingPager::new(file_pager, 512), true)?;
+        #[cfg(not(feature = "weaveBPTF-caching"))]
+        let table =  UnbufferedTable::new(schema.clone(), file_pager, true)?;
 
-        Ok(BptfTable {
-            main_table: UnbufferedTable::new(schema.clone(), caching_pager, true)?,
-        })
+        Ok(BptfTable { main_table: table })
     }
 }
 
@@ -142,7 +152,6 @@ mod tests {
     use crate::data::types::Type;
     use crate::data::values::DbVal;
     use crate::dynamic_table::{DynamicTable, EngineKey};
-    use crate::dynamic_table_factory::DynamicTableFactory;
     use crate::key::KeyData;
     use crate::monitoring::Monitorable;
     use crate::rows::{KeyIndex, KeyIndexKind, Rows};

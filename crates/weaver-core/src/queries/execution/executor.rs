@@ -16,6 +16,7 @@ use weaver_ast::ast::{CreateDefinition, CreateTable, LoadData, OrderDirection};
 use crate::data::row::Row;
 use crate::data::values::DbVal;
 use crate::db::core::WeaverDbCore;
+use crate::db::server::WeakWeaverDb;
 use crate::dynamic_table::{DynamicTable, HasSchema};
 use crate::error::WeaverError;
 use crate::queries::execution::evaluation::ExpressionEvaluator;
@@ -39,11 +40,12 @@ use crate::tx::Tx;
 #[derive(Debug)]
 pub struct QueryExecutor {
     core: Weak<RwLock<WeaverDbCore>>,
+    server: WeakWeaverDb
 }
 
 impl QueryExecutor {
-    pub fn new(core: Weak<RwLock<WeaverDbCore>>) -> Self {
-        Self { core }
+    pub fn new(core: Weak<RwLock<WeaverDbCore>>, server: WeakWeaverDb) -> Self {
+        Self { core, server }
     }
 }
 
@@ -419,6 +421,16 @@ impl QueryExecutor {
                     } else {
                         row_stack.push(Box::new(RefRows::new(node.schema.clone(), vec![])));
                     }
+                }
+                QueryPlanKind::KillProcess { pid } => {
+                    let server = self.server
+                                 .upgrade().expect("no server running");
+
+                    let kill = server.with_process_manager(|proccess_manager| {
+                        proccess_manager.kill(pid)
+                    });
+                    let as_row = Box::new(QueryPlan::ddl_result(kill.map(|()| "ok")));
+                    row_stack.push(as_row);
                 }
                 _kind => {
                     todo!("implement execution of {_kind:#?}");

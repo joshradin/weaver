@@ -20,7 +20,7 @@ fn insert_rand_with<V: Into<DbVal>, F: Fn(&mut ThreadRng) -> V>(count: usize, pr
 
 fn insert<V: Into<DbVal>, I: IntoIterator<Item = V>>(iter: I) {
     let _ = tracing_subscriber::fmt()
-        .with_max_level(LevelFilter::TRACE)
+        .with_max_level(LevelFilter::INFO)
         .with_thread_ids(true)
         .with_thread_names(true)
         .try_init();

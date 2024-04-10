@@ -3,17 +3,17 @@ use tempfile::TempDir;
 use tracing::warn;
 use weaver_client::write_rows::write_rows;
 use weaver_core::ast::Query;
-use weaver_tests::{init_tracing, run_full_stack};
+use weaver_tests::{init_tracing, run_full_stack_local_socket};
 
 #[test]
 fn reconnect() -> eyre::Result<()> {
     let _ = init_tracing(None);
     let temp_dir = TempDir::new()?;
-    run_full_stack(temp_dir.path(), |_server, _client| {
+    run_full_stack_local_socket(temp_dir.path(), |_server, _client| {
         warn!("successfully started weaver");
         Ok(())
     })?;
-    run_full_stack(temp_dir.path(), |_server, client| {
+    run_full_stack_local_socket(temp_dir.path(), |_server, client| {
         warn!("successfully reconnected");
         let (rows, elapsed) = client.query(&Query::parse(
             r#"
