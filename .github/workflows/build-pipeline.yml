@@ -57,6 +57,8 @@ jobs:
           name: Cargo Tests
           path: target/nextest/ci-unit/junit.xml
           reporter: java-junit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   integration-tests:
     name: Run Integration Tests
     runs-on: ubuntu-latest
@@ -76,3 +78,5 @@ jobs:
           name: Cargo Integration Tests
           path: target/nextest/ci-int/junit.xml
           reporter: java-junit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
