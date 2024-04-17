@@ -57,8 +57,6 @@ impl<P: Pager> Pager for BufferedPager<P> {
         self.buffered.page_size()
     }
 
-
-
     fn get(&self, index: usize) -> Result<Self::Page<'_>, Self::Err> {
         let token = self.usage.write().entry(index).or_default().clone();
         token
@@ -185,7 +183,6 @@ impl<P: Pager> Pager for BufferedPager<P> {
         self.buffered.reserved()
     }
 
-
     fn flush(&self) -> Result<(), Self::Err> {
         trace!("flushing buffered pager...");
         let mut buffers = self.buffers.write();
@@ -196,7 +193,9 @@ impl<P: Pager> Pager for BufferedPager<P> {
                 .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
             page.as_mut_slice().copy_from_slice(&bytes);
         }
-        self.buffered.flush() .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
+        self.buffered
+            .flush()
+            .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
         Ok(())
     }
 }

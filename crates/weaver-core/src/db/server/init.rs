@@ -4,7 +4,6 @@ use crate::db::server::WeaverDb;
 use crate::error::WeaverError;
 
 pub mod system;
-pub mod weaver;
 
 pub mod engines;
 

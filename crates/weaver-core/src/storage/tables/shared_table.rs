@@ -61,7 +61,10 @@ impl DynamicTable for SharedTable {
         self.0.read(tx, key)
     }
 
-    fn all<'tx, 'table: 'tx>(&'table self, tx: &'tx Tx) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
+    fn all<'tx, 'table: 'tx>(
+        &'table self,
+        tx: &'tx Tx,
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         self.0.all(tx)
     }
 
@@ -76,6 +79,4 @@ impl DynamicTable for SharedTable {
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         self.0.delete(tx, key)
     }
-
-
 }

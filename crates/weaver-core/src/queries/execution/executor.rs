@@ -40,7 +40,7 @@ use crate::tx::Tx;
 #[derive(Debug)]
 pub struct QueryExecutor {
     core: Weak<RwLock<WeaverDbCore>>,
-    server: WeakWeaverDb
+    server: WeakWeaverDb,
 }
 
 impl QueryExecutor {
@@ -423,12 +423,10 @@ impl QueryExecutor {
                     }
                 }
                 QueryPlanKind::KillProcess { pid } => {
-                    let server = self.server
-                                 .upgrade().expect("no server running");
+                    let server = self.server.upgrade().expect("no server running");
 
-                    let kill = server.with_process_manager(|proccess_manager| {
-                        proccess_manager.kill(pid)
-                    });
+                    let kill =
+                        server.with_process_manager(|proccess_manager| proccess_manager.kill(pid));
                     let as_row = Box::new(QueryPlan::ddl_result(kill.map(|()| "ok")));
                     row_stack.push(as_row);
                 }

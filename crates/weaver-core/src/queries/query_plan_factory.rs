@@ -247,15 +247,12 @@ impl QueryPlanFactory {
                     .schema(QueryPlan::ddl_result_schema())
                     .build()
             }
-            Query::KillProcess(pid) => {
-
-                QueryPlanNode::builder()
-                    .rows(0)
-                    .cost(Cost::new(0.0, 0, None))
-                    .kind(QueryPlanKind::KillProcess { pid: *pid as u32})
-                    .schema(QueryPlan::ddl_result_schema())
-                    .build()
-            }
+            Query::KillProcess(pid) => QueryPlanNode::builder()
+                .rows(0)
+                .cost(Cost::new(0.0, 0, None))
+                .kind(QueryPlanKind::KillProcess { pid: *pid as u32 })
+                .schema(QueryPlan::ddl_result_schema())
+                .build(),
             #[allow(unreachable_patterns)]
             _other => {
                 unimplemented!("{_other:?}")
@@ -624,10 +621,8 @@ impl QueryPlanFactory {
             function_registry: &FunctionRegistry,
         ) -> Result<bool, WeaverError> {
             Ok(match dependent {
-                Expr::Column { column } => {
-                    source_columns
-                        .contains(column.resolved().expect("all columns must be resolved"))
-                }
+                Expr::Column { column } => source_columns
+                    .contains(column.resolved().expect("all columns must be resolved")),
                 Expr::Literal { .. } => true,
                 Expr::BindParameter { .. } => {
                     panic!("bind parameter in invalid locaction")

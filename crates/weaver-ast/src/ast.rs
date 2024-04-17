@@ -42,7 +42,6 @@ pub enum Query {
     KillProcess(i64),
     #[serde(untagged)]
     QueryList(Vec<Query>),
-
 }
 
 impl Query {

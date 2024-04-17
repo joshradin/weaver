@@ -6,14 +6,17 @@
 //! have a row factor of 1, and a merge could have a row factor of 2.
 
 use crate::data::row::Row;
+use crate::data::types::Type;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Mul;
 
 use crate::data::values::DbVal;
-use crate::dynamic_table::DynamicTable;
+use crate::dynamic_table::{DynamicTable, EngineKey};
 use crate::error::WeaverError;
+use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
+use crate::storage::tables::table_schema::TableSchema;
 use crate::tx::Tx;
 
 /// Represents the cost of an operation over some unknown amount of rows
@@ -166,4 +169,15 @@ impl CostTable {
     pub fn get(&self, key: impl AsRef<str>) -> Option<&Cost> {
         self.table.get(key.as_ref())
     }
+}
+
+/// The cost table schema
+pub fn cost_table_schema() -> Result<TableSchema, WeaverError> {
+    TableSchema::builder("weaver", "cost")
+        .column("key", Type::String(32), true, None, None)?
+        .column("cost", Type::Float, true, None, None)?
+        .column("row_factor", Type::Integer, true, None, None)?
+        .column("row_log", Type::Integer, false, None, None)?
+        .engine(EngineKey::new(B_PLUS_TREE_FILE_KEY))
+        .build()
 }

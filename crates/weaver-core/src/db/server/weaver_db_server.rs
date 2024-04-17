@@ -1,36 +1,37 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock, Weak};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock, Weak};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crossbeam::channel::{Sender, unbounded};
+use crossbeam::channel::{unbounded, Sender};
 use parking_lot::{Mutex, RwLock};
-use tracing::{debug, error, error_span, info, Level, Span, span_enabled, trace, trace_span, warn};
+use tracing::{debug, error, error_span, info, span_enabled, trace, trace_span, warn, Level, Span};
 
 use weaver_ast::ast::Query;
 
 use crate::access_control::auth::context::AuthContext;
-use crate::access_control::auth::init::{AuthConfig, init_auth_context};
-use crate::cancellable_task::{CancellableTask, Cancelled, CancelRecv};
-use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
+use crate::access_control::auth::init::{init_auth_context, AuthConfig};
+use crate::cancellable_task::{CancelRecv, CancellableTask, Cancelled};
 use crate::cnxn::cnxn_loop::remote_stream_loop;
 use crate::cnxn::interprocess::WeaverLocalSocketListener;
 use crate::cnxn::stream::WeaverStream;
 use crate::cnxn::tcp::WeaverTcpListener;
+use crate::cnxn::{Message, MessageStream, RemoteDbResp, WeaverStreamListener};
 use crate::common::stream_support::Stream;
 use crate::db::core::{bootstrap, WeaverDbCore};
+use crate::db::server::before_ready::load_tables;
+use crate::db::server::bootstrap::weaver::init_weaver_schema;
 use crate::db::server::init::engines::init_engines;
 use crate::db::server::init::system::init_system_tables;
-use crate::db::server::init::weaver::init_weaver_schema;
-use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::layers::packets::{DbReq, DbReqBody, DbResp};
 use crate::db::server::layers::service::Service;
+use crate::db::server::layers::{Layer, Layers};
 use crate::db::server::lifecycle::{LifecyclePhase, WeaverDbLifecycleService};
 use crate::db::server::processes::{
-    ProcessManager, WeaverPid, RemoteWeaverProcess, WeaverProcessInfo,
+    ProcessManager, RemoteWeaverProcess, WeaverPid, WeaverProcessInfo,
 };
 use crate::db::server::socket::{DbSocket, MainQueueItem};
 use crate::error::WeaverError;
@@ -90,7 +91,7 @@ impl WeaverDb {
     }
 
     /// Creates a new weaverdb instance at the given path
-    pub fn at_path<P : AsRef<Path>>(path: P) -> Result<Self, WeaverError> {
+    pub fn at_path<P: AsRef<Path>>(path: P) -> Result<Self, WeaverError> {
         let path = path.as_ref();
         let core = WeaverDbCore::with_path(path)?;
         let auth_config = AuthConfig::in_path(path);
@@ -233,6 +234,7 @@ impl WeaverDb {
                 .to_result()?;
             Ok(())
         });
+        service.before_ready(load_tables);
 
         service.on_teardown(move |db| {
             let _ = db.shared.worker_continue.compare_exchange(
@@ -269,7 +271,6 @@ impl WeaverDb {
             std::fs::remove_file(lock_file)?;
             Ok(())
         });
-
 
         Ok(db)
     }
@@ -582,7 +583,6 @@ impl Monitorable for WeaverDb {
     }
 }
 
-
 impl Drop for WeaverDb {
     fn drop(&mut self) {
         if Arc::strong_count(&self.shared) == 1 {
@@ -598,10 +598,7 @@ impl Drop for WeaverDb {
 #[derive(Debug, Clone)]
 pub struct WeakWeaverDb(Weak<WeaverDbShared>);
 
-
-
 impl WeakWeaverDb {
-
     /// Creates a new weak weaver db that can never be upgraded.
     pub fn empty() -> Self {
         Self(Weak::new())

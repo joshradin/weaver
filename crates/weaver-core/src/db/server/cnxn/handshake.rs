@@ -18,12 +18,12 @@ pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), WeaverEr
     trace!("Created nonce: {:x?}", nonce);
 
     debug!("Sending handshake init to server");
-    server.write(&Message::Handshake {
-        ack: false,
-        nonce: Vec::from(nonce),
-    }).inspect_err(|e| {
-        warn!("sending handshake start resulted in err {e}")
-    })?;
+    server
+        .write(&Message::Handshake {
+            ack: false,
+            nonce: Vec::from(nonce),
+        })
+        .inspect_err(|e| warn!("sending handshake start resulted in err {e}"))?;
     debug!("Handshake sent, waiting for acknowledgement from server...");
     let Message::Handshake {
         ack: true,
@@ -32,7 +32,10 @@ pub fn handshake_client<T: MessageStream>(server: &mut T) -> Result<(), WeaverEr
         Ok(msg) => msg,
         Err(e) => {
             error!("No message received from server received because of error: {e}");
-            return Err(WeaverError::caused_by("no messaged received from server", e));
+            return Err(WeaverError::caused_by(
+                "no messaged received from server",
+                e,
+            ));
         }
     })
     else {

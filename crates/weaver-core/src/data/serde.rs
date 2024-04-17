@@ -283,7 +283,7 @@ pub fn deserialize_data_typed<B: AsRef<[u8]>>(data: B) -> Result<Vec<DbVal>, Rea
     ret
 }
 
-pub fn deserialize_data_untyped< B: AsRef<[u8]>, I: IntoIterator<Item = Type>>(
+pub fn deserialize_data_untyped<B: AsRef<[u8]>, I: IntoIterator<Item = Type>>(
     data: B,
     types: I,
 ) -> Result<Vec<DbVal>, ReadDataError> {

@@ -1,5 +1,5 @@
-use crate::storage::Pager;
 use crate::storage::paging::traits::{Page, PageMut};
+use crate::storage::Pager;
 
 pub mod buffered_pager;
 pub mod caching_pager;
@@ -10,13 +10,13 @@ pub mod virtual_pager;
 
 #[cfg(test)]
 pub mod tests {
-    use test_log::test;
-    use tempfile::tempdir;
-    use crate::storage::{Pager, paging};
     use crate::storage::paging::buffered_pager::BufferedPager;
     use crate::storage::paging::file_pager::FilePager;
     use crate::storage::paging::traits::{Page, PageMut};
     use crate::storage::paging::virtual_pager::VirtualPagerTable;
+    use crate::storage::{paging, Pager};
+    use tempfile::tempdir;
+    use test_log::test;
 
     pub fn pager_reusable<P: Pager>(create_pager: impl Fn() -> P) {
         {
@@ -48,6 +48,4 @@ pub mod tests {
             vp
         });
     }
-
 }
-

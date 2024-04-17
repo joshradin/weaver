@@ -544,7 +544,5 @@ pub enum QueryPlanKind {
     LoadData { load_data: LoadData },
 
     /// Kill a process
-    KillProcess {
-        pid: WeaverPid
-    }
+    KillProcess { pid: WeaverPid },
 }

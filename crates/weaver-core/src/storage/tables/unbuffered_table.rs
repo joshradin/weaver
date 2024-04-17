@@ -162,7 +162,10 @@ where
     #[instrument(skip(self, _tx), fields(table=self.schema.name(), tx=%_tx))]
     fn commit(&self, _tx: &Tx) {
         trace!("committing transaction {_tx:?}");
-        self.main_buffer.allocator().flush().expect("could not flush")
+        self.main_buffer
+            .allocator()
+            .flush()
+            .expect("could not flush")
     }
 
     fn rollback(&self, _tx: &Tx) {
@@ -253,8 +256,6 @@ where
     fn delete(&self, _tx: &Tx, _key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         todo!()
     }
-
-
 }
 
 impl<P: Pager + Sync + Send> HasSchema for UnbufferedTable<P>
@@ -268,9 +269,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use test_log::test;
-    use tempfile::tempdir;
-    use tracing::info;
     use crate::common::hex_dump::HexDump;
     use crate::data::row::Row;
     use crate::data::types::Type;
@@ -284,6 +282,9 @@ mod tests {
     use crate::storage::tables::unbuffered_table::UnbufferedTable;
     use crate::storage::VecPager;
     use crate::tx::Tx;
+    use tempfile::tempdir;
+    use test_log::test;
+    use tracing::info;
 
     #[test]
     fn table_persists() -> Result<(), WeaverError> {
@@ -302,20 +303,28 @@ mod tests {
         let path = temp_dir.path().join("test.tbl");
         let pager = FilePager::open_or_create(&path)?;
 
-        let table = UnbufferedTable::new(
-            schema,
-            pager,
-            true
-        )?;
+        let table = UnbufferedTable::new(schema, pager, true)?;
         {
-            let ref tx= Tx::default();
-            table.insert(tx, Row::from([DbVal::Null, "josh".into(), "e".into(), "radin".into(), 25.into()]))?;
+            let ref tx = Tx::default();
+            table.insert(
+                tx,
+                Row::from([
+                    DbVal::Null,
+                    "josh".into(),
+                    "e".into(),
+                    "radin".into(),
+                    25.into(),
+                ]),
+            )?;
             table.commit(tx);
         }
         println!("{table:#?}");
         let file = RandomAccessFile::open(path)?;
         let bytes = file.bytes().collect::<Vec<_>>();
-        assert!(bytes.iter().any(|&b| b != 0), "nothing was actually written to the page");
+        assert!(
+            bytes.iter().any(|&b| b != 0),
+            "nothing was actually written to the page"
+        );
         info!("{:#?}", HexDump::new(&bytes));
         Ok(())
     }

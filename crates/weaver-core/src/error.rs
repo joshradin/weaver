@@ -178,6 +178,9 @@ pub enum WeaverError {
     #[error("Could not cancel task")]
     CancelTaskFailed,
 
+    #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
+
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {
         msg: String,
@@ -186,7 +189,6 @@ pub enum WeaverError {
     },
     #[error("{0}")]
     Custom(String),
-
 }
 
 impl WeaverError {

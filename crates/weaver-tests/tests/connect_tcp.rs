@@ -38,8 +38,7 @@ fn connect_over_tcp() -> eyre::Result<()> {
 
         let (rows, ..) = client.query(&SEARCH_QUERY.parse()?)?;
         let schema = &rows.schema().clone();
-        let rows = rows
-            .to_owned();
+        let rows = rows.to_owned();
         let row = rows
             .iter()
             .find(|s| s[(schema, "pid")].int_value() == Some(client.pid() as i64))

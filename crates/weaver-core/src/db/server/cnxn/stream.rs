@@ -89,7 +89,6 @@ impl<T: Stream> WeaverStream<T> {
 }
 
 impl<T: Stream> MessageStream for WeaverStream<T> {
-
     #[instrument(skip(self), fields(T=std::any::type_name::<T>()), ret, err)]
     fn read(&mut self) -> Result<Message, WeaverError> {
         trace!("waiting for message");
@@ -97,10 +96,12 @@ impl<T: Stream> MessageStream for WeaverStream<T> {
         self.socket.as_mut().unwrap().read_exact(&mut len)?;
         let len = u32::from_be_bytes(len);
         let mut message_buffer = vec![0u8; len as usize];
-        match self.socket
-                  .as_mut()
-                  .unwrap()
-                  .read_exact(&mut message_buffer) {
+        match self
+            .socket
+            .as_mut()
+            .unwrap()
+            .read_exact(&mut message_buffer)
+        {
             Ok(()) => {}
             Err(e) => {
                 error!("got error {e} when trying to read {} bytes", len);

@@ -189,14 +189,18 @@ where
     _header: PhantomData<&'a Header>,
 }
 
-impl<'a, P, Header> Drop for SplitPage<'a, P, Header> where
+impl<'a, P, Header> Drop for SplitPage<'a, P, Header>
+where
     P: Page<'a>,
-    Header: Clone + PartialEq + StorageBackedData, {
+    Header: Clone + PartialEq + StorageBackedData,
+{
     fn drop(&mut self) {
-        trace!("dropping split page with inner {}", std::any::type_name_of_val(&self.page))
+        trace!(
+            "dropping split page with inner {}",
+            std::any::type_name_of_val(&self.page)
+        )
     }
 }
-
 
 impl<'a, P, Header> PageWithHeader<'a> for SplitPage<'a, P, Header>
 where

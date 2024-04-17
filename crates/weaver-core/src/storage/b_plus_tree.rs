@@ -7,23 +7,22 @@ use std::collections::BTreeSet;
 use std::fmt::{Debug, Formatter};
 use std::io::Write;
 use std::ops::Bound;
-use std::sync::{Arc, atomic, OnceLock};
 use std::sync::atomic::AtomicUsize;
+use std::sync::{atomic, Arc, OnceLock};
 use std::time::Instant;
 
 use parking_lot::{Mutex, RwLock};
-use ptree::{print_tree, TreeBuilder, write_tree};
+use ptree::{print_tree, write_tree, TreeBuilder};
 use tracing::{error, trace, warn};
 
 use crate::data::row::OwnedRow;
 use crate::error::WeaverError;
 use crate::key::{KeyData, KeyDataRange};
 use crate::monitoring::{Monitor, Monitorable, Stats};
-use crate::storage::{ReadDataError, WriteDataError};
 use crate::storage::cells::{Cell, KeyCell, KeyValueCell, PageId};
 use crate::storage::paging::slotted_pager::{PageType, SlottedPager};
 use crate::storage::paging::traits::Pager;
-
+use crate::storage::{ReadDataError, WriteDataError};
 
 /// A BPlusTree that uses a given pager.
 ///
@@ -34,7 +33,6 @@ pub struct BPlusTree<P: Pager> {
     root: RwLock<Option<PageId>>,
     monitor: OnceLock<BPlusTreeMonitor>,
 }
-
 
 impl<P: Pager> Debug for BPlusTree<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -891,9 +889,9 @@ impl Monitor for BPlusTreeMonitor {
 
 #[cfg(test)]
 mod tests {
-    use test_log::test;
     use rand::distributions::Alphanumeric;
     use rand::Rng;
+    use test_log::test;
 
     use crate::data::serde::deserialize_data_untyped;
     use crate::data::types::Type;
@@ -952,7 +950,10 @@ mod tests {
 
         {
             let btree = BPlusTree::new(create_pager());
-            assert_eq!(btree.all().expect("could not get all").len(), CHECKS as usize);
+            assert_eq!(
+                btree.all().expect("could not get all").len(),
+                CHECKS as usize
+            );
             for i in 0..CHECKS {
                 let v = btree.get(&KeyData::from([i])).unwrap();
                 assert!(matches!(v, Some(_)), "should have id")

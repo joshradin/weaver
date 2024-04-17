@@ -1,6 +1,7 @@
+use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::fmt::{Debug, Display, Formatter};
 use std::fmt::Write;
+use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
@@ -12,7 +13,6 @@ use weaver_ast::ast;
 
 use crate::data::types::Type;
 use crate::error::WeaverError;
-
 
 /// A single value within a row
 #[derive(Clone, Deserialize, Serialize, From)]
@@ -39,6 +39,14 @@ impl DbVal {
     pub fn float_value(&self) -> Option<f64> {
         if let Self::Float(i) = self {
             Some(*i)
+        } else {
+            None
+        }
+    }
+
+    pub fn string_value(&self) -> Option<&str> {
+        if let Self::String(s, ..) = self {
+            Some(s.as_ref())
         } else {
             None
         }
@@ -155,6 +163,12 @@ where
             None => DbVal::Null,
             Some(val) => DbVal::from(val),
         }
+    }
+}
+
+impl From<Cow<'_, DbVal>> for DbVal {
+    fn from(value: Cow<DbVal>) -> Self {
+        value.into_owned()
     }
 }
 

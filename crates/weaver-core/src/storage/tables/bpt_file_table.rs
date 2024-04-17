@@ -69,7 +69,10 @@ impl DynamicTable for BptfTable {
         self.main_table.read(tx, key)
     }
 
-    fn all<'tx, 'table: 'tx>(&'table self, tx: &'tx Tx) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
+    fn all<'tx, 'table: 'tx>(
+        &'table self,
+        tx: &'tx Tx,
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         self.main_table.all(tx)
     }
 
@@ -84,8 +87,6 @@ impl DynamicTable for BptfTable {
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         self.main_table.delete(tx, key)
     }
-
-
 }
 
 impl HasSchema for BptfTable {
@@ -164,13 +165,13 @@ impl DynamicTableFactory for BptfTableFactory {
 
 #[cfg(test)]
 mod tests {
-    use test_log::test;
-    use std::collections::Bound;
     use itertools::Itertools;
+    use std::collections::Bound;
+    use test_log::test;
 
+    use crate::common::hex_dump::HexDump;
     use tempfile::tempdir;
     use tracing::info;
-    use crate::common::hex_dump::HexDump;
 
     use crate::data::row::Row;
     use crate::data::types::Type;
@@ -272,18 +273,28 @@ mod tests {
             .primary(&["id"])?
             .build()?;
 
-
         let table = factory.open(&schema)?;
         {
-            let ref tx= Tx::default();
-            table.insert(tx, Row::from([DbVal::Null, "josh".into(), "e".into(), "radin".into(), 25.into()]))?;
+            let ref tx = Tx::default();
+            table.insert(
+                tx,
+                Row::from([
+                    DbVal::Null,
+                    "josh".into(),
+                    "e".into(),
+                    "radin".into(),
+                    25.into(),
+                ]),
+            )?;
             table.commit(tx);
         }
 
-
         let file = RandomAccessFile::open(temp_dir.path().join("test").join("test"))?;
         let bytes = file.bytes().collect::<Vec<_>>();
-        assert!(bytes.iter().any(|&b| b != 0), "nothing was actually written to the page");
+        assert!(
+            bytes.iter().any(|&b| b != 0),
+            "nothing was actually written to the page"
+        );
         info!("{:#?}", HexDump::new(&bytes));
 
         Ok(())

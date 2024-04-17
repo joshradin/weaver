@@ -241,8 +241,6 @@ impl<F: StorageDevice> Pager for FilePager<F> {
     fn reserved(&self) -> usize {
         self.raf.read().len() as usize
     }
-
-
 }
 
 #[derive(Debug)]
@@ -322,9 +320,9 @@ mod tests {
     use crate::storage::devices::ram_file::RandomAccessFile;
     use crate::storage::paging::file_pager::{FilePageMut, FilePager};
     use crate::storage::paging::traits::{Page, PageMut};
+    use crate::storage::paging::virtual_pager::VirtualPagerTable;
     use crate::storage::{Pager, VecPager};
     use std::io::Write;
-    use crate::storage::paging::virtual_pager::VirtualPagerTable;
 
     #[test]
     fn paged() {
@@ -369,7 +367,10 @@ mod tests {
             // write a known magic number at a given offset
             page.write_u64(0xDEADBEEF, 16);
         }
-        assert!(std::fs::metadata(&file_path).unwrap().len() > 0, "file should contain contents");
+        assert!(
+            std::fs::metadata(&file_path).unwrap().len() > 0,
+            "file should contain contents"
+        );
         {
             let pager = FilePager::open(&file_path).unwrap();
             let page = pager.get(0).expect("could not create a new page");

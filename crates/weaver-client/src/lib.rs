@@ -26,7 +26,6 @@ pub struct WeaverClient<T: Stream> {
     pid: WeaverPid,
 }
 
-
 impl<T: Stream> Drop for WeaverClient<T> {
     fn drop(&mut self) {
         trace!("dropping weaver client");
@@ -104,8 +103,8 @@ impl<T: Stream> WeaverClient<T> {
     /// Check if this client is still connected
     pub fn connected(&mut self) -> bool {
         match self.stream.send(&RemoteDbReq::Ping) {
-            Ok(RemoteDbResp::Pong) => { true }
-            _ => false
+            Ok(RemoteDbResp::Pong) => true,
+            _ => false,
         }
     }
 }

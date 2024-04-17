@@ -521,7 +521,10 @@ where
     }
 
     fn flush(&self) -> Result<(), Self::Err> {
-        self.parent.backing_pager.flush().map_err(|e| VirtualPagerError::backing_error(e))?;
+        self.parent
+            .backing_pager
+            .flush()
+            .map_err(|e| VirtualPagerError::backing_error(e))?;
         Ok(())
     }
 }
@@ -547,13 +550,13 @@ impl VirtualPagerError {
 
 #[cfg(test)]
 mod tests {
-    use test_log::test;
-    use crate::storage::paging::virtual_pager::VirtualPagerTable;
-    use crate::storage::{Pager, paging, VecPager};
-    use std::collections::HashMap;
-    use tempfile::tempdir;
     use crate::storage::paging::file_pager::FilePager;
     use crate::storage::paging::traits::Page;
+    use crate::storage::paging::virtual_pager::VirtualPagerTable;
+    use crate::storage::{paging, Pager, VecPager};
+    use std::collections::HashMap;
+    use tempfile::tempdir;
+    use test_log::test;
 
     #[test]
     fn virtual_pager_table() {

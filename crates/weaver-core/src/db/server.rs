@@ -2,6 +2,7 @@ pub mod init;
 pub mod processes;
 mod weaver_db_server;
 pub use weaver_db_server::*;
+pub mod before_ready;
 pub mod bootstrap;
 pub mod cnxn;
 pub mod layers;

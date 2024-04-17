@@ -8,7 +8,7 @@ use tracing::Span;
 
 use weaver_ast::ast::Query;
 
-use crate::cancellable_task::{Cancel, Cancelled, CancelRecv};
+use crate::cancellable_task::{Cancel, CancelRecv, Cancelled};
 use crate::db::core::WeaverDbCore;
 use crate::db::server::processes::WeaverProcessInfo;
 use crate::db::server::WeaverDb;

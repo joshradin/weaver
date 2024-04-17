@@ -17,7 +17,10 @@ fn can_handshake() {
         .init();
     let dir = TempDir::new().unwrap();
     let server = WeaverDb::at_path(&dir).unwrap();
-    server.lifecycle_service().startup().expect("could not startup");
+    server
+        .lifecycle_service()
+        .startup()
+        .expect("could not startup");
 
     let listener =
         WeaverTcpListener::bind("localhost:0", server.weak()).expect("couldnt create listener");

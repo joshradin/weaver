@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use crate::common::linked_list;
+use crate::common::pretty_bytes::PrettyBytes;
 use parking_lot::{Mutex, RwLock};
 use tracing::trace;
-use crate::common::pretty_bytes::PrettyBytes;
 
 use crate::common::track_dirty::Mad;
 use crate::error::WeaverError;
@@ -711,7 +711,11 @@ impl<'a, P: PageMut<'a>> Drop for SlottedPageMut<'a, P> {
             let _ = self.page.set_header(header);
         }
         if let Some(lock) = self.lock.get() {
-            trace!("dropping slotted page {:?} with {} access", self.page_id(), "r/w");
+            trace!(
+                "dropping slotted page {:?} with {} access",
+                self.page_id(),
+                "r/w"
+            );
             lock.compare_exchange(-1, 0, Ordering::SeqCst, Ordering::SeqCst)
                 .expect("should be -1");
         }
@@ -749,7 +753,11 @@ impl<'a, P: Page<'a>> SlottedPage<'a, P> {
 impl<'a, P: Page<'a>> Drop for SlottedPage<'a, P> {
     fn drop(&mut self) {
         if let Some(lock) = self.lock.get() {
-            trace!("dropping slotted page {:?} with {} access", self.page_id(), "r");
+            trace!(
+                "dropping slotted page {:?} with {} access",
+                self.page_id(),
+                "r"
+            );
             lock.fetch_sub(1, Ordering::SeqCst);
         }
     }

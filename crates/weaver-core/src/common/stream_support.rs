@@ -1,7 +1,7 @@
 //! Support for streams
 
-use std::fmt::Debug;
 use crossbeam::channel::{unbounded, Receiver, RecvError, Sender};
+use std::fmt::Debug;
 use std::io;
 use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
 

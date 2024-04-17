@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::{Debug, Formatter, Write};
 use std::ops::{
-    Deref, DerefMut, Index, IndexMut, RangeFrom, RangeFull, RangeInclusive, RangeTo,
+    Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo,
     RangeToInclusive,
 };
 use std::slice::SliceIndex;
@@ -34,8 +34,7 @@ impl<'a> Row<'a> {
         self.0.get(index)
     }
     pub fn get_named(&self, schema: &TableSchema, name: &str) -> Option<&Cow<'a, DbVal>> {
-        schema.column_index(name)
-            .and_then(|idx| self.get(idx))
+        schema.column_index(name).and_then(|idx| self.get(idx))
     }
 
     /// Gets a slice of the data
@@ -251,7 +250,13 @@ impl<'a> Index<RangeToInclusive<usize>> for Row<'a> {
         &self.0[index]
     }
 }
+impl<'a> Index<Range<usize>> for Row<'a> {
+    type Output = [Cow<'a, DbVal>];
 
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        &self.0[index]
+    }
+}
 impl<'a> Index<RangeFull> for Row<'a> {
     type Output = [Cow<'a, DbVal>];
 

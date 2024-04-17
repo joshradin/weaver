@@ -1,8 +1,8 @@
-use std::collections::VecDeque;
 use crate::common::hex_dump::HexDump;
 use crate::common::pretty_bytes::PrettyBytes;
 use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::devices::{StorageDevice, StorageDeviceMonitor};
+use std::collections::VecDeque;
 use std::fmt::{Debug, Formatter};
 use std::fs::{File, Metadata};
 use std::io;
@@ -194,7 +194,7 @@ pub struct Bytes<'a> {
     counted: u64,
     buffer: VecDeque<u8>,
     offset: u64,
-    file: &'a RandomAccessFile
+    file: &'a RandomAccessFile,
 }
 
 impl<'a> Iterator for Bytes<'a> {
@@ -206,7 +206,10 @@ impl<'a> Iterator for Bytes<'a> {
         }
         if self.buffer.is_empty() {
             let mut buffer = vec![0_u8; 256];
-            let read = self.file.read(self.offset, &mut buffer).expect("failed to read bytes");
+            let read = self
+                .file
+                .read(self.offset, &mut buffer)
+                .expect("failed to read bytes");
             self.offset += read;
             self.buffer.extend(&buffer[..read as usize]);
         }
@@ -220,12 +223,10 @@ impl<'a> Iterator for Bytes<'a> {
 
 impl FusedIterator for Bytes<'_> {}
 
-
-
 #[cfg(test)]
 mod tests {
-    use test_log::test;
     use tempfile::{tempdir, tempfile};
+    use test_log::test;
 
     use crate::storage::devices::StorageDevice;
 
@@ -295,7 +296,8 @@ aliquet magna lorem ac dolor.
         let tempdir = tempdir().unwrap();
         let file = tempdir.as_ref().join("test.txt");
         {
-            let mut ram = RandomAccessFile::open_or_create(&file).expect("could not create ram file");
+            let mut ram =
+                RandomAccessFile::open_or_create(&file).expect("could not create ram file");
             ram.set_len(1000).unwrap();
             ram.write(0, b"hello, world").unwrap()
         }
@@ -306,6 +308,4 @@ aliquet magna lorem ac dolor.
             assert_eq!(buffer, b"hello, world");
         }
     }
-
-
 }
