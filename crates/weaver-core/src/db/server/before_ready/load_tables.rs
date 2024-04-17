@@ -1,6 +1,6 @@
 //! Load tables
 
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 
 use crate::db::core::{weaver_schemata_schema, weaver_tables_schema};
 use crate::db::server::layers::packets::{DbReq, DbResp};
@@ -42,8 +42,9 @@ pub fn load_tables(db: &mut WeaverDb) -> Result<(), WeaverError> {
                         .expect("is not string value");
                     let parsed_schema: TableSchema =
                         serde_json::from_str(ddl).map_err(|e| WeaverError::custom(e))?;
-                    info!("row: {:?}", &table[0..4]);
-                    info!("schema: {:#?}", parsed_schema);
+                    trace!("row: {:?}", &table[0..4]);
+                    trace!("schema: {:#?}", parsed_schema);
+                    info!("opening table: {}.{}...", parsed_schema.schema(), parsed_schema.name());
                     core.open_table(&parsed_schema)?;
                 }
             }

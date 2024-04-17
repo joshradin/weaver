@@ -1,5 +1,6 @@
-use clap::{ArgAction, Parser};
+use clap::{ArgAction, Parser, value_parser};
 use std::path::PathBuf;
+use log::LevelFilter;
 use weaver_core::cnxn::DEFAULT_PORT;
 #[derive(Debug, Parser)]
 #[clap(
@@ -22,6 +23,20 @@ pub struct App {
     #[clap(long, short)]
     pub username: Option<String>,
 
+    /// Sets the verbosity of the application
+    #[clap(short)]
+    #[clap(action = ArgAction::Count, value_parser = value_parser!(u8).range(0..=2))]
+    pub verbosity: u8,
+
     #[clap(long, action=ArgAction::HelpLong)]
     help: Option<bool>,
+}
+impl App {
+    pub fn log_level(&self) -> LevelFilter {
+        match self.verbosity {
+            0 => LevelFilter::Info,
+            1 => LevelFilter::Debug,
+            2.. => LevelFilter::Trace,
+        }
+    }
 }

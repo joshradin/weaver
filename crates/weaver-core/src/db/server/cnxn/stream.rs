@@ -89,7 +89,7 @@ impl<T: Stream> WeaverStream<T> {
 }
 
 impl<T: Stream> MessageStream for WeaverStream<T> {
-    #[instrument(skip(self), fields(T=std::any::type_name::<T>()), ret, err)]
+    #[instrument(skip(self), fields(T=std::any::type_name::<T>()), err)]
     fn read(&mut self) -> Result<Message, WeaverError> {
         trace!("waiting for message");
         let mut len = [0_u8; size_of::<u32>()];
@@ -112,7 +112,7 @@ impl<T: Stream> MessageStream for WeaverStream<T> {
         read_msg(&message_buffer[..])
     }
 
-    #[instrument(skip(self, message), fields(T=std::any::type_name::<T>()), ret, err)]
+    #[instrument(skip(self, message), fields(T=std::any::type_name::<T>()), err)]
     fn write(&mut self, message: &Message) -> Result<(), WeaverError> {
         trace!("sending {message:?}");
         let mut msg_buffer = vec![];

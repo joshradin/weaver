@@ -198,7 +198,7 @@ impl Display for DbVal {
                 write!(f, "{fl}")
             }
             DbVal::Null => {
-                write!(f, "null")
+                write!(f, "")
             }
         }
     }

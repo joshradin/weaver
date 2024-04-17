@@ -85,7 +85,14 @@ pub trait MessageStream {
         let Message::Resp(resp) = self.read()? else {
             unreachable!();
         };
-        Ok(resp)
+        match resp {
+            RemoteDbResp::Err(e) => {
+                Err(WeaverError::custom(e))
+            }
+            other => {
+                Ok(other)
+            }
+        }
     }
 }
 

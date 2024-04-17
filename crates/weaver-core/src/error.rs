@@ -177,6 +177,8 @@ pub enum WeaverError {
     WeaverPidNotFound(WeaverPid),
     #[error("Could not cancel task")]
     CancelTaskFailed,
+    #[error("schema `{0}` does not exist")]
+    SchemaNotFound(String),
 
     #[error(transparent)]
     SerdeJsonError(#[from] serde_json::Error),
@@ -189,6 +191,7 @@ pub enum WeaverError {
     },
     #[error("{0}")]
     Custom(String),
+
 }
 
 impl WeaverError {
