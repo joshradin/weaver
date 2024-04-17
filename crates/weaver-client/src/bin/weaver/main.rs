@@ -10,6 +10,7 @@ use weaver_ast::ast::Query;
 use weaver_client::write_rows::write_rows;
 use weaver_client::WeaverClient;
 use weaver_core::access_control::auth::LoginContext;
+use weaver_core::common::stream_support::Stream;
 
 use crate::cli::App;
 
@@ -25,7 +26,7 @@ fn main() -> eyre::Result<()> {
         .open(format!("{}.log", env!("CARGO_BIN_NAME")))?;
     CombinedLogger::init(vec![
         TermLogger::new(
-            LevelFilter::Debug,
+            LevelFilter::Warn,
             Config::default(),
             TerminalMode::Stderr,
             ColorChoice::Auto,
@@ -33,27 +34,48 @@ fn main() -> eyre::Result<()> {
         WriteLogger::new(LevelFilter::Trace, Config::default(), log_file),
     ])?;
 
-    let addr = (app.host.as_str(), app.port);
-    info!("connecting to weaver instance at {:?}", addr);
-    let mut connection = match WeaverClient::connect(addr, LoginContext::new()) {
-        Ok(cnxn) => cnxn,
-        Err(e) => {
-            error!("Failed to connect to weaver instance at {:?} ({e})", addr);
-            return Err(e);
+    let mut login = LoginContext::new();
+    if let Some(username) = &app.username {
+        login.set_user(username);
+    }
+
+
+    match app.host.as_str() {
+        "localhost" => {
+            info!("connecting to weaver instance using socket file");
+            let path = "weaver/weaverdb.socket";
+            let client =  match WeaverClient::connect_localhost(path, login) {
+                Ok(cnxn) => cnxn,
+                Err(e) => {
+                    error!("Failed to connect to weaver instance at {:?} ({e})", path);
+                    return Err(e);
+                }
+            };
+            client_repl(app, client)
+        },
+        other => {
+            let addr = (other, app.port);
+            info!("connecting to weaver instance at {:?}", addr);
+            let client = match WeaverClient::connect(addr, login) {
+                Ok(cnxn) => cnxn,
+                Err(e) => {
+                    error!("Failed to connect to weaver instance at {:?} ({e})", addr);
+                    return Err(e);
+                }
+            };
+            client_repl(app, client)
         }
-    };
+    }
+}
 
-    let query = Query::parse(
-        r"
-    select * from system.process
-    ",
-    )?;
-
-    let (rows, duration) = connection.query(&query)?;
-    write_rows(stdout(), rows, duration)?;
+fn client_repl<T: Stream>(app: App, client: WeaverClient<T>) -> eyre::Result<()> {
 
     Ok(())
 }
+
+
+
+
 
 #[cfg(test)]
 mod tests {

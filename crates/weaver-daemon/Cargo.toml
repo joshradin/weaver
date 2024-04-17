@@ -15,7 +15,6 @@ vendor-openssl = ["weaver-core/vendor-openssl"]
 
 [[bin]]
 name = "weaverd"
-path = "./src/main.rs"
 
 [dependencies]
 weaver-core = { version = "0.0.0", path = "../weaver-core" }

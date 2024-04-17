@@ -1,41 +1,42 @@
-mod cli;
-
-pub use cli::App;
-
-use color_eyre::eyre;
+use std::process::exit;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::thread::sleep;
-use std::time::Duration;
-use tracing::{debug, info, info_span, trace, warn};
+use std::time::{Duration, Instant};
+
+use color_eyre::eyre;
+use tracing::{debug, Event, info, info_span, Subscriber, trace, warn};
+use tracing::instrument::WithSubscriber;
+use tracing::metadata::LevelFilter;
 use tracing_error::ErrorLayer;
+use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields};
+use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::util::SubscriberInitExt;
+
 use weaver_core::access_control::auth::init::AuthConfig;
 use weaver_core::db::core::WeaverDbCore;
 use weaver_core::db::server::layers::packets::DbReqBody;
 use weaver_core::db::server::layers::packets::DbResp;
 use weaver_core::db::server::WeaverDb;
+use weaver_core::error::WeaverError;
+
+use crate::cli::App;
+
+pub mod cli;
 
 /// Starts the application
 pub fn run(app: App) -> eyre::Result<()> {
-    color_eyre::install()?;
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(app.level_filter())
-        .with_thread_ids(true)
-        .with_file(true)
-        .with_line_number(true)
-        .event_format(tracing_subscriber::fmt::format())
-        .finish()
-        .with(ErrorLayer::default());
-
-    tracing::subscriber::set_global_default(subscriber)?;
     warn!("starting weaverd with args: {app:#?}");
+    trace!("start time: {:?}", Instant::now());
     let span = info_span!("main");
     let _enter = span.enter();
 
     info!("Starting weaver db...");
     std::fs::create_dir_all(app.work_dir())?;
     let core = WeaverDbCore::with_path(app.work_dir())?;
+    trace!("weaver core created");
 
     let auth_config = AuthConfig {
         key_store: app.key_store(),
@@ -58,7 +59,10 @@ pub fn run(app: App) -> eyre::Result<()> {
     {
         let mut svc = weaver.lifecycle_service().clone();
         ctrlc::set_handler(move || {
-            let _ = svc.teardown();
+            let res = svc.teardown();
+            if let Err(e) = res {
+                warn!("teardown ended in {}", e);
+            }
         })
         .expect("failed to set INTERRUPT handler");
     }
@@ -66,8 +70,19 @@ pub fn run(app: App) -> eyre::Result<()> {
     let socket_path = app.work_dir().join("weaverdb.socket");
     weaver.bind_tcp((&*app.host, app.port))?;
     weaver.bind_local_socket(socket_path)?;
-    let cnxn = weaver.connect();
 
+    if let Some(kill) = app.kill {
+        let cnxn = weaver.connect();
+        thread::spawn(move || {
+            sleep(Duration::from_secs(kill));
+            cnxn.send(DbReqBody::on_server(|s, _| {
+                s.lifecycle_service().teardown().unwrap();
+                Ok(DbResp::Ok)
+            }));
+        });
+    }
+
+    let cnxn = weaver.connect();
     let probe = thread::spawn(move || -> eyre::Result<()> {
         loop {
             trace!("Checking if weaver db is alive...");

@@ -26,6 +26,10 @@ pub struct App {
     #[clap(short)]
     #[clap(action = ArgAction::Count, value_parser = value_parser!(u8).range(0..=2))]
     pub verbosity: u8,
+
+    /// Automatically kills the instance after some amount of seconds
+    #[clap(long, value_parser=value_parser!(u64).range(1..))]
+    pub kill: Option<u64>,
 }
 
 impl App {

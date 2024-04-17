@@ -7,6 +7,9 @@ use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::OnceLock;
+use tracing::trace;
+use crate::common::hex_dump::HexDump;
+use crate::common::pretty_bytes::PrettyBytes;
 
 /// A random access file allows for accessing the contents of a file
 /// at any given point within the file.
@@ -85,6 +88,7 @@ impl StorageDevice for RandomAccessFile {
         }
         self.file.seek(SeekFrom::Start(offset))?;
         self.file.write_all(data)?;
+        trace!("wrote {:#x?} to file {:?}", HexDump::new(data), self.file);
         if let Some(stats) = self.monitor.get() {
             stats.flushes.fetch_add(1, Ordering::Relaxed);
             stats.writes.fetch_add(1, Ordering::Relaxed);
@@ -102,6 +106,7 @@ impl StorageDevice for RandomAccessFile {
         }
         (&self.file).seek(SeekFrom::Start(0))?;
         let read = (&self.file).read(buffer).map(|u| u as u64)?;
+        trace!("read {:#x?} from file {:?}",HexDump::new(&buffer[..read as usize]), self.file);
         if let Some(stats) = self.monitor.get() {
             stats.reads.fetch_add(1, Ordering::Relaxed);
             stats.bytes_read.fetch_add(read as usize, Ordering::Relaxed);
@@ -121,6 +126,7 @@ impl StorageDevice for RandomAccessFile {
         let mut vec = vec![0_u8; len as usize];
         (&self.file).seek(SeekFrom::Start(offset))?;
         (&self.file).read_exact(&mut vec)?;
+        trace!("read {:#x?} from file {:?}", HexDump::new(&vec), self.file);
         if let Some(stats) = self.monitor.get() {
             stats.reads.fetch_add(1, Ordering::Relaxed);
             stats.bytes_read.fetch_add(len as usize, Ordering::Relaxed);

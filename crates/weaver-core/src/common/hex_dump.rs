@@ -57,11 +57,23 @@ impl<T: AsRef<[u8]>> Debug for HexDump<T> {
                 let start = self.1.start_index + index * self.1.bytes_per_row;
                 Row {
                     start,
+                    repeats: 0,
                     bytes: batch.collect(),
                     bytes_per_row: self.1.bytes_per_row,
                     word_size: self.1.word_size,
                 }
             })
+            .fold(Vec::<Row>::new(), |mut acc, next| {
+                if let Some(row_prev) = acc.last_mut() {
+                    if next.is_zeroes() && row_prev.is_zeroes() {
+                        row_prev.repeats += 1;
+                        return acc;
+                    }
+                }
+                acc.push(next);
+                acc
+            })
+            .into_iter()
             .enumerate()
             .try_for_each(|(_index, row)| -> fmt::Result {
                 if f.alternate() {
@@ -79,9 +91,16 @@ impl<T: AsRef<[u8]>> Debug for HexDump<T> {
 
 struct Row<'a> {
     start: usize,
+    repeats: usize,
     bytes: Vec<&'a u8>,
     bytes_per_row: usize,
     word_size: usize,
+}
+
+impl<'a> Row<'a> {
+    fn is_zeroes(&self) -> bool {
+        self.bytes.iter().all(|&&b| b==0)
+    }
 }
 
 impl<'a> Debug for Row<'a> {
@@ -112,10 +131,11 @@ impl<'a> Debug for Row<'a> {
 
         write!(
             f,
-            "0x{:04x}:   {:<width$}   | {:<max_chars$}",
+            "0x{:04x}:   {:<width$}   | {:<max_chars$} |{}",
             self.start,
             byte_view.join("  "),
-            sanitized
+            sanitized,
+            if self.repeats > 0 { format!(" x{} ", self.repeats + 1) } else { " ".to_string()}
         )
     }
 }

@@ -67,7 +67,15 @@ impl WeaverDbCore {
             .truncate(false)
             .open(path.join("weaver.lock"))?;
 
-        lock_file.lock_exclusive()?;
+        #[cfg(not(miri))] {
+            debug!("creating exclusive file lock");
+            lock_file.try_lock_exclusive()?;
+            debug!("exclusive file lock created");
+        }
+
+        debug!("starting core with config:");
+        debug!(" - mmap: {}", cfg!(feature = "mmap"));
+
         let mut shard = Self {
             path,
             lock_file: Some(lock_file),
@@ -99,6 +107,7 @@ impl WeaverDbCore {
         self.default_engine.as_ref()
     }
 
+    /// Start a transaction
     pub fn start_transaction(&self) -> Tx {
         match self.tx_coordinator {
             None => Tx::default(),

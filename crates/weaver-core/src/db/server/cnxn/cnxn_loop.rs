@@ -81,9 +81,6 @@ fn handle_message<S: MessageStream + Send>(
 
             let mut send_request =
                 |body: DbReqBody, tx: &mut Option<Tx>| -> Result<RemoteDbResp, WeaverError> {
-                    if let DbReqBody::TxQuery(_, query) = &body {
-
-                    }
                     let mut resp = socket.send((body, span.clone()));
                     resp.on_cancel(cancel.clone());
                     let resp = resp.join()?;

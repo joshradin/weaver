@@ -83,6 +83,7 @@ impl WeaverStreamListener for WeaverLocalSocketListener {
                 }
             }
         };
+        stream.set_nonblocking(false)?;
         self.listener.set_nonblocking(false)?;
         let db = self.weak.upgrade().ok_or(WeaverError::NoCoreAvailable)?;
 

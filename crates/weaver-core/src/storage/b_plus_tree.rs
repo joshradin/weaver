@@ -1,7 +1,9 @@
 //! The second version of the B+ tree
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+#[cfg(debug_assertions)]
+use std::collections::BTreeSet;
 use std::fmt::{Debug, Formatter};
 use std::io::Write;
 use std::ops::Bound;

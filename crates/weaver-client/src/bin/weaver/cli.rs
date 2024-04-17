@@ -17,6 +17,12 @@ pub struct App {
     /// Sets the location of the key store
     #[clap(long)]
     pub key_store: Option<PathBuf>,
+
+    /// The username to connect as
+    #[clap(long, short)]
+    pub username: Option<String>,
+
+
     #[clap(long, action=ArgAction::HelpLong)]
     help: Option<bool>,
 }
