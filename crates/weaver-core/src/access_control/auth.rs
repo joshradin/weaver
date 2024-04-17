@@ -20,7 +20,7 @@ pub mod secured;
 pub mod handshake {
     use std::fmt::Debug;
 
-    use tracing::{debug, error_span, warn};
+    use tracing::{debug, error, error_span, warn};
 
     use crate::access_control::auth::context::AuthContext;
     use crate::access_control::auth::LoginContext;
@@ -86,6 +86,7 @@ pub mod handshake {
             }
 
             let user = User::new(row[0].to_string(), row[1].to_string());
+            debug!("user {user:?} will be logged in");
             packet_write(stream.transport().as_mut().unwrap(), &user)?;
             stream.set_user(user);
             Ok(stream)
@@ -110,7 +111,11 @@ pub mod handshake {
             debug!("sending login-context to server about self");
             let transport = stream.transport().as_mut().unwrap();
             packet_write(transport, &login_context)?;
-            let user = packet_read::<User, _>(transport)?;
+            debug!("login-context send, waiting for login response...");
+            let user = packet_read::<User, _>(transport).inspect_err(|e| {
+                error!("error occurred waiting for packet: {}", e);
+            })?;
+            debug!("got user: {user:?}");
             stream.set_user(user);
             Ok(stream)
         })

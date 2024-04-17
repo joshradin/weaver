@@ -313,13 +313,13 @@ impl WeaverDb {
         query: &Query,
         plan_context: impl Into<Option<&'a WeaverProcessInfo>>,
     ) -> Result<QueryPlan, WeaverError> {
-        info!("query to plan");
+        trace!("query to plan");
         let factory = QueryPlanFactory::new(self.weak());
-        debug!("created query factory: {:?}", factory);
+        trace!("created query factory: {:?}", factory);
         let mut plan = factory.to_plan(tx, query, &self.shared.function_registry, plan_context)?;
-        debug!("created initial plan {plan:#?}");
+        trace!("created initial plan {plan:#?}");
         let optimizer = QueryPlanOptimizer::new(self.weak());
-        debug!("created query optimizer: {optimizer:?}");
+        trace!("created query optimizer: {optimizer:?}");
         optimizer.optimize(tx, &mut plan)?;
 
         Ok(plan)

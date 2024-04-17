@@ -10,8 +10,6 @@ rust-version = "1.75"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-# provides log events instead of just trace events
-log = ["tracing/log"]
 # Vendor ssl instead of dynamically linking
 vendor-openssl = ["openssl/vendored"]
 weaveBPTF-caching = []

@@ -62,9 +62,11 @@ impl WeaverClient<LocalSocketStream> {
         login_context: LoginContext,
     ) -> eyre::Result<Self> {
         let mut client = WeaverStream::local_socket(socket_path, login_context)?;
+        debug!("created client stream: {:?}", client);
         let RemoteDbResp::ConnectionInfo(cnxn) = client.send(&RemoteDbReq::ConnectionInfo)? else {
-            return Err(eyre!("couldn't get connection info"));
+            panic!("unexpected response type");
         };
+        debug!("got connection info: {cnxn:?}");
         let pid = cnxn.pid;
         Ok(Self {
             stream: client,

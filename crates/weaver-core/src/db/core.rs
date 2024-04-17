@@ -177,8 +177,6 @@ impl WeaverDbCore {
 
         span.record("engine", engine.engine_key().to_string());
 
-        let table = engine.factory().open(schema, self)?;
-
         if let Some(tables_table) = &open_tables.get(&("weaver".to_string(), "tables".to_string()))
         {
             let tx = Tx::default();
@@ -190,12 +188,13 @@ impl WeaverDbCore {
                 .into_iter()
                 .find(|row| row[(schemata_schema, "name")].string_value() == Some(schema.schema()))
                 .map(|row| row[(schemata_schema, "id")].clone().into_owned())
-                .ok_or_else(|| WeaverError::NoTableSchema)?;
+                .ok_or_else(|| WeaverError::SchemaNotFound(schema.schema().to_string()))?;
 
             if !tables_table.all(&tx)?.into_iter().any(|row| {
                 *row[(table_schema, "schema_id")] == schema_id
                     && row[(table_schema, "name")].string_value() == Some(schema.name())
             }) {
+                debug!("table {}.{} does not exist in weaver.tables, adding it now.", schema.schema(), schema.name());
                 tables_table.insert(
                     &tx,
                     Row::from([
@@ -212,6 +211,7 @@ impl WeaverDbCore {
 
             tx.commit();
         }
+        let table = engine.factory().open(schema, self)?;
 
         if let Some(monitor) = self.monitor.get() {
             monitor.collector.clone().push_monitorable(&*table);
