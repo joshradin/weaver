@@ -28,6 +28,7 @@ jobs:
         run: |
           cargo install cargo-deny
           cargo install cargo-audit
+          cargo install cargo-nextest
       - run: cargo check --workspace
       - run: cargo deny check
       - run: cargo audit -d /tmp/cargo-audit-repo
