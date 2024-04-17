@@ -12,7 +12,6 @@ use weaver_core::monitoring::MonitorCollector;
 use weaver_core::storage::b_plus_tree::BPlusTree;
 use weaver_core::storage::VecPager;
 
-
 fn insert_rand<'a>(
     count: usize,
     page_len: usize,

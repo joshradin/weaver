@@ -3,7 +3,7 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use parking_lot::{Mutex, RwLock};
-use tracing::{debug, error, error_span, info, instrument, Span, warn};
+use tracing::{debug, error, error_span, info, instrument, warn, Span};
 
 use crate::db::server::{WeakWeaverDb, WeaverDb};
 use crate::error::WeaverError;
@@ -16,6 +16,7 @@ pub enum LifecyclePhase {
     Initializing,
     Initialized,
     Bootstrapping,
+    GettingReady,
     Ready,
     ShuttingDown,
     Dead,
@@ -27,6 +28,7 @@ struct WeaverDbLifecycleServiceInternal {
     weak: WeakWeaverDb,
     initialization_functions: Vec<Box<LifecycleCallback>>,
     bootstrapping_functions: Vec<Box<LifecycleCallback>>,
+    before_ready_functions: Vec<Box<LifecycleCallback>>,
     teardown_functions: Vec<Box<LifecycleCallback>>,
 }
 
@@ -49,9 +51,9 @@ impl WeaverDbLifecycleService {
         Self {
             helper: Arc::new(Mutex::new(WeaverDbLifecycleServiceInternal {
                 weak: db,
-
                 initialization_functions: vec![],
                 bootstrapping_functions: vec![],
+                before_ready_functions: vec![],
                 teardown_functions: vec![],
             })),
             phase: Arc::new(RwLock::new(LifecyclePhase::Uninitialized)),
@@ -79,6 +81,18 @@ impl WeaverDbLifecycleService {
         self.helper
             .lock()
             .bootstrapping_functions
+            .push(Box::new(callback))
+    }
+
+    /// Runs before ready
+    pub fn before_ready<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut WeaverDb) -> Result<(), WeaverError>,
+        F: Send + Sync + 'static,
+    {
+        self.helper
+            .lock()
+            .before_ready_functions
             .push(Box::new(callback))
     }
 
@@ -165,6 +179,20 @@ impl WeaverDbLifecycleService {
                 },
             )?;
         }
+        *self.phase.write() = LifecyclePhase::GettingReady;
+        error_span!("startup", phase = "before-ready").in_scope(
+            || -> Result<(), WeaverError> {
+                info!("running before-ready functions...");
+
+                let before_ready_functions =
+                    VecDeque::from_iter(helper.before_ready_functions.drain(..));
+
+                for before_ready in before_ready_functions {
+                    before_ready(&mut weaver)?;
+                }
+                Ok(())
+            },
+        )?;
 
         *self.phase.write() = LifecyclePhase::Ready;
         Ok(())
@@ -191,9 +219,12 @@ impl WeaverDbLifecycleService {
             .ok_or_else(|| WeaverError::NoCoreAvailable)?;
         // bootstrap
         let teardown_functions = VecDeque::from_iter(helper.teardown_functions.drain(..));
+        debug!("teardown functions: {:#?}", teardown_functions.len());
 
         for teardown in teardown_functions {
+            debug!("running teardown function...");
             teardown(&mut weaver)?;
+            debug!("teardown function completed.")
         }
 
         debug!(

@@ -6,7 +6,10 @@ use crate::lexing::{Spanned, Token, TokenError, Tokenizer};
 
 use lalrpop_util::{lalrpop_mod, ParseError};
 
-lalrpop_mod!(#[allow(clippy::complexity)] weaver_query);
+lalrpop_mod!(
+    #[allow(clippy::complexity)]
+    weaver_query
+);
 
 #[derive(Debug)]
 struct LR1Parser<'a, I: Iterator<Item = Spanned<Token<'a>, usize, TokenError>>> {

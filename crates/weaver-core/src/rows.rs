@@ -109,7 +109,7 @@ pub trait Rows<'t> {
     }
 }
 
-impl<'a> IntoIterator for Box<dyn Rows<'a>  +'a + Send> {
+impl<'a> IntoIterator for Box<dyn Rows<'a> + 'a + Send> {
     type Item = Row<'a>;
     type IntoIter = RowIter<'a>;
 

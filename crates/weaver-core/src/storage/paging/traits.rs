@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use crate::common::hex_dump::HexDump;
 use parking_lot::RwLock;
+use tracing::trace;
 
 use crate::common::track_dirty::Mad;
 use crate::monitoring::{monitor_fn, Monitor, Monitorable, Stats};
@@ -186,6 +187,19 @@ where
     page: P,
     header_len: usize,
     _header: PhantomData<&'a Header>,
+}
+
+impl<'a, P, Header> Drop for SplitPage<'a, P, Header>
+where
+    P: Page<'a>,
+    Header: Clone + PartialEq + StorageBackedData,
+{
+    fn drop(&mut self) {
+        trace!(
+            "dropping split page with inner {}",
+            std::any::type_name_of_val(&self.page)
+        )
+    }
 }
 
 impl<'a, P, Header> PageWithHeader<'a> for SplitPage<'a, P, Header>

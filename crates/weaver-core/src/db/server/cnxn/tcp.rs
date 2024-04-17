@@ -83,7 +83,7 @@ impl WeaverStreamListener for WeaverTcpListener {
     type Stream = TcpStream;
 
     /// Accepts an incoming connection
-    #[instrument(skip(self), level="debug")]
+    #[instrument(skip(self), level = "debug")]
     fn accept(&self) -> Result<WeaverStream<TcpStream>, WeaverError> {
         let (stream, socket_addr) = loop {
             match self.tcp_listener.accept() {
@@ -111,7 +111,7 @@ impl WeaverStreamListener for WeaverTcpListener {
         Ok(socket)
     }
 
-    #[instrument(skip(self), level="debug")]
+    #[instrument(skip(self), level = "debug")]
     fn try_accept(&self) -> Result<Option<WeaverStream<Self::Stream>>, WeaverError> {
         self.tcp_listener.set_nonblocking(true)?;
         let (stream, socket_addr) = match self.tcp_listener.accept() {

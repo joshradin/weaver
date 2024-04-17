@@ -66,6 +66,8 @@ pub enum WeaverError {
     Timeout,
     #[error("WeaverDb instance already bound to tcp socket")]
     TcpAlreadyBound,
+    #[error("WeaverDb instance already bound to local socket")]
+    LocalSocketAlreadyBound,
     #[error(transparent)]
     SendError(#[from] SendError<MainQueueItem>),
     #[error(transparent)]
@@ -176,6 +178,9 @@ pub enum WeaverError {
     #[error("Could not cancel task")]
     CancelTaskFailed,
 
+    #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
+
     #[error("{msg}\t\ncaused by\n{cause}\n{backtrace}")]
     CausedBy {
         msg: String,
@@ -184,7 +189,6 @@ pub enum WeaverError {
     },
     #[error("{0}")]
     Custom(String),
-
 }
 
 impl WeaverError {

@@ -39,6 +39,7 @@ pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<()
     core.open_table(weaver_schemata_schema)?;
     let weaver_schemata = core.get_open_table("weaver", "schemata")?;
     weaver_schemata.insert(tx, Row::from([DbVal::from(1), "weaver".into()]))?;
+    weaver_schemata.commit(tx);
 
     // STEP 2: Load weaver.tables
     let weaver_tables_schema = &(weaver_tables_schema()?);
@@ -52,6 +53,7 @@ pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<()
             DbVal::from(1),
             DbVal::from("schemata"),
             DbVal::from(weaver_schemata_schema.to_sql()),
+            DbVal::from(serde_json::to_string(&weaver_schemata_schema)?),
             DbVal::from(true),
         ]),
     )?;
@@ -62,15 +64,17 @@ pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<()
             DbVal::from(1),
             DbVal::from("tables"),
             DbVal::from(weaver_tables_schema.to_sql()),
+            DbVal::from(serde_json::to_string(weaver_tables_schema)?),
             DbVal::from(true),
         ]),
     )?;
+    weaver_tables.commit(tx);
 
     Ok(())
 }
 
 /// The `weaver.schemata` schema
-fn weaver_schemata_schema() -> Result<TableSchema, WeaverError> {
+pub fn weaver_schemata_schema() -> Result<TableSchema, WeaverError> {
     TableSchema::builder("weaver", "schemata")
         .column("id", Type::Integer, true, None, 1)?
         .column("name", Type::String(256), true, None, None)?
@@ -81,14 +85,16 @@ fn weaver_schemata_schema() -> Result<TableSchema, WeaverError> {
 }
 
 /// The `weaver.tables` schema
-fn weaver_tables_schema() -> Result<TableSchema, WeaverError> {
+pub fn weaver_tables_schema() -> Result<TableSchema, WeaverError> {
     TableSchema::builder("weaver", "tables")
         .column("id", Type::Integer, true, None, 1)?
         .column("schema_id", Type::Integer, true, None, None)?
         .column("name", Type::String(255), true, None, None)?
         .column("table_ddl", Type::String(1 << 11), true, None, None)?
+        .column("table_ddl_json", Type::String(1 << 11), true, None, None)?
         .column("protected", Type::Boolean, true, DbVal::from(false), None)?
         .primary(&["id"])?
+        .index("FK_schema_id", &["schema_id"], false)?
         .engine(EngineKey::basic())
         .build()
 }
@@ -104,5 +110,4 @@ mod tests {
         let _table = weaver_tables_schema().expect("could not create table");
         println!("{_table:#?}");
     }
-
 }

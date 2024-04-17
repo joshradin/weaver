@@ -2,10 +2,12 @@ use crate::common::hex_dump::HexDump;
 use crate::common::pretty_bytes::PrettyBytes;
 use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::devices::{StorageDevice, StorageDeviceMonitor};
+use std::collections::VecDeque;
 use std::fmt::{Debug, Formatter};
 use std::fs::{File, Metadata};
 use std::io;
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
+use std::iter::FusedIterator;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::OnceLock;
@@ -59,6 +61,17 @@ impl RandomAccessFile {
             .truncate(false)
             .open(path)
             .and_then(Self::with_file)
+    }
+
+    /// Gets an iterator of bytes over a random access file
+    pub fn bytes(&self) -> Bytes {
+        Bytes {
+            len: self.len(),
+            counted: 0,
+            buffer: Default::default(),
+            offset: 0,
+            file: self,
+        }
     }
 }
 
@@ -172,9 +185,48 @@ impl TryFrom<File> for RandomAccessFile {
     }
 }
 
+/// A bytes iterator.
+///
+/// Buffers bytes
+#[derive(Debug)]
+pub struct Bytes<'a> {
+    len: u64,
+    counted: u64,
+    buffer: VecDeque<u8>,
+    offset: u64,
+    file: &'a RandomAccessFile,
+}
+
+impl<'a> Iterator for Bytes<'a> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.counted == self.len {
+            return None;
+        }
+        if self.buffer.is_empty() {
+            let mut buffer = vec![0_u8; 256];
+            let read = self
+                .file
+                .read(self.offset, &mut buffer)
+                .expect("failed to read bytes");
+            self.offset += read;
+            self.buffer.extend(&buffer[..read as usize]);
+        }
+        let last = self.buffer.pop_back();
+        if last.is_some() {
+            self.counted += 1;
+        }
+        last
+    }
+}
+
+impl FusedIterator for Bytes<'_> {}
+
 #[cfg(test)]
 mod tests {
-    use tempfile::tempfile;
+    use tempfile::{tempdir, tempfile};
+    use test_log::test;
 
     use crate::storage::devices::StorageDevice;
 
@@ -237,5 +289,23 @@ aliquet magna lorem ac dolor.
         ram.write(0, TEXT).expect("could not write");
 
         println!("ram: {ram:#?}");
+    }
+
+    #[test]
+    fn writes_persist() {
+        let tempdir = tempdir().unwrap();
+        let file = tempdir.as_ref().join("test.txt");
+        {
+            let mut ram =
+                RandomAccessFile::open_or_create(&file).expect("could not create ram file");
+            ram.set_len(1000).unwrap();
+            ram.write(0, b"hello, world").unwrap()
+        }
+        {
+            let ram = RandomAccessFile::open(&file).expect("could not create ram file");
+            let mut buffer = vec![0; b"hello, world".len()];
+            ram.read(0, &mut buffer).unwrap();
+            assert_eq!(buffer, b"hello, world");
+        }
     }
 }

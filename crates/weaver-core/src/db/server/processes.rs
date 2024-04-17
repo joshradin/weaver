@@ -1,13 +1,13 @@
 //! Weaver process handling
 use std::collections::BTreeMap;
 use std::panic::panic_any;
-use std::sync::{Arc, OnceLock};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use crossbeam::channel::{Receiver, Sender, unbounded};
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, error_span};
@@ -299,12 +299,12 @@ impl Drop for ProcessManager {
 
 #[cfg(test)]
 mod tests {
-    use crossbeam::channel::TryRecvError;
     use crate::access_control::users::User;
     use crate::cancellable_task::{Cancel, CancellableTask, Cancelled};
     use crate::db::server::processes::ProcessManager;
     use crate::db::server::WeakWeaverDb;
     use crate::error::WeaverError;
+    use crossbeam::channel::TryRecvError;
 
     #[test]
     fn test_kill_running_process() {
@@ -313,18 +313,16 @@ mod tests {
         let id = manager
             .start(
                 &user,
-                CancellableTask::with_cancel(|process, cancel| {
-                    loop {
-                        match cancel.try_recv() {
-                            Ok(_) => { return Err(Cancelled) }
-                            Err(TryRecvError::Empty) => {}
-                            Err(TryRecvError::Disconnected) => {
-                                return Ok(Err(WeaverError::custom("disconnect")))
-                            }
+                CancellableTask::with_cancel(|process, cancel| loop {
+                    match cancel.try_recv() {
+                        Ok(_) => return Err(Cancelled),
+                        Err(TryRecvError::Empty) => {}
+                        Err(TryRecvError::Disconnected) => {
+                            return Ok(Err(WeaverError::custom("disconnect")))
                         }
                     }
-                },
-            ))
+                }),
+            )
             .expect("could not start process");
         manager.kill(&id).expect("could not kill");
     }

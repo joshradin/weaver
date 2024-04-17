@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
+use tracing::trace;
 
 use crate::common::hex_dump::HexDump;
 use crate::common::track_dirty::Mad;
@@ -147,10 +148,12 @@ impl<F: StorageDevice> Pager for FilePager<F> {
             })?
             .read_exact(offset as u64, self.page_len as u64)?
             .into_boxed_slice();
-        Ok(FilePage {
+        let page = FilePage {
             buf,
             usage_token: token,
-        })
+        };
+        trace!("created {}", std::any::type_name_of_val(&page));
+        Ok(page)
     }
 
     fn get_mut(&self, index: usize) -> Result<Self::PageMut<'_>, Self::Err> {
@@ -198,13 +201,15 @@ impl<F: StorageDevice> Pager for FilePager<F> {
             })?
             .read_exact(offset as u64, self.page_len as u64)?
             .into_boxed_slice();
-        Ok(FilePageMut {
+        let page_mut = FilePageMut {
             file: self.raf.clone(),
             usage_token: token,
             buffer: Mad::new(buf),
             offset: offset as u64,
             len: self.page_len as u64,
-        })
+        };
+        trace!("created {}", std::any::type_name_of_val(&page_mut));
+        Ok(page_mut)
     }
 
     fn new_page(&self) -> Result<(Self::PageMut<'_>, usize), Self::Err> {
@@ -246,6 +251,7 @@ pub struct FilePage {
 
 impl Drop for FilePage {
     fn drop(&mut self) {
+        trace!("dropping {}", std::any::type_name_of_val(self));
         self.usage_token.fetch_sub(1, Ordering::SeqCst);
     }
 }
@@ -293,7 +299,9 @@ impl<'a, F: StorageDevice> Page<'a> for FilePageMut<F> {
 
 impl<F: StorageDevice> Drop for FilePageMut<F> {
     fn drop(&mut self) {
-        let _ = self.file.write().write(self.offset, &self.buffer[..]);
+        trace!("dropping {}", std::any::type_name_of_val(self));
+        let res = self.file.write().write(self.offset, &self.buffer[..]);
+        trace!("write on drop for file page mut resulted in {res:?}");
         if self
             .usage_token
             .compare_exchange(-1, 0, Ordering::SeqCst, Ordering::Relaxed)
@@ -307,12 +315,13 @@ impl<F: StorageDevice> Drop for FilePageMut<F> {
 #[cfg(test)]
 mod tests {
     use crate::monitoring::Monitorable;
-    use tempfile::tempfile;
+    use tempfile::{tempdir, tempfile};
 
     use crate::storage::devices::ram_file::RandomAccessFile;
     use crate::storage::paging::file_pager::{FilePageMut, FilePager};
     use crate::storage::paging::traits::{Page, PageMut};
-    use crate::storage::Pager;
+    use crate::storage::paging::virtual_pager::VirtualPagerTable;
+    use crate::storage::{Pager, VecPager};
     use std::io::Write;
 
     #[test]
@@ -343,5 +352,31 @@ mod tests {
 
         let stats = monitor.stats();
         println!("{}: {stats:#?}", monitor.name());
+    }
+
+    #[test]
+    fn file_pager_is_reusable() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.as_ref().join("tempfile.vpt");
+
+        {
+            let pager = FilePager::open_or_create(&file_path).unwrap();
+            let (mut page, 0) = pager.new_page().expect("could not create a new page") else {
+                panic!("expected 0 id for page")
+            };
+            // write a known magic number at a given offset
+            page.write_u64(0xDEADBEEF, 16);
+        }
+        assert!(
+            std::fs::metadata(&file_path).unwrap().len() > 0,
+            "file should contain contents"
+        );
+        {
+            let pager = FilePager::open(&file_path).unwrap();
+            let page = pager.get(0).expect("could not create a new page");
+            // reada known magic number at a given offset
+            let magic = page.read_u64(16).expect("magic number should be present");
+            assert_eq!(magic, 0xDEADBEEF);
+        }
     }
 }

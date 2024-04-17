@@ -3,3 +3,4 @@
 //!
 //!
 //! [0]: crate::db::core::bootstrap
+pub mod weaver;

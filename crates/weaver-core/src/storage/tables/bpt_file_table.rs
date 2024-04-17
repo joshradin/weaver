@@ -49,6 +49,14 @@ impl DynamicTable for BptfTable {
         self.main_table.next_row_id()
     }
 
+    fn commit(&self, tx: &Tx) {
+        self.main_table.commit(tx)
+    }
+
+    fn rollback(&self, tx: &Tx) {
+        self.main_table.commit(tx)
+    }
+
     fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         self.main_table.insert(tx, row)
     }
@@ -59,6 +67,13 @@ impl DynamicTable for BptfTable {
         key: &KeyIndex,
     ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         self.main_table.read(tx, key)
+    }
+
+    fn all<'tx, 'table: 'tx>(
+        &'table self,
+        tx: &'tx Tx,
+    ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
+        self.main_table.all(tx)
     }
 
     fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError> {
@@ -150,17 +165,23 @@ impl DynamicTableFactory for BptfTableFactory {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
     use std::collections::Bound;
+    use test_log::test;
 
+    use crate::common::hex_dump::HexDump;
     use tempfile::tempdir;
+    use tracing::info;
 
     use crate::data::row::Row;
     use crate::data::types::Type;
     use crate::data::values::DbVal;
     use crate::dynamic_table::{DynamicTable, EngineKey};
+    use crate::error::WeaverError;
     use crate::key::KeyData;
     use crate::monitoring::Monitorable;
     use crate::rows::{KeyIndex, KeyIndexKind, Rows};
+    use crate::storage::devices::ram_file::RandomAccessFile;
     use crate::storage::tables::bpt_file_table::{BptfTableFactory, B_PLUS_TREE_FILE_KEY};
     use crate::storage::tables::table_schema::TableSchema;
     use crate::tx::Tx;
@@ -236,5 +257,46 @@ mod tests {
         }
         println!("table: {table:#?}");
         println!("monitor: {:#?}", monitor.stats());
+    }
+
+    #[test]
+    fn tables_persist() -> Result<(), WeaverError> {
+        let temp_dir = tempdir().expect("could not create temp dir");
+
+        let factory = BptfTableFactory::new(temp_dir.path());
+        let schema = TableSchema::builder("test", "test")
+            .column("id", Type::Integer, true, None, Some(0))?
+            .column("first_name", Type::String(32), true, None, None)?
+            .column("middle_initial", Type::String(1), false, None, None)?
+            .column("last_name", Type::String(32), true, None, None)?
+            .column("age", Type::Integer, true, None, None)?
+            .primary(&["id"])?
+            .build()?;
+
+        let table = factory.open(&schema)?;
+        {
+            let ref tx = Tx::default();
+            table.insert(
+                tx,
+                Row::from([
+                    DbVal::Null,
+                    "josh".into(),
+                    "e".into(),
+                    "radin".into(),
+                    25.into(),
+                ]),
+            )?;
+            table.commit(tx);
+        }
+
+        let file = RandomAccessFile::open(temp_dir.path().join("test").join("test"))?;
+        let bytes = file.bytes().collect::<Vec<_>>();
+        assert!(
+            bytes.iter().any(|&b| b != 0),
+            "nothing was actually written to the page"
+        );
+        info!("{:#?}", HexDump::new(&bytes));
+
+        Ok(())
     }
 }

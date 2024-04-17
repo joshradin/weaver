@@ -6,7 +6,7 @@ use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::OnceLock;
 
-use tracing::trace;
+use tracing::{instrument, trace};
 
 use crate::data::row::{OwnedRow, Row};
 use crate::data::types::Type;
@@ -159,7 +159,20 @@ where
         self.row_id.fetch_add(1, Ordering::SeqCst)
     }
 
-    fn insert(&self, tx: &Tx, row: Row) -> Result<(), crate::error::WeaverError> {
+    #[instrument(skip(self, _tx), fields(table=self.schema.name(), tx=%_tx))]
+    fn commit(&self, _tx: &Tx) {
+        trace!("committing transaction {_tx:?}");
+        self.main_buffer
+            .allocator()
+            .flush()
+            .expect("could not flush")
+    }
+
+    fn rollback(&self, _tx: &Tx) {
+        todo!()
+    }
+
+    fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         let row = self.schema.validate(row, tx, self)?;
         trace!("validated row: {:?}", row);
         let key_data = self.schema.all_key_data(&row);
@@ -251,5 +264,68 @@ where
 {
     fn schema(&self) -> &TableSchema {
         &self.schema
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::common::hex_dump::HexDump;
+    use crate::data::row::Row;
+    use crate::data::types::Type;
+    use crate::data::values::DbVal;
+    use crate::dynamic_table::DynamicTable;
+    use crate::error::WeaverError;
+    use crate::storage::devices::ram_file::RandomAccessFile;
+    use crate::storage::paging::file_pager::FilePager;
+    use crate::storage::tables::bpt_file_table::BptfTableFactory;
+    use crate::storage::tables::table_schema::TableSchema;
+    use crate::storage::tables::unbuffered_table::UnbufferedTable;
+    use crate::storage::VecPager;
+    use crate::tx::Tx;
+    use tempfile::tempdir;
+    use test_log::test;
+    use tracing::info;
+
+    #[test]
+    fn table_persists() -> Result<(), WeaverError> {
+        let temp_dir = tempdir().expect("could not create temp dir");
+
+        let factory = BptfTableFactory::new(temp_dir.path());
+        let schema = TableSchema::builder("test", "test")
+            .column("id", Type::Integer, true, None, Some(0))?
+            .column("first_name", Type::String(32), true, None, None)?
+            .column("middle_initial", Type::String(1), false, None, None)?
+            .column("last_name", Type::String(32), true, None, None)?
+            .column("age", Type::Integer, true, None, None)?
+            .primary(&["id"])?
+            .build()?;
+
+        let path = temp_dir.path().join("test.tbl");
+        let pager = FilePager::open_or_create(&path)?;
+
+        let table = UnbufferedTable::new(schema, pager, true)?;
+        {
+            let ref tx = Tx::default();
+            table.insert(
+                tx,
+                Row::from([
+                    DbVal::Null,
+                    "josh".into(),
+                    "e".into(),
+                    "radin".into(),
+                    25.into(),
+                ]),
+            )?;
+            table.commit(tx);
+        }
+        println!("{table:#?}");
+        let file = RandomAccessFile::open(path)?;
+        let bytes = file.bytes().collect::<Vec<_>>();
+        assert!(
+            bytes.iter().any(|&b| b != 0),
+            "nothing was actually written to the page"
+        );
+        info!("{:#?}", HexDump::new(&bytes));
+        Ok(())
     }
 }

@@ -1,29 +1,29 @@
-use fs2::FileExt;
-
-use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+
+use fs2::FileExt;
+use parking_lot::RwLock;
 use tracing::{debug, debug_span, field, info, trace};
+
+use crate::data::row::Row;
+use crate::data::values::DbVal;
+pub use bootstrap::{bootstrap, weaver_schemata_schema, weaver_tables_schema};
+use weaver_ast::ToSql;
 
 use crate::db::start_db::start_db;
 use crate::dynamic_table::{DynamicTable, EngineKey, HasSchema, Table};
+use crate::dynamic_table_factory::DynamicTableFactory;
 use crate::error::WeaverError;
-
+use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable, Stats};
+use crate::storage::engine::{StorageEngine, StorageEngineDelegate};
 use crate::storage::tables::shared_table::SharedTable;
 use crate::storage::tables::table_schema::TableSchema;
-
 use crate::tx::coordinator::TxCoordinator;
 use crate::tx::Tx;
 
 mod bootstrap;
-
-use crate::dynamic_table_factory::DynamicTableFactory;
-use crate::monitoring::{monitor_fn, Monitor, MonitorCollector, Monitorable, Stats};
-use crate::storage::engine::{StorageEngine, StorageEngineDelegate};
-
-pub use bootstrap::bootstrap;
 
 /// A db core. Represents some part of a distributed db
 #[derive(Debug)]
@@ -152,6 +152,11 @@ impl WeaverDbCore {
             .read()
             .contains_key(&(schema.schema().to_string(), schema.name().to_string()))
         {
+            debug!(
+                "open tables already contains {}.{}",
+                schema.schema(),
+                schema.name()
+            );
             return Ok(());
         }
 
@@ -164,7 +169,7 @@ impl WeaverDbCore {
         let enter = span.enter();
 
         debug!("opening table {}.{} ...", schema.schema(), schema.name());
-        let mut open_tables = self.open_tables.write();
+        let mut open_tables = &mut self.open_tables.write();
         let engine = self
             .engines
             .get(schema.engine())
@@ -173,6 +178,40 @@ impl WeaverDbCore {
         span.record("engine", engine.engine_key().to_string());
 
         let table = engine.factory().open(schema, self)?;
+
+        if let Some(tables_table) = &open_tables.get(&("weaver".to_string(), "tables".to_string()))
+        {
+            let tx = Tx::default();
+            let table_schema = &weaver_tables_schema()?;
+            let schemata_schema = &weaver_schemata_schema()?;
+
+            let schema_id = open_tables[&("weaver".to_string(), "schemata".to_string())]
+                .all(&tx)?
+                .into_iter()
+                .find(|row| row[(schemata_schema, "name")].string_value() == Some(schema.schema()))
+                .map(|row| row[(schemata_schema, "id")].clone().into_owned())
+                .ok_or_else(|| WeaverError::NoTableSchema)?;
+
+            if !tables_table.all(&tx)?.into_iter().any(|row| {
+                *row[(table_schema, "schema_id")] == schema_id
+                    && row[(table_schema, "name")].string_value() == Some(schema.name())
+            }) {
+                tables_table.insert(
+                    &tx,
+                    Row::from([
+                        DbVal::Null,
+                        schema_id,
+                        DbVal::from(schema.name()),
+                        DbVal::from(schema.to_sql()),
+                        DbVal::from(serde_json::to_string(schema)?),
+                        DbVal::Null,
+                    ]),
+                )?;
+                tables_table.commit(&tx);
+            }
+
+            tx.commit();
+        }
 
         if let Some(monitor) = self.monitor.get() {
             monitor.collector.clone().push_monitorable(&*table);
@@ -200,6 +239,16 @@ impl WeaverDbCore {
                 table: name.to_string(),
                 schema: schema.to_string(),
             })
+    }
+
+    /// Gets all open tables
+    pub fn get_open_tables(&self) -> impl Iterator<Item = SharedTable> {
+        self.open_tables
+            .read()
+            .values()
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 
     /// Closes a table

@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use parking_lot::{Mutex, RwLock};
 use ptree::{print_tree, write_tree, TreeBuilder};
-use tracing::{error, warn};
+use tracing::{error, trace, warn};
 
 use crate::data::row::OwnedRow;
 use crate::error::WeaverError;
@@ -126,11 +126,16 @@ where
 
     fn insert_cell(&self, cell: Cell, page_id: PageId) -> Result<bool, WeaverError> {
         let mut page = self.allocator.get_mut(page_id).expect("no page found");
+        trace!(
+            "got page {page_id} with type {:?} for inserting",
+            std::any::type_name_of_val(&page)
+        );
         match page.insert(cell.clone()) {
             Ok(()) => {
                 if let Some(monitor) = self.monitor.get() {
                     monitor.inserts.fetch_add(1, atomic::Ordering::Relaxed);
                 }
+                trace!("page successfully inserted cell");
                 Ok(false)
             }
             Err(WeaverError::WriteDataError(WriteDataError::AllocationFailed { .. })) => {
@@ -886,10 +891,12 @@ impl Monitor for BPlusTreeMonitor {
 mod tests {
     use rand::distributions::Alphanumeric;
     use rand::Rng;
+    use test_log::test;
 
     use crate::data::serde::deserialize_data_untyped;
     use crate::data::types::Type;
     use crate::data::values::DbVal;
+    use crate::storage::paging::buffered_pager::BufferedPager;
     #[cfg(feature = "weaveBPTF-caching")]
     use crate::storage::paging::caching_pager::LruCachingPager;
     use crate::storage::paging::file_pager::FilePager;
@@ -916,6 +923,38 @@ mod tests {
             assert_eq!(btree.all().expect("could not get all").len(), 256);
             const MAX: i64 = 256;
             for i in 0..MAX {
+                let v = btree.get(&KeyData::from([i])).unwrap();
+                assert!(matches!(v, Some(_)), "should have id")
+            }
+        }
+    }
+
+    #[test]
+    fn test_data_buffered_persists() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("btree");
+        let create_pager = || {
+            let pager = FilePager::open_or_create(&path).unwrap();
+            BufferedPager::new(pager)
+        };
+        const CHECKS: i64 = 5;
+        {
+            let btree = BPlusTree::new(create_pager());
+            for i in 0..CHECKS {
+                if let Err(e) = btree.insert([i], [1 + i, 2 * i]) {
+                    btree.print().expect("could not print");
+                    panic!("error occurred on loop {i}: {e}");
+                }
+            }
+        }
+
+        {
+            let btree = BPlusTree::new(create_pager());
+            assert_eq!(
+                btree.all().expect("could not get all").len(),
+                CHECKS as usize
+            );
+            for i in 0..CHECKS {
                 let v = btree.get(&KeyData::from([i])).unwrap();
                 assert!(matches!(v, Some(_)), "should have id")
             }
