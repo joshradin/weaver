@@ -24,4 +24,3 @@ fn init_tracing(app: &LevelFilter) -> eyre::Result<()> {
         .init();
     Ok(())
 }
-

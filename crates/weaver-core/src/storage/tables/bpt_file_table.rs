@@ -11,7 +11,7 @@ use crate::db::core::WeaverDbCore;
 use crate::dynamic_table::{Col, DynamicTable, HasSchema, Table};
 use crate::dynamic_table_factory::DynamicTableFactory;
 use crate::error::WeaverError;
-use crate::monitoring::{Monitor, monitor_fn, Monitorable};
+use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
 #[cfg(feature = "mmap")]
 use crate::storage::devices::mmap_file::MMapFile;
@@ -20,9 +20,9 @@ use crate::storage::devices::StorageDevice;
 #[cfg(feature = "weaveBPTF-caching")]
 use crate::storage::paging::caching_pager::LruCachingPager;
 use crate::storage::paging::file_pager::FilePager;
-use crate::storage::StorageDeviceDelegate;
 use crate::storage::tables::table_schema::TableSchema;
 use crate::storage::tables::unbuffered_table::UnbufferedTable;
+use crate::storage::StorageDeviceDelegate;
 use crate::tx::Tx;
 
 pub const B_PLUS_TREE_FILE_KEY: &str = "weaveBPTF";
@@ -161,7 +161,7 @@ mod tests {
     use crate::key::KeyData;
     use crate::monitoring::Monitorable;
     use crate::rows::{KeyIndex, KeyIndexKind, Rows};
-    use crate::storage::tables::bpt_file_table::{B_PLUS_TREE_FILE_KEY, BptfTableFactory};
+    use crate::storage::tables::bpt_file_table::{BptfTableFactory, B_PLUS_TREE_FILE_KEY};
     use crate::storage::tables::table_schema::TableSchema;
     use crate::tx::Tx;
 

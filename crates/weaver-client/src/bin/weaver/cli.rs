@@ -22,7 +22,6 @@ pub struct App {
     #[clap(long, short)]
     pub username: Option<String>,
 
-
     #[clap(long, action=ArgAction::HelpLong)]
     help: Option<bool>,
 }

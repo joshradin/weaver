@@ -67,7 +67,8 @@ impl WeaverDbCore {
             .truncate(false)
             .open(path.join("weaver.lock"))?;
 
-        #[cfg(not(miri))] {
+        #[cfg(not(miri))]
+        {
             debug!("creating exclusive file lock");
             lock_file.try_lock_exclusive()?;
             debug!("exclusive file lock created");

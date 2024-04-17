@@ -6,7 +6,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use crossbeam::channel::Receiver;
-use tracing::{debug, error, info, Span, trace, warn};
+use tracing::{debug, error, info, trace, warn, Span};
 
 use weaver_ast::ast::Query;
 

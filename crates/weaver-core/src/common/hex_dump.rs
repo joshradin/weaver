@@ -99,7 +99,7 @@ struct Row<'a> {
 
 impl<'a> Row<'a> {
     fn is_zeroes(&self) -> bool {
-        self.bytes.iter().all(|&&b| b==0)
+        self.bytes.iter().all(|&&b| b == 0)
     }
 }
 
@@ -135,7 +135,11 @@ impl<'a> Debug for Row<'a> {
             self.start,
             byte_view.join("  "),
             sanitized,
-            if self.repeats > 0 { format!(" x{} ", self.repeats + 1) } else { " ".to_string()}
+            if self.repeats > 0 {
+                format!(" x{} ", self.repeats + 1)
+            } else {
+                " ".to_string()
+            }
         )
     }
 }

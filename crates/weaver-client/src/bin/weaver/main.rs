@@ -39,12 +39,11 @@ fn main() -> eyre::Result<()> {
         login.set_user(username);
     }
 
-
     match app.host.as_str() {
         "localhost" => {
             info!("connecting to weaver instance using socket file");
             let path = "weaver/weaverdb.socket";
-            let client =  match WeaverClient::connect_localhost(path, login) {
+            let client = match WeaverClient::connect_localhost(path, login) {
                 Ok(cnxn) => cnxn,
                 Err(e) => {
                     error!("Failed to connect to weaver instance at {:?} ({e})", path);
@@ -52,7 +51,7 @@ fn main() -> eyre::Result<()> {
                 }
             };
             client_repl(app, client)
-        },
+        }
         other => {
             let addr = (other, app.port);
             info!("connecting to weaver instance at {:?}", addr);
@@ -69,13 +68,8 @@ fn main() -> eyre::Result<()> {
 }
 
 fn client_repl<T: Stream>(app: App, client: WeaverClient<T>) -> eyre::Result<()> {
-
     Ok(())
 }
-
-
-
-
 
 #[cfg(test)]
 mod tests {

@@ -5,12 +5,12 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use color_eyre::eyre;
-use tracing::{debug, Event, info, info_span, Subscriber, trace, warn};
 use tracing::instrument::WithSubscriber;
 use tracing::metadata::LevelFilter;
+use tracing::{debug, info, info_span, trace, warn, Event, Subscriber};
 use tracing_error::ErrorLayer;
-use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields};
 use tracing_subscriber::fmt::format::Writer;
+use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
