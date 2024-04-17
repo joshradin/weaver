@@ -5,25 +5,9 @@ on:
     paths:
       - main
 jobs:
-  prepare:
-    name: Initialize workspace
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@v2
-      - name: Install binary dependencies
-        run: |
-          cargo install cargo-deny
-          cargo install cargo-audit
-          cargo install cargo-nextest
-      - name: Build project
-        run: cargo build
   integrity:
     name: Verify Integrity
     runs-on: ubuntu-latest
-    needs: [ prepare ]
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
@@ -39,7 +23,6 @@ jobs:
   unit-tests:
     name: Run Unit Tests
     runs-on: ubuntu-latest
-    needs: [integrity]
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
