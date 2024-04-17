@@ -45,7 +45,7 @@ jobs:
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
-      - name: Install dependencies
+      - name: Install binary dependencies
         run: |
           cargo install cargo-nextest
       - run: cargo nextest run --workspace --profile ci-unit -E 'kind(bin) + kind(lib)'
@@ -56,11 +56,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install binary dependencies
-        run: |
-          cargo install cargo-deny
-          cargo install cargo-audit
-          cargo install cargo-nextest
-      - name: Install dependencies
         run: |
           cargo install cargo-nextest
       - run: cargo nextest run --workspace --profile ci-int -E 'kind(test)'
