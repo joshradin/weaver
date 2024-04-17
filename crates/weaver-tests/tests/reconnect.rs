@@ -1,13 +1,13 @@
 use std::io::stdout;
 use tempfile::TempDir;
-use tracing::warn;
+use tracing::{metadata, warn};
 use weaver_client::write_rows::write_rows;
 use weaver_core::ast::Query;
 use weaver_tests::{init_tracing, run_full_stack_local_socket};
 
 #[test]
 fn reconnect() -> eyre::Result<()> {
-    let _ = init_tracing(None);
+    let _ = init_tracing(metadata::LevelFilter::TRACE);
     let temp_dir = TempDir::new()?;
     run_full_stack_local_socket(temp_dir.path(), |_server, _client| {
         warn!("successfully started weaver");

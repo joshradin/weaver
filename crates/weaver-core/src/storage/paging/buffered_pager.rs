@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
+use tracing::{error, trace};
 
 use crate::error::WeaverError;
 use crate::monitoring::{Monitor, Monitorable};
@@ -34,7 +35,10 @@ impl<P: Pager> BufferedPager<P> {
 
 impl<P: Pager> Drop for BufferedPager<P> {
     fn drop(&mut self) {
-        let _ = self.flush();
+        let res = self.flush();
+        if let Err(e) = res {
+            error!("flushing buffered page resulted in error: {}", e)
+        }
     }
 }
 
@@ -52,6 +56,8 @@ impl<P: Pager> Pager for BufferedPager<P> {
     fn page_size(&self) -> usize {
         self.buffered.page_size()
     }
+
+
 
     fn get(&self, index: usize) -> Result<Self::Page<'_>, Self::Err> {
         let token = self.usage.write().entry(index).or_default().clone();
@@ -179,7 +185,9 @@ impl<P: Pager> Pager for BufferedPager<P> {
         self.buffered.reserved()
     }
 
+
     fn flush(&self) -> Result<(), Self::Err> {
+        trace!("flushing buffered pager...");
         let mut buffers = self.buffers.write();
         for (page_offset, bytes) in buffers.drain() {
             let mut page = self
@@ -188,6 +196,7 @@ impl<P: Pager> Pager for BufferedPager<P> {
                 .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
             page.as_mut_slice().copy_from_slice(&bytes);
         }
+        self.buffered.flush() .map_err(|e| WeaverError::caused_by("backing pager failed", e))?;
         Ok(())
     }
 }
@@ -200,6 +209,7 @@ pub struct BufferedPage {
 
 impl Drop for BufferedPage {
     fn drop(&mut self) {
+        trace!("dropping {}", std::any::type_name_of_val(self));
         self.usage.fetch_sub(1, Ordering::SeqCst);
     }
 }
@@ -224,6 +234,7 @@ pub struct BufferedPageMut {
 
 impl Drop for BufferedPageMut {
     fn drop(&mut self) {
+        trace!("dropping {}", std::any::type_name_of_val(self));
         self.buffers.write().insert(self.index, self.slice.clone());
         if self
             .usage
@@ -248,5 +259,38 @@ impl Page<'_> for BufferedPageMut {
 impl PageMut<'_> for BufferedPageMut {
     fn as_mut_slice(&mut self) -> &mut [u8] {
         &mut self.slice
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use crate::storage::paging;
+    use crate::storage::paging::buffered_pager::BufferedPager;
+    use crate::storage::paging::file_pager::FilePager;
+    use crate::storage::paging::virtual_pager::VirtualPagerTable;
+
+    #[test]
+    fn buffered_are_reusable() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.as_ref().join("tempfile.vpt");
+        paging::tests::pager_reusable(|| {
+            let pager = FilePager::open_or_create(&file_path).unwrap();
+            BufferedPager::new(pager)
+        });
+    }
+
+    #[test]
+    fn buffered_virtual_are_reusable() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.as_ref().join("tempfile.vpt");
+        paging::tests::pager_reusable(|| {
+            let pager = FilePager::open_or_create(&file_path).unwrap();
+            VirtualPagerTable::new(BufferedPager::new(pager))
+                .unwrap()
+                .get_or_init(0)
+                .unwrap()
+        });
     }
 }

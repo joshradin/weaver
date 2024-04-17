@@ -116,6 +116,10 @@ impl<P: Pager> Pager for LruCachingPager<P> {
     fn reserved(&self) -> usize {
         self.delegate.reserved()
     }
+    fn flush(&self) -> Result<(), Self::Err> {
+        self.delegate.flush()?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]

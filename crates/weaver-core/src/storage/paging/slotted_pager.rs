@@ -12,6 +12,8 @@ use std::sync::{Arc, OnceLock};
 
 use crate::common::linked_list;
 use parking_lot::{Mutex, RwLock};
+use tracing::trace;
+use crate::common::pretty_bytes::PrettyBytes;
 
 use crate::common::track_dirty::Mad;
 use crate::error::WeaverError;
@@ -346,6 +348,8 @@ impl<'a, P: PageMut<'a>> SlottedPageShared<'a, P> {
                 key_value.write(data)?;
             }
         }
+
+        trace!("data: {}", PrettyBytes(data));
 
         self.sync_slots();
 
@@ -700,12 +704,14 @@ impl<'a, P: PageMut<'a>> SlottedPageMut<'a, P> {
 
 impl<'a, P: PageMut<'a>> Drop for SlottedPageMut<'a, P> {
     fn drop(&mut self) {
+        trace!("dropping {}", std::any::type_name_of_val(self));
+        trace!("header.is_dirty() = {}", self.header.is_dirty());
         if self.header.is_dirty() {
             let header = self.header.as_ref().clone();
             let _ = self.page.set_header(header);
         }
         if let Some(lock) = self.lock.get() {
-            // println!("dropping slotted page {:?} with {} access", self.page_id(), if self.is_read { "r" } else { "r/w" });
+            trace!("dropping slotted page {:?} with {} access", self.page_id(), "r/w");
             lock.compare_exchange(-1, 0, Ordering::SeqCst, Ordering::SeqCst)
                 .expect("should be -1");
         }
@@ -743,7 +749,7 @@ impl<'a, P: Page<'a>> SlottedPage<'a, P> {
 impl<'a, P: Page<'a>> Drop for SlottedPage<'a, P> {
     fn drop(&mut self) {
         if let Some(lock) = self.lock.get() {
-            // println!("dropping slotted page {:?} with {} access", self.page_id(), if self.is_read { "r" } else { "r/w" });
+            trace!("dropping slotted page {:?} with {} access", self.page_id(), "r");
             lock.fetch_sub(1, Ordering::SeqCst);
         }
     }
@@ -1219,6 +1225,11 @@ impl<P: Pager> Pager for SlottedPager<P> {
 
     fn reserved(&self) -> usize {
         self.base_pager.reserved()
+    }
+
+    fn flush(&self) -> Result<(), Self::Err> {
+        self.base_pager.flush()?;
+        Ok(())
     }
 }
 

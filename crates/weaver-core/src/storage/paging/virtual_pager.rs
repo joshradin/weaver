@@ -519,6 +519,11 @@ where
     fn reserved(&self) -> usize {
         self.allocated() * self.page_size()
     }
+
+    fn flush(&self) -> Result<(), Self::Err> {
+        self.parent.backing_pager.flush().map_err(|e| VirtualPagerError::backing_error(e))?;
+        Ok(())
+    }
 }
 
 /// A virtual pager error
@@ -542,9 +547,13 @@ impl VirtualPagerError {
 
 #[cfg(test)]
 mod tests {
+    use test_log::test;
     use crate::storage::paging::virtual_pager::VirtualPagerTable;
-    use crate::storage::{Pager, VecPager};
+    use crate::storage::{Pager, paging, VecPager};
     use std::collections::HashMap;
+    use tempfile::tempdir;
+    use crate::storage::paging::file_pager::FilePager;
+    use crate::storage::paging::traits::Page;
 
     #[test]
     fn virtual_pager_table() {
@@ -637,5 +646,17 @@ mod tests {
         let (_page, index) = vp2.new_page().expect("create new page");
         assert_eq!(index, 0);
         vp2.free(index).unwrap();
+    }
+
+    #[test]
+    fn virtual_table_files_are_reusable() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.as_ref().join("tempfile.vpt");
+        paging::tests::pager_reusable(|| {
+            let pager = FilePager::open_or_create(&file_path).unwrap();
+            let vp_table = VirtualPagerTable::<usize, _>::new(pager).unwrap();
+            let vp = vp_table.get_or_init(0).unwrap();
+            vp
+        });
     }
 }

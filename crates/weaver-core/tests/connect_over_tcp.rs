@@ -1,6 +1,7 @@
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;
+use tempfile::TempDir;
 use tracing::level_filters::LevelFilter;
 use weaver_core::access_control::auth::LoginContext;
 use weaver_core::cnxn::stream::WeaverStream;
@@ -14,7 +15,9 @@ fn can_handshake() {
         .with_max_level(LevelFilter::TRACE)
         .with_thread_ids(true)
         .init();
-    let server = WeaverDb::default();
+    let dir = TempDir::new().unwrap();
+    let server = WeaverDb::at_path(&dir).unwrap();
+    server.lifecycle_service().startup().expect("could not startup");
 
     let listener =
         WeaverTcpListener::bind("localhost:0", server.weak()).expect("couldnt create listener");
