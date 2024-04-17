@@ -2,7 +2,7 @@ use clap::Parser;
 use color_eyre::eyre;
 use std::thread;
 use tempfile::tempdir;
-use weaver_daemon::{run, App};
+use weaver_daemon::{run, cli::App};
 
 #[test]
 fn startup() -> eyre::Result<()> {
