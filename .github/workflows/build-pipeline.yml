@@ -19,7 +19,7 @@ jobs:
           cargo install cargo-audit
       - run: cargo check --workspace
       - run: cargo deny check
-      - run: cargo audit
+      - run: cargo audit -d /tmp/cargo-audit-repo
   run-unit-tests:
     name: Run Unit Tests
     runs-on: ubuntu-latest
