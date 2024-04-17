@@ -1,7 +1,9 @@
 //! The second version of the B+ tree
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+#[cfg(debug_assertions)]
+use std::collections::BTreeSet;
 use std::fmt::{Debug, Formatter};
 use std::io::Write;
 use std::ops::Bound;
@@ -923,7 +925,7 @@ mod tests {
     #[test]
     #[cfg(feature = "weaveBPTF-caching")]
     fn test_data_persists_with_cache() {
-        let temp_dir =  tempfile::TempDir::new().unwrap();
+        let temp_dir = tempfile::TempDir::new().unwrap();
         let temp_file_path = temp_dir.path().join("__file__");
         {
             let tree = BPlusTree::new(LruCachingPager::new(
@@ -966,8 +968,6 @@ mod tests {
         assert_eq!(&read[1], &2.into());
         assert_eq!(&read[2], &3.into());
     }
-
-
 
     #[test]
     fn insert_into_b_plus_tree_many() {

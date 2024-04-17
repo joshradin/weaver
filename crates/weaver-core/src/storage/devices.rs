@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
+#[cfg(feature = "mmap")]
 pub mod mmap_file;
 pub mod ram_file;
 

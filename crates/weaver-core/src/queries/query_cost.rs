@@ -14,7 +14,6 @@ use std::ops::Mul;
 use crate::data::values::DbVal;
 use crate::dynamic_table::DynamicTable;
 use crate::error::WeaverError;
-use crate::rows::Rows;
 use crate::tx::Tx;
 
 /// Represents the cost of an operation over some unknown amount of rows

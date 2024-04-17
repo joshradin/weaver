@@ -1,3 +1,5 @@
+use crate::common::hex_dump::HexDump;
+use crate::common::pretty_bytes::PrettyBytes;
 use crate::monitoring::{Monitor, Monitorable};
 use crate::storage::devices::{StorageDevice, StorageDeviceMonitor};
 use std::fmt::{Debug, Formatter};
@@ -7,6 +9,7 @@ use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::OnceLock;
+use tracing::trace;
 
 /// A random access file allows for accessing the contents of a file
 /// at any given point within the file.
@@ -85,6 +88,7 @@ impl StorageDevice for RandomAccessFile {
         }
         self.file.seek(SeekFrom::Start(offset))?;
         self.file.write_all(data)?;
+        trace!("wrote {:#x?} to file {:?}", HexDump::new(data), self.file);
         if let Some(stats) = self.monitor.get() {
             stats.flushes.fetch_add(1, Ordering::Relaxed);
             stats.writes.fetch_add(1, Ordering::Relaxed);
@@ -102,6 +106,11 @@ impl StorageDevice for RandomAccessFile {
         }
         (&self.file).seek(SeekFrom::Start(0))?;
         let read = (&self.file).read(buffer).map(|u| u as u64)?;
+        trace!(
+            "read {:#x?} from file {:?}",
+            HexDump::new(&buffer[..read as usize]),
+            self.file
+        );
         if let Some(stats) = self.monitor.get() {
             stats.reads.fetch_add(1, Ordering::Relaxed);
             stats.bytes_read.fetch_add(read as usize, Ordering::Relaxed);
@@ -121,6 +130,7 @@ impl StorageDevice for RandomAccessFile {
         let mut vec = vec![0_u8; len as usize];
         (&self.file).seek(SeekFrom::Start(offset))?;
         (&self.file).read_exact(&mut vec)?;
+        trace!("read {:#x?} from file {:?}", HexDump::new(&vec), self.file);
         if let Some(stats) = self.monitor.get() {
             stats.reads.fetch_add(1, Ordering::Relaxed);
             stats.bytes_read.fetch_add(len as usize, Ordering::Relaxed);
@@ -222,12 +232,9 @@ pellentesque, mi et malesuada bibendum,
 orci tellus elementum nisi, tempus
 aliquet magna lorem ac dolor.
         "#;
-        ram.set_len((TEXT.len() + 16).try_into().unwrap()).expect("could not set len");
-        ram.write(
-            0,
-            TEXT,
-        )
-           .expect("could not write");
+        ram.set_len((TEXT.len() + 16).try_into().unwrap())
+            .expect("could not set len");
+        ram.write(0, TEXT).expect("could not write");
 
         println!("ram: {ram:#?}");
     }

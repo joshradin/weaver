@@ -4,7 +4,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use cfg_if::cfg_if;
-use tracing::debug;
+use tracing::{debug, trace};
 
 use crate::data::row::Row;
 use crate::db::core::WeaverDbCore;
@@ -13,6 +13,7 @@ use crate::dynamic_table_factory::DynamicTableFactory;
 use crate::error::WeaverError;
 use crate::monitoring::{monitor_fn, Monitor, Monitorable};
 use crate::rows::{KeyIndex, Rows};
+#[cfg(feature = "mmap")]
 use crate::storage::devices::mmap_file::MMapFile;
 use crate::storage::devices::ram_file::RandomAccessFile;
 use crate::storage::devices::StorageDevice;
@@ -106,25 +107,30 @@ impl BptfTableFactory {
         }
 
         debug!("opening Bptf table at {file_location:?} if present...");
-        let file = if true {
-            MMapFile::with_file(
-                File::options()
-                    .create(true)
-                    .write(true)
-                    .read(true)
-                    .truncate(false)
-                    .open(file_location)?,
-            )?
-            .into_delegate()
-        } else {
-            RandomAccessFile::open_or_create(file_location)?.into_delegate()
-        };
+        let file: StorageDeviceDelegate;
 
+        cfg_if! {
+            if #[cfg(feature="mmap")] {
+                trace!("using mmaped file");
+                file = MMapFile::with_file(
+                        File::options()
+                        .create(true)
+                        .write(true)
+                        .read(true)
+                        .truncate(false)
+                        .open(file_location)?,
+                    )?.into_delegate();
+            } else {
+                trace!("using random access file");
+                file= RandomAccessFile::open_or_create(file_location)?.into_delegate()
+            }
+        }
         let file_pager = FilePager::with_file(file);
         #[cfg(feature = "weaveBPTF-caching")]
-        let table =  UnbufferedTable::new(schema.clone(), LruCachingPager::new(file_pager, 512), true)?;
+        let table =
+            UnbufferedTable::new(schema.clone(), LruCachingPager::new(file_pager, 512), true)?;
         #[cfg(not(feature = "weaveBPTF-caching"))]
-        let table =  UnbufferedTable::new(schema.clone(), file_pager, true)?;
+        let table = UnbufferedTable::new(schema.clone(), file_pager, true)?;
 
         Ok(BptfTable { main_table: table })
     }

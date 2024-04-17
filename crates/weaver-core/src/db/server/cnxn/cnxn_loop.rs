@@ -6,7 +6,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use crossbeam::channel::Receiver;
-use tracing::{debug, error, info, Span, trace, warn};
+use tracing::{debug, error, info, trace, warn, Span};
 
 use weaver_ast::ast::Query;
 
@@ -81,9 +81,6 @@ fn handle_message<S: MessageStream + Send>(
 
             let mut send_request =
                 |body: DbReqBody, tx: &mut Option<Tx>| -> Result<RemoteDbResp, WeaverError> {
-                    if let DbReqBody::TxQuery(_, query) = &body {
-
-                    }
                     let mut resp = socket.send((body, span.clone()));
                     resp.on_cancel(cancel.clone());
                     let resp = resp.join()?;
