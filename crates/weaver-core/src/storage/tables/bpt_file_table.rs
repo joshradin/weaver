@@ -49,6 +49,14 @@ impl DynamicTable for BptfTable {
         self.main_table.next_row_id()
     }
 
+    fn commit(&self, tx: &Tx) {
+        self.main_table.commit(tx)
+    }
+
+    fn rollback(&self, tx: &Tx) {
+        self.main_table.commit(tx)
+    }
+
     fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         self.main_table.insert(tx, row)
     }
@@ -59,6 +67,10 @@ impl DynamicTable for BptfTable {
         key: &KeyIndex,
     ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         self.main_table.read(tx, key)
+    }
+
+    fn all<'tx, 'table: 'tx>(&'table self, tx: &'tx Tx) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
+        self.main_table.all(tx)
     }
 
     fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError> {
@@ -72,6 +84,8 @@ impl DynamicTable for BptfTable {
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         self.main_table.delete(tx, key)
     }
+
+
 }
 
 impl HasSchema for BptfTable {

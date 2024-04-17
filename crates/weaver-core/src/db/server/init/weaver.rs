@@ -9,7 +9,7 @@ use tracing::{debug, info_span};
 
 use crate::db::core::WeaverDbCore;
 
-use crate::dynamic_table::EngineKey;
+use crate::dynamic_table::{DynamicTable, EngineKey};
 use crate::error::WeaverError;
 use crate::queries::query_cost::CostTable;
 use crate::storage::tables::bpt_file_table::B_PLUS_TREE_FILE_KEY;
@@ -48,7 +48,7 @@ fn cost_table(db: &mut WeaverDbCore) -> Result<(), WeaverError> {
     let table = db.get_open_table("weaver", "cost")?;
     let tx = Tx::default();
     cost_table.flush_to_table(&table, &tx)?;
-    tx.commit();
+    table.commit(&tx);
 
     Ok(())
 }

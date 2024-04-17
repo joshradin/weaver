@@ -392,7 +392,7 @@ impl WeaverDb {
 
             Ok(())
         } else {
-            Err(WeaverError::TcpAlreadyBound)
+            Err(WeaverError::LocalSocketAlreadyBound)
         }
     }
 
@@ -582,10 +582,15 @@ impl Monitorable for WeaverDb {
     }
 }
 
-impl Drop for WeaverDbShared {
+
+impl Drop for WeaverDb {
     fn drop(&mut self) {
-        info!("db server dropped, running teardown if not already");
-        let _ = self.lifecycle_service.teardown();
+        if Arc::strong_count(&self.shared) == 1 {
+            info!("db server dropped, running teardown if not already");
+            if let Err(e) = { self.shared.lifecycle_service.clone() }.teardown() {
+                error!("teardown resulted in {:?}", e);
+            }
+        }
     }
 }
 

@@ -41,6 +41,14 @@ impl DynamicTable for SharedTable {
         self.0.next_row_id()
     }
 
+    fn commit(&self, tx: &Tx) {
+        self.0.commit(tx)
+    }
+
+    fn rollback(&self, tx: &Tx) {
+        self.0.rollback(tx)
+    }
+
     fn insert(&self, tx: &Tx, row: Row) -> Result<(), WeaverError> {
         self.0.insert(tx, row)
     }
@@ -51,6 +59,10 @@ impl DynamicTable for SharedTable {
         key: &KeyIndex,
     ) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
         self.0.read(tx, key)
+    }
+
+    fn all<'tx, 'table: 'tx>(&'table self, tx: &'tx Tx) -> Result<Box<dyn Rows<'tx> + 'tx + Send>, WeaverError> {
+        self.0.all(tx)
     }
 
     fn size_estimate(&self, key_index: &KeyIndex) -> Result<u64, WeaverError> {
@@ -64,4 +76,6 @@ impl DynamicTable for SharedTable {
     fn delete(&self, tx: &Tx, key: &KeyIndex) -> Result<Box<dyn Rows>, WeaverError> {
         self.0.delete(tx, key)
     }
+
+
 }

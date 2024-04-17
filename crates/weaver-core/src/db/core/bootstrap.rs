@@ -39,6 +39,7 @@ pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<()
     core.open_table(weaver_schemata_schema)?;
     let weaver_schemata = core.get_open_table("weaver", "schemata")?;
     weaver_schemata.insert(tx, Row::from([DbVal::from(1), "weaver".into()]))?;
+    weaver_schemata.commit(tx);
 
     // STEP 2: Load weaver.tables
     let weaver_tables_schema = &(weaver_tables_schema()?);
@@ -65,6 +66,7 @@ pub fn bootstrap(core: &mut WeaverDbCore, weaver_schema_dir: &Path) -> Result<()
             DbVal::from(true),
         ]),
     )?;
+    weaver_tables.commit(tx);
 
     Ok(())
 }

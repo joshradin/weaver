@@ -66,6 +66,8 @@ pub enum WeaverError {
     Timeout,
     #[error("WeaverDb instance already bound to tcp socket")]
     TcpAlreadyBound,
+    #[error("WeaverDb instance already bound to local socket")]
+    LocalSocketAlreadyBound,
     #[error(transparent)]
     SendError(#[from] SendError<MainQueueItem>),
     #[error(transparent)]

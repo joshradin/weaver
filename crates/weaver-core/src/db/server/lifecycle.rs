@@ -23,6 +23,8 @@ pub enum LifecyclePhase {
 
 type LifecycleCallback = dyn FnOnce(&mut WeaverDb) -> Result<(), WeaverError> + Send + Sync;
 
+
+
 struct WeaverDbLifecycleServiceInternal {
     weak: WeakWeaverDb,
     initialization_functions: Vec<Box<LifecycleCallback>>,
@@ -191,9 +193,12 @@ impl WeaverDbLifecycleService {
             .ok_or_else(|| WeaverError::NoCoreAvailable)?;
         // bootstrap
         let teardown_functions = VecDeque::from_iter(helper.teardown_functions.drain(..));
+        debug!("teardown functions: {:#?}", teardown_functions.len());
 
         for teardown in teardown_functions {
+            debug!("running teardown function...");
             teardown(&mut weaver)?;
+            debug!("teardown function completed.")
         }
 
         debug!(
