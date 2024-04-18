@@ -1,4 +1,4 @@
-name: build-pipeline
+name: build
 on:
   pull_request:
   push:
@@ -49,6 +49,8 @@ jobs:
     needs: [ integrity, unit-tests ]
     steps:
       - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
       - name: Install binary dependencies
         run: |
