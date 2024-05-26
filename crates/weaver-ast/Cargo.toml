@@ -1,5 +1,6 @@
 [package]
 name = "weaver-ast"
+description = "Provides the AST and parsing for weaver queries"
 version.workspace = true
 authors.workspace =true
 edition.workspace = true

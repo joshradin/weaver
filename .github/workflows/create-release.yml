@@ -1,12 +1,4 @@
 name: create-release
-on:
-  workflow_run:
-    workflows:
-      - build
-    types:
-      - completed
-    branches:
-      - main
 
 jobs:
   create-release:
@@ -30,6 +22,7 @@ jobs:
           tag_name: ${{ steps.tag_version.outputs.new_version }}
           release_name: Release ${{ steps.tag_version.outputs.new_tag }}
           body: ${{ steps.tag_version.outputs.changelog }}
+
       - name: "cargo release publish"
         run: |-
           cargo release \

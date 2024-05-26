@@ -1,5 +1,6 @@
 [package]
 name = "weaver-client"
+description = "A client for weaver, providing a repl"
 version.workspace = true
 authors.workspace =true
 edition.workspace = true
