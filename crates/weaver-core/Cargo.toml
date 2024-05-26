@@ -1,5 +1,6 @@
 [package]
 name = "weaver-core"
+description = "The core weaver package, containing most implementation details"
 version.workspace = true
 authors.workspace =true
 edition.workspace = true
